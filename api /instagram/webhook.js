@@ -71,7 +71,7 @@ router.post('/webhook', async (req, res) => {
           sovyxLogger.info('IA2 response', { respuesta: respuesta.mensaje });
           
           // Enviar respuesta por Instagram API
-          const response = await fetch(`https://graph.instagram.com/v18.0/me/messages`, {
+          const response = await fetch(`https://graph.instagram.com/v25.0/me/messages`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${ACCOUNTS[cuenta].instagram_token}`,
