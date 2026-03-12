@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/",
+      "dest": "/api/index.js"
+    }
+  ],
+  "env": {
+    "INSTAGRAM_TOKEN_SOVYX": "@instagram-token-sovyx",
+    "INSTAGRAM_TOKEN_SOCREDI": "@instagram-token-socredi",
+    "INSTAGRAM_TOKEN_CLIENT1": "@instagram-token-client1",
+    "INSTAGRAM_VERIFY_TOKEN": "@instagram-verify-token",
+    "FB_ACCESS_TOKEN": "@fb-access-token"
+  }
+}
