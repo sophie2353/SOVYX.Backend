@@ -44,7 +44,7 @@ app.get('/api/clientes/disponibles', async (req, res) => {
     totalSlots: config.sovyx.maxClients,
     ocupados: slotsOcupados,
     disponibles: slotsDisponibles,
-    precio: { 5000, moneda: 'USD' }
+    precio: { min: 5000, max: 5000, moneda: 'USD' }  // ✅ CORREGIDO
   });
 });
 
@@ -82,11 +82,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
-module.exports = app;
+// ============================================
+// LEVANTAR SERVIDOR (CON PUERTO DE RENDER)
+// ============================================
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🗿 SOVYX BACKEND - Puerto ${PORT}`);
+});
 
-if (require.main === module) {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`🗿 SOVYX BACKEND - Puerto ${PORT}`);
-  });
-}
+module.exports = app;
