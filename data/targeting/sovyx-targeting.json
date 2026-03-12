@@ -1,0 +1,80 @@
+{
+  "age_max": 65,
+  "age_min": 25,
+  "age_range": [30, 48],
+  
+  "excluded_geo_locations": {
+    "countries": ["VE"],
+    "location_types": ["home", "recent"]
+  },
+  
+  "flexible_spec": [
+    {
+      "education_majors": [
+        {
+          "id": "102055209874219",
+          "name": "Personal Training/Fitness"
+        },
+        {
+          "id": "175688879130027",
+          "name": "Coaching & Mentoring"
+        }
+      ],
+      "work_employers": [
+        {
+          "id": "105785789454162",
+          "name": "Gym"
+        }
+      ],
+      "work_positions": [
+        {
+          "id": "379484855552546",
+          "name": "Life coaching"
+        },
+        {
+          "id": "839841992748313",
+          "name": "Personal Coach"
+        }
+      ]
+    }
+  ],
+  
+  "geo_locations": {
+    "countries": ["CA", "AU"],
+    "cities": [
+      {
+        "country": "US",
+        "distance_unit": "mile",
+        "key": "2428987",
+        "name": "Miami",
+        "region": "Florida",
+        "region_id": "3852"
+      },
+      {
+        "country": "CO",
+        "distance_unit": "mile",
+        "key": "474037",
+        "name": "Medellín",
+        "region": "Antioquia",
+        "region_id": "717"
+      }
+    ],
+    "location_types": ["home", "recent"]
+  },
+  
+  "locales": [23, 7],
+  
+  "genders": [1, 2],
+  "device_platforms": ["mobile", "desktop"],
+  "publisher_platforms": ["instagram"],
+  "instagram_positions": ["stream", "story"],
+  
+  "sovyx_metadata": {
+    "product": "coaching_fitness_high_ticket",
+    "expected_price": 5000,
+    "market": "CA/AU/US Miami/CO Medellín",
+    "languages": ["en", "es"],
+    "version": "2.0",
+    "created": "2026-03-12"
+  }
+}
