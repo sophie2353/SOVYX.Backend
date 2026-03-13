@@ -23,7 +23,8 @@ class SOVYXIA3Analyzer {
   // ============================================
   // ANALIZAR POST Y RETROALIMENTAR
   // ============================================
-  async analizarPostYRetroalimentar(postId, cuenta) {
+async analizarPostYRetroalimentar(postId, cuenta) {
+}
     sovyxLogger.info('🔄 IA3: Analizando post', { postId, cuenta });
     
     const db = await this.initDB();
