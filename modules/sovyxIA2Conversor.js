@@ -190,7 +190,6 @@ class SOVYXIA2Conversor {
       paso4: 'Vendes mientras duermes',
       tiempoInversion: '2-3 horas a la semana',
       tiempoAhorro: '40',
-      calendlyLink: 'https://calendly.com/sovyx/llamada-estrategica',
       paymentLink: 'https://checkout.sovyx.com/pago'
     };
     
