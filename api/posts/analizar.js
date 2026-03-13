@@ -4,7 +4,6 @@
 const express = require('express');
 const router = express.Router();
 const sovyxLogger = require('../../modules/sovyxLogger');
-const SOVYXAdsSimulator = require('../../modules/sovyxAdsSimulator');
 const SOVYXIA3Analyzer = require('../../modules/sovyxIA3Analyzer');
 
 // ============================================
