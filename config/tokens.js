@@ -28,25 +28,20 @@ module.exports = {
       client8: process.env.INSTAGRAM_ID_CLIENT8
     },
     verifyToken: process.env.INSTAGRAM_VERIFY_TOKEN,
-    apiVersion: 'v18.0',
-    baseUrl: 'https://graph.instagram.com/v18.0'
+    apiVersion: 'v25.0',
+    baseUrl: 'https://graph.instagram.com/v25.0'
   },
   
   facebook: {
     token: process.env.FB_ACCESS_TOKEN,
     adAccountId: process.env.FB_AD_ACCOUNT_ID,
-    apiVersion: 'v18.0',
-    baseUrl: 'https://graph.facebook.com/v18.0'
+    apiVersion: 'v25.0',
+    baseUrl: 'https://graph.facebook.com/v25.0'
   },
   
   sovyx: {
     mode: process.env.SOVYX_MODE || 'development',
     maxClients: parseInt(process.env.SOVYX_MAX_CLIENTS) || 8,
-    targetCloses: parseInt(process.env.SOVYX_TARGET_CLOSES) || 27000,
-    dailyBudget: parseInt(process.env.SOVYX_DAILY_BUDGET) || 100,
-    
-    apiUrl: process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}/api`
-      : 'http://localhost:3000/api'
+    targetCloses: parseInt(process.env.SOVYX_TARGET_CLOSES) || 2700
   }
 };
