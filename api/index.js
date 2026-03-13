@@ -32,7 +32,6 @@ app.use('/api/posts', require('./posts/analizar'));
 app.use('/api/ia', require('./ia/ia1-segmentar'));
 app.use('/api/ia', require('./ia/ia2-conversar'));
 app.use('/api/ia', require('./ia/ia3-analizar'));
-app.use('/api/meta', require('./meta/simulador'));
 app.use('/api/instagram', require('./instagram/webhook'));
 
 app.get('/api/clientes/disponibles', async (req, res) => {
