@@ -116,7 +116,7 @@ router.get('/proyeccion/:cuenta', async (req, res) => {
 });
 
 // ============================================
- FORZAR RETROALIMENTACIÓN MANUAL
+ // FORZAR RETROALIMENTACIÓN MANUAL
 // ============================================
 router.post('/retroalimentar-forzar', async (req, res) => {
   try {
