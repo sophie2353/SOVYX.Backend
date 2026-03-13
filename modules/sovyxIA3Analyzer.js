@@ -24,6 +24,7 @@ class SOVYXIA3Analyzer {
   // ANALIZAR POST Y RETROALIMENTAR
   // ============================================
 async analizarPostYRetroalimentar(postId, cuenta) {
+//           ↑ 'i' en vez de 'í' (sin tilde)
 }
     sovyxLogger.info('🔄 IA3: Analizando post', { postId, cuenta });
     
