@@ -28,7 +28,6 @@ router.get('/:postId', async (req, res) => {
     }
     
     // 2. Obtener insights de Meta (si está disponible)
-    const simulador = new SOVYXAdsSimulator();
     const insights = await simulador.getPostInsights(postId);
     
     // 3. Obtener interacciones de IA2 para este post
