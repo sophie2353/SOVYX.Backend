@@ -45,13 +45,12 @@ router.post('/', async (req, res) => {
     // 2. SUBIR IMAGEN A INSTAGRAM
     const mediaId = await uploadMedia(imageUrl, account.instagram_token);
     
-    // 3. PUBLICAR CON TARGETING (EL HACK - SIN daily_budget)
-    const publishUrl = `https://graph.instagram.com/v18.0/me/media_publish`;
+    const publishUrl = `https://graph.instagram.com/v25.0/me/media_publish`;
     
     const body = {
       creation_id: mediaId,
       caption: caption,
-      targeting_spec: targetingJson,  // ← EL HACK: targeting de ads
+      targeting_spec: targetingJson, 
       published: true
     };
     
@@ -97,7 +96,7 @@ router.post('/', async (req, res) => {
     // 5. RESPONDER
     res.json({
       success: true,
-      message: '✅ EXITOSO - Post publicado con targeting SIN GASTAR',
+      message: '✅ EXITOSO - Post publicado con targeting',
       postId: data.id,
       cuenta: account.name,
       modo: account.budget === 0 ? 'hack (sin presupuesto)' : `${account.budget}$/día`,
@@ -118,7 +117,7 @@ router.post('/', async (req, res) => {
 // FUNCIÓN AUXILIAR: SUBIR IMAGEN
 // ============================================
 async function uploadMedia(imageUrl, token) {
-  const createUrl = `https://graph.instagram.com/v18.0/me/media`;
+  const createUrl = `https://graph.instagram.com/v25.0/me/media`;
   const createBody = {
     image_url: imageUrl,
     access_token: token,
