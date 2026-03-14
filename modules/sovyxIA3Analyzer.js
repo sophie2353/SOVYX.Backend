@@ -1,8 +1,6 @@
 // modules/sovyxIA3Analyzer.js
 // IA3 - Analiza compradores y MEJORA IA1 e IA2 automáticamente
 const sovyxLogger = require('../modules/sovyxLogger');
-console.log('🔍 sovyxLogger existe?', sovyxLogger ? 'SÍ' : 'NO');
-console.log('🔍 tipo:', typeof sovyxLogger);
 
 class SOVYXIA3Analyzer {
   constructor() {
@@ -24,9 +22,9 @@ class SOVYXIA3Analyzer {
   // ============================================
   // ANALIZAR POST Y RETROALIMENTAR
   // ============================================
-async analizarPostYRetroalimentar(postId, cuenta) {
-//           ↑ 'i' en vez de 'í' (sin tilde)
-}
+  async analizarPostYRetroalimentar(postId, cuenta) {
+    // ↑ LA LLAVE DE CIERRE DEBE ESTAR AL FINAL, NO AQUÍ
+    
     sovyxLogger.info('🔄 IA3: Analizando post', { postId, cuenta });
     
     const db = await this.initDB();
@@ -61,7 +59,7 @@ async analizarPostYRetroalimentar(postId, cuenta) {
       compradores_encontrados: compradores.length,
       retroalimentacion_aplicada: compradores.length >= 1
     };
-  }
+  }  // ← ESTA ES LA ÚNICA LLAVE DE CIERRE DE LA FUNCIÓN
   
   // ============================================
   // RETROALIMENTAR CON COMPRADORES
