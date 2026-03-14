@@ -1,5 +1,5 @@
 // config/accounts.js
-const tokens = require('./tokens'); 
+const tokens = require('../config/tokens');
 
 const ACCOUNTS = {
   // MIS CUENTAS
