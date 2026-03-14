@@ -1,7 +1,6 @@
 // modules/sovyxIA3Analyzer.js
 // IA3 - Analiza compradores y MEJORA IA1 e IA2 automáticamente
-
-const sovyxLogger = require('./sovyxLogger');
+const sovyxLogger = require('./sovyxlogger');
 
 class SOVYXIA3Analyzer {
   constructor() {
