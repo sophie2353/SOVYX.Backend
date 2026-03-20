@@ -1,6 +1,5 @@
 // modules/sovyxIA2Conversor.js
-// IA que responde automáticamente en Instagram DMs
-// Basada en 36 meses de experiencia y 47 conversaciones reales
+// IA2 - Responde mensajes automáticamente, gestiona pagos y formularios
 
 const sovyxLogger = require('./sovyxLogger');
 
@@ -10,6 +9,9 @@ class SOVYXIA2Conversor {
     this.estilo = estilo;
     this.contexto = {}; // Por clienteId
     this.historial = {};
+    
+    // LINK DEL FORMULARIO (actualizado)
+    this.linkFormulario = 'https://forms.gle/W9BXc4bmHb2EHifg8';
     
     // PLANTILLAS DE RESPUESTA (basadas en conversaciones reales)
     this.plantillas = {
@@ -28,12 +30,12 @@ class SOVYXIA2Conversor {
       
       "cómo funciona": [
         "SOVYX funciona con 3 IAs que trabajan juntas:\n1️⃣ IA1: Segmenta tu audiencia ideal\n2️⃣ IA2: Responde DMs automáticamente (como yo)\n3️⃣ IA3: Analiza resultados y mejora las 2 IAs anteriores.\n\n¿Te gustaría ver ejemplos?",
-        "Es sencillo: tú subes un post, SOVYX lo segmenta, yo respondo los mensajes, y IA3 optimiza todo. Nosotros nos encargamos del resto ✅"
+        "Es sencillo: tú subes un post, SOVYX lo segmenta, yo respondo los mensajes (IA2), y la IA3 optimiza todo. Nosotros nos encargamos del resto ✅"
       ],
       
       "resultados": [
-        "El resultado es el que esta actualmente en las historias de SOVYX. se decidió arriesgarse y mostrar resultados primero con esta cuenta y luego con los clientes. :\n📊 Alcance de 100k+ por post\n💬 +1,000 DMs respondidos\n 10-20 ventas de high ticket\n\n¿quieres ver algo más?",
-        "En promedio, los clientes ven sus primeras ventas en 3-7 días. Llevamos 36 meses perfeccionando esto. ¿te interesa?"
+        "El resultado es el que esta actualmente en las historias de SOVYX. se decidió arriesgarse y mostrar resultados primero con esta cuenta y luego con los clientes. ¿quieres ver algo más?",
+        "En promedio, los clientes ven sus primeras ventas en 3-7 días. Llevo 11 meses perfeccionando esto. ¿te interesa?"
       ],
       
       // OBJECIONES COMUNES
@@ -43,7 +45,7 @@ class SOVYXIA2Conversor {
       ],
       
       "no tengo tiempo": [
-        "Por eso mismo SOVYX está diseñado para gente ocupada. Solo necesitas subir 1 post cada 3-4 días. Nosotros hacemos el resto. ¿te sirve?",
+        "Por eso mismo SOVYX está diseñado para gente ocupada. Solo necesitas subir 1 post cada 3-4 días y grabar los módulos del curso/mentoria. Nosotros hacemos el resto. ¿te sirve?",
         "IA2 responde por ti 24/7, tú solo supervisas. Inviertes 2-3 horas a la semana. ¿eso funciona para ti?"
       ],
       
@@ -52,14 +54,15 @@ class SOVYXIA2Conversor {
         "Sin presión. ¿alguna duda específica que pueda resolverte ahora? Así cuando decidas, ya tienes todo claro."
       ],
       
-      // CIERRE
-      "llamada": [
-        "Las llamadas se hacen en muy pocas ocasiones y generalmente es luego del pago. por esa razón se ofrecen resultados usando el user de SOVYX en tiempo real y posibles correcciones que mejoran el software."
+      // PAGO
+      "pagar": [
+        "¡Excelente decisión! Aquí tienes el link de pago: ${paymentLink}\n\nUna vez procesado, envíame el comprobante para activar SOVYX.",
+        "¡Me alegra mucho! Procesa tu pago aquí: ${paymentLink}\n\nLuego envíame el comprobante para continuar con la activación. 🦁"
       ],
       
-      "pagar": [
-        "¡Excelente decisión! Aquí tienes el link de pago: ${paymentLink}\n\nUna vez procesado, te damos acceso inmediato a las 3 IAs. ¿Necesitas ayuda con algo más?",
-        "¡Me alegra mucho! Procesa tu pago aquí: ${paymentLink}\nEn menos de 5 minutos tendrás todo configurado. 🦁"
+      // POST-PAGO (cuando envían comprobante)
+      "post_pago": [
+        "✅ ¡Pago confirmado! 🎉\n\nAhora completa este formulario para activar SOVYX:\n\n📋 ${linkFormulario}\n\nIncluye:\n- 🔐 Usuario y contraseña TEMPORAL de Instagram\n- 🎯 Nicho y audiencia objetivo\n- 📍 Países a segmentar\n- 💰 Presupuesto para ADS\n\nUna vez completado, en pocas horas tendrás:\n🔓 Acceso al dashboard (con tu dominio profesional)\n🌐 Tu propia página web SOVYX\n🤖 IA1 e IA2 configuradas con tus datos\n📱 Calendario de historias\n🎬 Estructura de 3 posts optimizados\n\n¿Tienes alguna duda?"
       ],
       
       // DEFAULT
@@ -77,8 +80,8 @@ class SOVYXIA2Conversor {
       resultados: ['resultado', 'logrado', 'beneficio', 'ganado', 'results', 'success', 'casos', 'ejemplos'],
       objecion: ['caro', 'mucho', 'no tengo', 'no puedo', 'expensive', 'too much', 'cant', 'no me alcanza'],
       pensando: ['pensar', 'decidir', 'ver', 'dud', 'think', 'decide', 'doubt', 'considerar', 'analizar'],
-      llamada: ['llamada', 'hablar', 'agendar', 'calendly', 'call', 'meet', 'zoom', 'reunión', 'videollamada'],
-      compra: ['pagar', 'comprar', 'quiero', 'me interesa', 'buy', 'pay', 'interested', 'yes', 'quiero entrar']
+      compra: ['pagar', 'comprar', 'quiero acceder', 'me interesa quiero pagar', 'quiero entrar', 'acceder'],
+      post_pago: ['comprobante', 'ya pague', 'pago realizado', 'transferencia', 'recibo']
     };
     
     // ESTILOS DE RESPUESTA SEGÚN CUENTA
@@ -87,7 +90,7 @@ class SOVYXIA2Conversor {
         nombre: "Equipo SOVYX",
         tono: "cercano pero profesional",
         palabras_clave: ['inversión', 'retorno', 'garantía', '36 meses'],
-        presentacion: "Somos el equipo de SOVYX, encantados de ayudarte 🙌"
+        presentacion: "Somos el equipo de SOVYX, encantados de ayudarte"
       },
       
       high_ticket_client: {
@@ -109,16 +112,16 @@ class SOVYXIA2Conversor {
       nombre: config.nombre || 'Cliente',
       precio: '5,000$',
       incluye: '3 IAs, dashboard en tiempo real, automatización de DMs, segmentación avanzada, soporte prioritario',
-      resultadoEstimado: '10-20 ventas de high ticket',
+      resultadoEstimado: '5-8 ventas de 1,000-5.000$',
       pasos: [
         'Subes tu primer post (30 segundos)',
         'IA2 responde todos los DMs automáticamente',
         'IA3 analiza y mejora la segmentación',
-        'Ves resultados en el dashboard'
+        'Ves resultados en el dashboard según tú objetivo'
       ],
       tiempoInversion: '2-3 horas a la semana',
-      calendlyLink: 'https://calendly.com/sovyx/llamada-estrategica',
       paymentLink: 'https://checkout.sovyx.com/pago',
+      pago_confirmado: false,
       estilo: estilo,
       etapa: "inicio",
       historial: [],
@@ -157,9 +160,16 @@ class SOVYXIA2Conversor {
       'resultados': 'resultados',
       'objecion': 'caro',
       'pensando': 'necesito pensarlo',
-      'llamada': 'llamada',
       'compra': 'pagar'
     };
+    
+    // Si es post_pago, usar plantilla especial
+    if (intencion === 'post_pago') {
+      const opciones = this.plantillas["post_pago"];
+      let respuesta = opciones[0];
+      respuesta = respuesta.replace('${linkFormulario}', this.linkFormulario);
+      return respuesta;
+    }
     
     const plantillaKey = mapa[intencion] || 'default';
     const opciones = this.plantillas[plantillaKey] || this.plantillas.default;
@@ -183,14 +193,15 @@ class SOVYXIA2Conversor {
     const valores = {
       precio: '5,000$',
       incluye: '3 IAs, automatización de DMs, segmentación, dashboard',
-      resultadoEstimado: '10-20 ventas de 5,000$',
+      resultadoEstimado: '5-8 ventas de 1,000-5.000$',
       paso1: 'Subir tu primer post (30 segundos)',
       paso2: 'IA2 responde todos los DMs',
       paso3: 'IA3 optimiza la segmentación',
       paso4: 'Vendes mientras duermes',
       tiempoInversion: '2-3 horas a la semana',
       tiempoAhorro: '40',
-      paymentLink: 'https://checkout.sovyx.com/pago'
+      paymentLink: ctx.paymentLink || 'https://checkout.sovyx.com/pago',
+      linkFormulario: this.linkFormulario
     };
     
     return respuesta
@@ -203,17 +214,21 @@ class SOVYXIA2Conversor {
       .replace('${paso4}', valores.paso4)
       .replace('${tiempoInversion}', valores.tiempoInversion)
       .replace('${tiempoAhorro}', valores.tiempoAhorro)
-      .replace('${calendlyLink}', valores.calendlyLink)
-      .replace('${paymentLink}', valores.paymentLink);
+      .replace('${paymentLink}', valores.paymentLink)
+      .replace('${linkFormulario}', valores.linkFormulario);
   }
   
   // ============================================
   // ACTUALIZAR ETAPA DEL LEAD
   // ============================================
   actualizarEtapa(ctx, intencion) {
-    if (intencion === 'llamada' || intencion === 'compra') {
-      ctx.etapa = 'calificado';
-      ctx.probCierre = 0.8;
+    if (intencion === 'compra') {
+      ctx.etapa = 'pago_pendiente';
+      ctx.probCierre = 0.9;
+    } else if (intencion === 'post_pago') {
+      ctx.etapa = 'pago_confirmado';
+      ctx.pago_confirmado = true;
+      ctx.probCierre = 0.95;
     } else if (intencion === 'objecion') {
       ctx.etapa = 'objeción';
       ctx.probCierre = 0.3;
@@ -234,7 +249,9 @@ class SOVYXIA2Conversor {
   calcularProbCierre(ctx) {
     let prob = 0.1; // base
     
-    if (ctx.etapa === 'calificado') prob += 0.2;
+    if (ctx.etapa === 'pago_confirmado') prob += 0.85;
+    else if (ctx.etapa === 'pago_pendiente') prob += 0.8;
+    else if (ctx.etapa === 'calificado') prob += 0.2;
     if (ctx.historial.length > 6) prob += 0.1;
     if (ctx.respondioSeguimiento) prob += 0.1;
     if (ctx.etapa === 'objeción') prob -= 0.1;
@@ -274,9 +291,20 @@ class SOVYXIA2Conversor {
       timestamp: new Date()
     });
     
-    // Programar seguimiento si aplica
-    if (ctx.probCierre > 0.6 && intencion !== 'compra') {
-      this.programarSeguimiento(clienteId, 'alta_intencion');
+    // Guardar en base de datos (opcional)
+    try {
+      const db = require('./sovyxDatabase');
+      await db.guardarInteraccion({
+        usuario_id: clienteId,
+        mensaje,
+        respuesta,
+        etapa: ctx.etapa,
+        probCierre: ctx.probCierre,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      // Si falla la DB, no detiene el flujo
+      sovyxLogger.warn('No se pudo guardar interacción', { error: err.message });
     }
     
     return {
@@ -294,9 +322,9 @@ class SOVYXIA2Conversor {
     setTimeout(() => {
       const ctx = this.contexto[clienteId];
       if (!ctx) return;
-      if (ctx.etapa === 'calificado' && ctx.probCierre > 0.8) return;
+      if (ctx.etapa === 'pago_confirmado' || ctx.etapa === 'pago_pendiente') return;
       
-      sovyxLogger.info(`IA2: Seguimiento programado para ${clienteId}`);
+      sovyxLogger.info(`⏰ IA2: Seguimiento programado para ${clienteId}`);
       // El webhook manejaría el envío
       
     }, tiempo * 60 * 60 * 1000);
