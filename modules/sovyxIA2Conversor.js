@@ -110,7 +110,7 @@ class SOVYXIA2Conversor {
     
     this.contexto[clienteId] = {
       nombre: config.nombre || 'Cliente',
-      precio: '5,000$',
+      precio: '5,000$ (Pago a realizar por Binance Pay solamente)',
       incluye: '3 IAs, dashboard en tiempo real, automatización de DMs, segmentación avanzada, soporte prioritario',
       resultadoEstimado: '5-8 ventas de 1,000-5.000$',
       pasos: [
@@ -120,7 +120,7 @@ class SOVYXIA2Conversor {
         'Ves resultados en el dashboard según tú objetivo'
       ],
       tiempoInversion: '2-3 horas a la semana',
-      paymentLink: 'https://checkout.sovyx.com/pago',
+      paymentLink: 'https://app.kontigo.com/pay/53a368ed-10d4-4936-accb-deb2e69f349a',
       pago_confirmado: false,
       estilo: estilo,
       etapa: "inicio",
@@ -191,7 +191,7 @@ class SOVYXIA2Conversor {
   // ============================================
   personalizarRespuesta(respuesta, ctx) {
     const valores = {
-      precio: '5,000$',
+      precio: '5,000$ (Binance Pay se acepta solamente)',
       incluye: '3 IAs, automatización de DMs, segmentación, dashboard',
       resultadoEstimado: '5-8 ventas de 1,000-5.000$',
       paso1: 'Subir tu primer post (30 segundos)',
@@ -200,7 +200,7 @@ class SOVYXIA2Conversor {
       paso4: 'Vendes mientras duermes',
       tiempoInversion: '2-3 horas a la semana',
       tiempoAhorro: '40',
-      paymentLink: ctx.paymentLink || 'https://checkout.sovyx.com/pago',
+      paymentLink: ctx.paymentLink || 'https://app.kontigo.com/pay/53a368ed-10d4-4936-accb-deb2e69f349a',
       linkFormulario: this.linkFormulario
     };
     
