@@ -7,11 +7,12 @@ class SOVYXIA1Segmenter {
     this.nichos = this.cargarNichos();
     this.premiumFilters = this.cargarFiltrosElite();
     this.masterTargeting = this.cargarMasterTargeting();
+    // Ruta de aprendizaje de IA3
+    this.learningPath = path.join(__dirname, '../data/ia3_learning.json');
   }
 
   cargarMasterTargeting() {
     try {
-
       const masterPath = path.join(__dirname, '../data/targeting/sovyxtargeting.json');
       if (fs.existsSync(masterPath)) {
         const data = JSON.parse(fs.readFileSync(masterPath, 'utf8'));
@@ -77,39 +78,63 @@ class SOVYXIA1Segmenter {
     };
   }
 
+  /**
+   * LÓGICA DE OPTIMIZACIÓN IA3
+   * Revisa si hay aprendizaje nuevo para inyectar en la segmentación
+   */
+  obtenerAjustesIA3() {
+    try {
+      if (fs.existsSync(this.learningPath)) {
+        const data = JSON.parse(fs.readFileSync(this.learningPath, 'utf8'));
+        sovyxLogger.info('IA1: Memoria de IA3 detectada. Aplicando optimización... 🧠');
+        return data.patron;
+      }
+    } catch (e) {
+      sovyxLogger.warn('IA1: Error leyendo memoria de IA3');
+    }
+    return null;
+  }
+
   generarSegmentacion(nicho, isFirstTime = true) {
     const base = this.nichos[nicho] || this.nichos.fitness_coach;
+    const ajusteIA3 = this.obtenerAjustesIA3(); // <--- Aquí ocurre la magia
     
     sovyxLogger.info(`IA1: Procesando segmentación para ${nicho}`);
 
-    if (base.use_master && this.masterTargeting) {
-      sovyxLogger.info(`IA1: Aplicando Patrón Maestro para ${nicho} 👺`);
-      return {
-        status: isFirstTime ? 'PAUSED' : 'ACTIVE',
-        name: `SOVYX_MASTER_${base.nombre}_${Date.now()}`,
-        optimization_goal: "REPLIES",
-        billing_event: "IMPRESSIONS",
-        targeting: this.masterTargeting 
-      };
+    // Si hay aprendizaje de la IA3, lo aplicamos a las edades y ciudades
+    let targetActual = base.use_master && this.masterTargeting 
+      ? JSON.parse(JSON.stringify(this.masterTargeting)) // Clonamos el master
+      : {
+          age_min: base.edades[0],
+          age_max: base.edades[1],
+          geo_locations: { countries: ['US', 'ES', 'MX', 'CO'], location_types: ["home"] },
+          flexible_specifications: [
+            { interests: base.intereses },
+            { behaviors: this.premiumFilters.behaviors }
+          ],
+          exclusions: { interests: this.premiumFilters.exclusions },
+          publisher_platforms: ["instagram"],
+          device_platforms: ["mobile"]
+        };
+
+    // INYECCIÓN DE APRENDIZAJE IA3
+    if (ajusteIA3) {
+      sovyxLogger.info(`IA1: Ajustando targeting basado en patrón de compradores (Edad: ${ajusteIA3.edad_ideal})`);
+      targetActual.age_min = Math.max(18, ajusteIA3.edad_ideal - 3); // Un rango de 3 años abajo
+      targetActual.age_max = Math.min(65, ajusteIA3.edad_ideal + 7); // Un rango de 7 años arriba
+      
+      // Si la IA3 detectó una ciudad ganadora (ej. Miami), la priorizamos
+      if (ajusteIA3.top_ciudad) {
+        // Podrías añadir lógica aquí para inyectar ciudades específicas en geo_locations
+      }
     }
 
     return {
       status: isFirstTime ? 'PAUSED' : 'ACTIVE',
-      name: `SOVYX_AUTO_${base.nombre}_${Date.now()}`,
+      name: `SOVYX_${ajusteIA3 ? 'INTEL' : 'AUTO'}_${base.nombre}_${Date.now()}`,
       optimization_goal: "REPLIES",
       billing_event: "IMPRESSIONS",
-      targeting: {
-        age_min: base.edades[0],
-        age_max: base.edades[1],
-        geo_locations: { countries: ['US', 'ES', 'MX', 'CO'], location_types: ["home"] },
-        flexible_specifications: [
-          { interests: base.intereses },
-          { behaviors: this.premiumFilters.behaviors }
-        ],
-        exclusions: { interests: this.premiumFilters.exclusions },
-        publisher_platforms: ["instagram"],
-        device_platforms: ["mobile"]
-      }
+      targeting: targetActual
     };
   }
 
