@@ -1,82 +1,70 @@
 // modules/sovyxIA3Analyzer.js
 // IA3 - Analiza compradores y MEJORA IA1 e IA2 automáticamente
 const sovyxLogger = require('../modules/sovyxLogger');
+const fs = require('fs');
+const path = require('path');
 
 class SOVYXIA3Analyzer {
   constructor() {
     this.results = [];
     this.compradores = [];
     this.db = null;
+    // La ruta donde la IA1 irá a buscar sus órdenes
+    this.learningPath = path.join(__dirname, '../data/ia3_learning.json');
   }
-  
-  // ============================================
-  // INICIALIZAR BASE DE DATOS
-  // ============================================
+
   async initDB() {
     if (!this.db) {
       this.db = require('./sovyxDatabase');
     }
     return this.db;
   }
-  
+
   // ============================================
   // ANALIZAR POST Y RETROALIMENTAR
   // ============================================
   async analizarPostYRetroalimentar(postId, cuenta) {
-    // ↑ LA LLAVE DE CIERRE DEBE ESTAR AL FINAL, NO AQUÍ
-    
-    sovyxLogger.info('🔄 IA3: Analizando post', { postId, cuenta });
-    
+    sovyxLogger.info('🔬 IA3: Analizando post', { postId, cuenta });
     const db = await this.initDB();
     
-    // Obtener datos del post
     const post = await db.getPost(postId);
     if (!post) {
       sovyxLogger.error('Post no encontrado', { postId });
       return { error: 'Post no encontrado' };
     }
     
-    // Obtener interacciones
     const interacciones = await db.getInteraccionesPorPost(postId) || [];
     
-    // Obtener compradores (los que llegaron a etapa calificado)
-    const compradores = interacciones.filter(i => i.etapa === 'calificado' || i.probCierre > 0.7);
+    // Filtramos por los que realmente tienen potencial de 5,000 USDT
+    const compradores = interacciones.filter(i => i.etapa === 'pago_confirmado' || i.etapa === 'pago_pendiente' || i.probCierre > 0.8);
     
-    sovyxLogger.info('📊 IA3: Datos del post', {
-      interacciones: interacciones.length,
-      compradores: compradores.length
+    sovyxLogger.info('📊 IA3: Estadísticas detectadas', {
+      total: interacciones.length,
+      leads_alto_valor: compradores.length
     });
     
-    // Si hay compradores, retroalimentar
     if (compradores.length >= 1) {
-      await this.retroalimentarConCompradores(compradores, cuenta);
+      return await this.retroalimentarConCompradores(compradores, cuenta);
     }
     
-    return {
-      postId,
-      cuenta,
-      interacciones: interacciones.length,
-      compradores_encontrados: compradores.length,
-      retroalimentacion_aplicada: compradores.length >= 1
-    };
-  }  // ← ESTA ES LA ÚNICA LLAVE DE CIERRE DE LA FUNCIÓN
-  
+    return { success: true, message: "No hay suficientes compradores para optimizar aún." };
+  }
+
   // ============================================
   // RETROALIMENTAR CON COMPRADORES
   // ============================================
   async retroalimentarConCompradores(compradores, cuenta) {
-    sovyxLogger.info('🎯 IA3: Retroalimentando', { cantidad: compradores.length, cuenta });
+    sovyxLogger.info('🎯 IA3: Generando patrón de éxito', { cantidad: compradores.length, cuenta });
     
-    // 1. Encontrar patrón
     const patron = this.encontrarPatronCompradores(compradores);
     
-    // 2. Mejorar IA1
+    // 1. MEJORAR IA1 (Escribir archivo físico para autonomía)
     await this.mejorarIA1(patron, cuenta);
     
-    // 3. Mejorar IA2
+    // 2. MEJORAR IA2 (Guardar en DB para prompts futuros)
     await this.mejorarIA2(patron, compradores, cuenta);
     
-    // 4. Guardar patrón
+    // 3. Guardar patrón histórico en DB
     const db = await this.initDB();
     await db.guardarPatronGanador({
       cuenta,
@@ -86,124 +74,63 @@ class SOVYXIA3Analyzer {
     
     return patron;
   }
-  
-  // ============================================
-  // ENCONTRAR PATRÓN EN COMPRADORES
-  // ============================================
+
   encontrarPatronCompradores(compradores) {
-    this.compradores = compradores;
-    
-    // Edades
     const edades = compradores.map(c => c.edad || 35);
-    const edadMin = Math.min(...edades);
-    const edadMax = Math.max(...edades);
     const edadProm = Math.round(edades.reduce((a, b) => a + b, 0) / edades.length);
     
-    // Países
-    const paises = {};
-    compradores.forEach(c => {
-      const pais = c.pais || 'US';
-      paises[pais] = (paises[pais] || 0) + 1;
-    });
-    
-    // Ciudades
     const ciudades = {};
     compradores.forEach(c => {
       const ciudad = c.ciudad || 'Miami';
       ciudades[ciudad] = (ciudades[ciudad] || 0) + 1;
     });
-    
-    // Intereses
+
     const intereses = {};
     compradores.forEach(c => {
-      (c.intereses || ['Coaching', 'Fitness']).forEach(i => {
+      (c.intereses || ['High Ticket', 'IA']).forEach(i => {
         intereses[i] = (intereses[i] || 0) + 1;
       });
     });
-    
-    // Horas
-    const horas = compradores.map(c => {
-      if (c.horaCompra) return new Date(c.horaCompra).getHours();
-      if (c.timestamp) return new Date(c.timestamp).getHours();
-      return 21;
-    });
-    const horaOptima = this.moda(horas) || 21;
-    
+
+    const topCiudad = Object.entries(ciudades).sort((a, b) => b[1] - a[1])[0][0];
+
     return {
       confianza: Math.min(100, compradores.length * 20),
-      edad: {
-        min: edadMin,
-        max: edadMax,
-        promedio: edadProm,
-        rango: `${edadMin}-${edadMax}`
-      },
-      paises_top: Object.entries(paises)
-        .sort((a, b) => b[1] - a[1])
-        .map(([p]) => p),
-      ciudades_top: Object.entries(ciudades)
-        .sort((a, b) => b[1] - a[1])
-        .map(([c]) => c),
-      intereses_top: Object.entries(intereses)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([i]) => i),
-      horario_optimo: horaOptima
+      edad_ideal: edadProm,
+      rango_edad: { min: Math.min(...edades), max: Math.max(...edades) },
+      top_ciudad: topCiudad,
+      intereses_top: Object.entries(intereses).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([i]) => i),
+      timestamp: new Date().toISOString()
     };
   }
-  
+
   // ============================================
-  // MEJORAR IA1
+  // MEJORAR IA1 (ESTA ES LA CLAVE)
   // ============================================
   async mejorarIA1(patron, cuenta) {
-    sovyxLogger.info('🎯 IA3: Mejorando IA1');
-    
-    const db = await this.initDB();
-    
-    const nuevaConfig = {
-      edad_min: patron.edad.min,
-      edad_max: patron.edad.max,
-      paises: patron.paises_top.slice(0, 3),
-      ciudades: patron.ciudades_top.slice(0, 5),
-      intereses: patron.intereses_top,
-      horario: patron.horario_optimo - 3,
-      version: Date.now(),
-      actualizado_por: 'IA3'
-    };
-    
-    await db.guardarIA1Config(cuenta, nuevaConfig);
-    
-    sovyxLogger.success('✅ IA1 mejorada');
-    return nuevaConfig;
+    try {
+      // Escribimos el archivo que la IA1 leerá en su constructor/generador
+      const dataParaIA1 = {
+        cuenta,
+        patron,
+        status: "optimized"
+      };
+
+      fs.writeFileSync(this.learningPath, JSON.stringify(dataParaIA1, null, 2));
+      sovyxLogger.success('✅ IA1: Aprendizaje físico inyectado con éxito');
+    } catch (e) {
+      sovyxLogger.error('Error escribiendo aprendizaje para IA1', { error: e.message });
+    }
   }
-  
-  // ============================================
-  // MEJORAR IA2
-  // ============================================
+
   async mejorarIA2(patron, compradores, cuenta) {
-    sovyxLogger.info('💬 IA3: Mejorando IA2');
-    
     const db = await this.initDB();
-    
     const mejoras = {
-      horario_respuesta: patron.horario_optimo - 1,
-      palabras_clave: patron.intereses_top,
-      version: Date.now()
+      palabras_clave_exito: patron.intereses_top,
+      ultima_optimizacion: new Date().toISOString()
     };
-    
     await db.guardarIA2Mejoras(cuenta, mejoras);
-    
-    sovyxLogger.success('✅ IA2 mejorada');
-    return mejoras;
-  }
-  
-  // ============================================
-  // UTILIDADES
-  // ============================================
-  moda(array) {
-    if (!array.length) return null;
-    const freq = {};
-    array.forEach(v => freq[v] = (freq[v] || 0) + 1);
-    return Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+    sovyxLogger.success('✅ IA2: Sugerencias de keywords guardadas');
   }
 }
 
