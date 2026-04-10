@@ -1,8 +1,9 @@
-// config/accounts.js
-const tokens = require('../config/tokens');
+const tokens = require('./tokens');
 
 const ACCOUNTS = {
-  // MIS CUENTAS
+  // ============================================
+  // MATRIZ & PROYECTOS PROPIOS (SOVYX CORP)
+  // ============================================
   sovyx: {
     id: 'sovyx',
     name: 'SOVYX',
@@ -24,8 +25,32 @@ const ACCOUNTS = {
     budget: 0,
     ia2_style: 'high_ticket_owner'
   },
-  
-  // CLIENTES
+
+  soalefia: {
+    id: 'soalefia',
+    name: 'SOALEFIA',
+    type: 'sub_company',
+    instagram_token: tokens.instagram.tokens.soalefia || tokens.instagram.tokens.sovyx, // Fallback a Sovyx si es matriz
+    instagram_id: tokens.instagram.ids.soalefia,
+    posts_plan: 6,
+    budget: 50,
+    ia2_style: 'financial_protocol'
+  },
+
+  soeditia: {
+    id: 'soeditia',
+    name: 'SOEDITIA',
+    type: 'sub_company',
+    instagram_token: tokens.instagram.tokens.soeditia || tokens.instagram.tokens.sovyx,
+    instagram_id: tokens.instagram.ids.soeditia,
+    posts_plan: 12, // Soeditia requiere más volumen por ser de creación
+    budget: 100,
+    ia2_style: 'content_creator_high_retention'
+  },
+
+  // ============================================
+  // SLOTS DE CLIENTES (LIMITADO A 4)
+  // ============================================
   client1: {
     id: 'client1',
     name: 'CLIENTE 1',
@@ -65,50 +90,6 @@ const ACCOUNTS = {
     type: 'client',
     instagram_token: tokens.instagram.tokens.client4,
     instagram_id: tokens.instagram.ids.client4,
-    posts_plan: 4,
-    budget: 100,
-    ia2_style: 'high_ticket_client'
-  },
-  
-  client5: {
-    id: 'client5',
-    name: 'CLIENTE 5',
-    type: 'client',
-    instagram_token: tokens.instagram.tokens.client5,
-    instagram_id: tokens.instagram.ids.client5,
-    posts_plan: 4,
-    budget: 100,
-    ia2_style: 'high_ticket_client'
-  },
-  
-  client6: {
-    id: 'client6',
-    name: 'CLIENTE 6',
-    type: 'client',
-    instagram_token: tokens.instagram.tokens.client6,
-    instagram_id: tokens.instagram.ids.client6,
-    posts_plan: 4,
-    budget: 100,
-    ia2_style: 'high_ticket_client'
-  },
-  
-  client7: {
-    id: 'client7',
-    name: 'CLIENTE 7',
-    type: 'client',
-    instagram_token: tokens.instagram.tokens.client7,
-    instagram_id: tokens.instagram.ids.client7,
-    posts_plan: 4,
-    budget: 100,
-    ia2_style: 'high_ticket_client'
-  },
-  
-  client8: {
-    id: 'client8',
-    name: 'CLIENTE 8',
-    type: 'client',
-    instagram_token: tokens.instagram.tokens.client8,
-    instagram_id: tokens.instagram.ids.client8,
     posts_plan: 4,
     budget: 100,
     ia2_style: 'high_ticket_client'
