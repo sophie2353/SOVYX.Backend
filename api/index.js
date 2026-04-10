@@ -5,19 +5,20 @@ const sovyxLogger = require('../modules/sovyxLogger');
 
 const app = express();
 
+// Middlewares de seguridad y capacidad
 app.use(cors());
-// Aumentamos el límite para que Gemini pueda recibir archivos/imágenes pesadas del curso
+// 100mb es vital para recibir el material/enlaces del curso vía Onboarding sin errores
 app.use(express.json({ limit: '100mb' })); 
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// Logger de tráfico SOVYX
+// Logger de tráfico SOVYX (Monitoreo en tiempo real)
 app.use((req, res, next) => {
   sovyxLogger.info(`${req.method} ${req.path}`);
   next();
 });
 
 // ============================================
-// RUTAS NÚCLEO
+// RUTAS NÚCLEO & SALUD
 // ============================================
 
 app.get('/api/health', (req, res) => {
@@ -26,26 +27,42 @@ app.get('/api/health', (req, res) => {
     mode: config.sovyx?.mode || 'production',
     timestamp: new Date().toISOString(),
     version: '2.0.26',
-    slots_update: '4 MAX'
+    slots_update: '4 MAX',
+    engine: 'Gemini-1.5-Flash-Enabled'
   });
 });
 
-// --- RUTAS DE MÓDULOS INTELIGENTES ---
+// ============================================
+// RUTAS DE MÓDULOS INTELIGENTES (CEREBRO)
+// ============================================
+
+// IA1: Gestión de Anuncios y Segmentación
+app.use('/api/ia1', require('./ia/ia1-segmentar')); 
+
+// IA2: Conversaciones por DM y Webhook de Meta
+app.use('/api/ia2', require('./ia/ia2-conversar')); 
+
+// IA2 ONBOARDING: El motor que usa Gemini para analizar los cursos de 5K
+app.use('/api/onboarding', require('./ia/ia2-onboarding')); 
+
+// IA3: Analítica masiva para escalar a los 27K usuarios
+app.use('/api/ia3', require('./ia/ia3-analizar')); 
+
+// Gestión de contenido y Webhooks de Instagram
 app.use('/api/posts', require('./posts/publicar'));
 app.use('/api/posts', require('./posts/analizar'));
-app.use('/api/ia1', require('./ia/ia1-segmentar')); // IA1: Ads & Targeting
-app.use('/api/ia2', require('./ia/ia2-conversar')); // IA2: DMs & Webhook
-app.use('/api/ia3', require('./ia/ia3-analizar')); // IA3: Aprendizaje & 27k
-app.use('/api/onboarding', require('./ia/ia2-onboarding')); // Onboarding + Gemini
 app.use('/api/instagram', require('./instagram/webhook'));
 
-// --- RUTA DE CLIENTES (Lógica de Escasez de 4 Slots) ---
+// ============================================
+// GESTIÓN DE CLIENTES Y CUENTAS
+// ============================================
+
+// Lógica de Escasez: Máximo 4 personas
 app.get('/api/clientes/disponibles', async (req, res) => {
   try {
     const db = require('../modules/sovyxDatabase');
     const slotsOcupados = await db.countClientes();
-    // Forzamos el límite a 4 según tu última corrección
-    const maxSovyxSlots = 4; 
+    const maxSovyxSlots = 4; // Tu regla de oro para mantener exclusividad
     const slotsDisponibles = maxSovyxSlots - slotsOcupados;
     
     res.json({
@@ -60,7 +77,7 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   }
 });
 
-// --- GESTIÓN DE CUENTAS (Optimizado para Frontend) ---
+// Gestión de cuentas para el Dashboard (Limpia tokens sensibles)
 app.get('/api/accounts', (req, res) => {
   try {
     const ACCOUNTS = require('../config/accounts');
@@ -71,7 +88,7 @@ app.get('/api/accounts', (req, res) => {
       return publicData;
     };
 
-    // Estructura SOVYX Corp.
+    // Estructura SOVYX Corp (Matriz + Proyectos Propios)
     const mis_cuentas = [
       limpiarCuenta(ACCOUNTS.sovyx),
       limpiarCuenta(ACCOUNTS.socredi),
@@ -79,7 +96,7 @@ app.get('/api/accounts', (req, res) => {
       limpiarCuenta(ACCOUNTS.soalefia)
     ].filter(Boolean);
 
-    // Clientes limitados a 4
+    // Lista de Clientes (Top 4)
     const clientes = [];
     for (let i = 1; i <= 4; i++) {
       const cliente = limpiarCuenta(ACCOUNTS[`client${i}`]);
@@ -93,30 +110,36 @@ app.get('/api/accounts', (req, res) => {
     });
   } catch (error) {
     sovyxLogger.error('Error procesando cuentas', { error: error.message });
-    res.status(500).json({ error: 'Error al cargar configuración' });
+    res.status(500).json({ error: 'Error al cargar configuración de cuentas' });
   }
 });
 
-// Error 404 personalizado para SOVYX
+// ============================================
+// MANEJO DE ERRORES & 404
+// ============================================
+
 app.use((req, res) => {
   res.status(404).json({ error: `Ruta ${req.url} no encontrada en SOVYX OS` });
 });
 
-// Manejador de errores global
 app.use((err, req, res, next) => {
   sovyxLogger.error('CRITICAL_SYSTEM_ERROR', { error: err.message });
-  res.status(500).json({ error: 'Falla interna en el motor de SOVYX' });
+  res.status(500).json({ error: 'Falla interna en el motor de SOVYX. Reiniciando secuencia...' });
 });
 
+// ============================================
+// ACTIVACIÓN DEL SISTEMA
+// ============================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
-  =======================================
-  🚀 SOVYX OS - SISTEMA ACTIVADO
+  ======================================================
+  🚀 SOVYX OS v2.0.26 - SISTEMA ACTIVADO (Rojo Nivel 1)
   📡 Puerto: ${PORT}
-  🎯 Objetivo: 27K Usuarios Segmentados
-  🛰️ Onboarding: Gemini AI Ready
-  =======================================
+  🎯 Objetivo: 27K Usuarios Segmentados (High Retention)
+  🛰️ Onboarding: Gemini-1.5-Flash Online 🧠
+  💼 Slots: 4 Clientes (Escasez Activada)
+  ======================================================
   `);
 });
 
