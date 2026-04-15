@@ -6,7 +6,7 @@ router.get('/ig/callback', async (req, res) => {
 
   try {
     // 1. Intercambiar CODE por TOKEN CORTO (2 horas)
-    const urlShort = `https://graph.facebook.com/v19.0/oauth/access_token?` +
+    const urlShort = `https://graph.facebook.com/v25.0/oauth/access_token?` +
       `client_id=${process.env.FB_APP_ID}&` +
       `redirect_uri=https://tu-app-en-render.onrender.com/api/auth/callback&` + 
       `client_secret=${process.env.FB_APP_SECRET}&` +
@@ -16,7 +16,7 @@ router.get('/ig/callback', async (req, res) => {
     const shortToken = resShort.data.access_token;
 
     // 2. Intercambiar TOKEN CORTO por TOKEN LARGO (60 días)
-    const urlLong = `https://graph.facebook.com/v19.0/oauth/access_token?` +
+    const urlLong = `https://graph.facebook.com/v25.0/oauth/access_token?` +
       `grant_type=fb_exchange_token&` +
       `client_id=${process.env.FB_APP_ID}&` +
       `client_secret=${process.env.FB_APP_SECRET}&` +
