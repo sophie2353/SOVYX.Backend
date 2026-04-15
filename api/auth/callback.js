@@ -1,38 +1,62 @@
 // api/auth/callback.js
+const express = require('express');
+const router = express.Router();
+const axios = require('axios');
+const config = require('../../config/tokens');
+const sovyxLogger = require('../../modules/sovyxLogger');
+const db = require('../../modules/sovyxDatabase');
+
 router.get('/ig/callback', async (req, res) => {
   const { code } = req.query;
 
-  if (!code) return res.status(400).send("No se recibió el código.");
+  if (!code) {
+    return res.status(400).send("Error: No se recibió el código de autorización.");
+  }
 
   try {
-    // 1. Intercambiar CODE por TOKEN CORTO (2 horas)
-    const urlShort = `https://graph.facebook.com/v25.0/oauth/access_token?` +
-      `client_id=${process.env.FB_APP_ID}&` +
-      `redirect_uri=https://tu-app-en-render.onrender.com/api/auth/callback&` + 
-      `client_secret=${process.env.FB_APP_SECRET}&` +
-      `code=${code}`;
+    sovyxLogger.info("Procesando nuevo código de autorización de Meta...");
 
-    const resShort = await axios.get(urlShort);
-    const shortToken = resShort.data.access_token;
+    // 1. Intercambiar CODE por TOKEN CORTO (2 horas)
+    const responseShort = await axios.get('https://graph.facebook.com/v25.0/oauth/access_token', {
+      params: {
+        client_id: config.fb.appId,
+        client_secret: config.fb.appSecret,
+        redirect_uri: `https://tu-app-en-render.onrender.com/api/auth/ig/callback`,
+        code: code
+      }
+    });
+
+    const shortToken = responseShort.data.access_token;
 
     // 2. Intercambiar TOKEN CORTO por TOKEN LARGO (60 días)
-    const urlLong = `https://graph.facebook.com/v25.0/oauth/access_token?` +
-      `grant_type=fb_exchange_token&` +
-      `client_id=${process.env.FB_APP_ID}&` +
-      `client_secret=${process.env.FB_APP_SECRET}&` +
-      `fb_exchange_token=${shortToken}`;
+    const responseLong = await axios.get('https://graph.facebook.com/v25.0/oauth/access_token', {
+      params: {
+        grant_type: 'fb_exchange_token',
+        client_id: config.fb.appId,
+        client_secret: config.fb.appSecret,
+        fb_exchange_token: shortToken
+      }
+    });
 
-    const resLong = await axios.get(urlLong);
-    const longToken = resLong.data.access_token;
+    const longToken = responseLong.data.access_token;
 
-    // 3. Guardar en tu DB de SOVYX para que la IA2 empiece a trabajar
-    await db.guardarTokenCliente(longToken);
+    // 3. Persistencia: Guardar el token de 60 días
+    // Aquí puedes vincularlo al cliente específico si pasas un 'state' en la URL
+    await db.saveLongLivedToken(longToken);
 
-    res.send("✅ Autenticación de SOVYX exitosa. Puedes cerrar esta pestaña.");
-    sovyxLogger.info("Nuevo Token de 60 días generado y guardado.");
+    sovyxLogger.info("✅ Token de 60 días generado exitosamente.");
+
+    res.send(`
+      <div style="font-family: sans-serif; text-align: center; padding: 50px;">
+        <h1 style="color: #8A2BE2;">SOVYX OS ACTIVADO</h1>
+        <p>La vinculación de Instagram ha sido exitosa. Ya puedes cerrar esta ventana.</p>
+      </div>
+    `);
 
   } catch (error) {
-    sovyxLogger.error("Error en flujo de tokens", error.response?.data || error.message);
-    res.status(500).send("Error procesando la seguridad.");
+    sovyxLogger.error("Falla en el flujo de tokens", error.response?.data || error.message);
+    res.status(500).send("Error crítico al generar el acceso de 60 días.");
   }
 });
+
+module.exports = router;
