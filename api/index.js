@@ -36,6 +36,9 @@ app.get('/api/health', (req, res) => {
 // RUTAS DE MÓDULOS INTELIGENTES (CEREBRO)
 // ============================================
 
+// NUEVO: Manejo de Tokens y vinculación de Instagram (Code -> Long Token)
+app.use('/api/auth', require('./auth/callback')); 
+
 // IA1: Gestión de Anuncios y Segmentación
 app.use('/api/ia1', require('./ia/ia1-segmentar')); 
 
