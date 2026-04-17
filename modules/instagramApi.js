@@ -9,12 +9,12 @@ const sovyxLogger = require('./sovyxLogger');
  */
 async function enviarMensajeIG(userId, texto) {
   try {
-    const url = `https://graph.facebook.com/v19.0/me/messages`;
+    const url = `https://graph.facebook.com/v25.0/me/messages`;
     
     await axios.post(url, {
       recipient: { id: userId },
       message: { text: texto },
-      access_token: config.metaAccessToken // Tu token de 60 días
+      access_token: config.sovyx_acces_token // Tu token de 60 días
     });
 
     sovyxLogger.info(`Mensaje enviado a IG: ${userId}`);
