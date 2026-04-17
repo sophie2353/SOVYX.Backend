@@ -1,5 +1,6 @@
 // modules/sovyxIA2Conversor.js
 const sovyxLogger = require('./sovyxLogger');
+const config = require('../config/tokens'); // Importamos la configuración centralizada
 
 class SOVYXIA2Conversor {
   constructor(estilo = 'high_ticket_client') {
@@ -7,10 +8,12 @@ class SOVYXIA2Conversor {
     this.estilo = estilo;
     this.contexto = {}; 
     this.linkFormulario = 'https://forms.gle/W9BXc4bmHb2EHifg8';
+    // Extraemos el link de Kontigo directamente desde el config
+    this.linkKontigo = config.payments.kontigo; 
     
     this.plantillas = {
       "hola": [
-        "¡Hey! ¿Cómo vas? Veo que te interesa escalar con infraestructura de IA. ¿Qué es lo que más te llamó la atención de SOVYX? 👺",
+        "¡Hey! ¿Cómo vas? Veo que te interesa escalar con infraestructura de IA. ¿Qué es lo que más te llamó la atención de SOVYX? 🦁",
         "Hola. Directo al grano: SOVYX no es un curso, es un sistema que montamos por ti. ¿Qué duda específica tienes?"
       ],
       
@@ -19,7 +22,7 @@ class SOVYXIA2Conversor {
         "Son ${precio} (Pago único). Actualmente solo nos quedan 4 slots disponibles para este mes porque el despliegue es personalizado. ¿Estás listo para este nivel de escala?"
       ],
       
-      "cómo funciona": [
+      "como_funciona": [
         "Es un ecosistema de 3 núcleos:\n1️⃣ IA1: Filtra solo gente con alto poder adquisitivo.\n2️⃣ IA2: Filtra y cierra por ti en DMs (como ahora).\n3️⃣ IA3: Analiza cada venta y optimiza a las otras dos.\n\nBásicamente, tú solo subes el contenido y la máquina hace el resto. 🚀"
       ],
       
@@ -28,12 +31,12 @@ class SOVYXIA2Conversor {
       ],
       
       "caro": [
-        "Caro es seguir perdiendo el 90% de tus leads por no responder a tiempo o segmentar mal. SOVYX trabaja 24/7 sin sueldo. Si haces 1 sola venta High Ticket, ya recuperaste la inversión. ¿Lo ves así?",
+        "Caro es seguir perdiendo el 90% de tus leads por no responder a tiempo o segmentar mal. SOVYX trabaja 24/7 sin sueldo. Si haces 2 ventas High Ticket, ya recuperaste la inversión. ¿Lo ves así?",
         "Entiendo. Pero esto no es un gasto, es infraestructura. Una agencia te cobraría eso mensualmente. Aquí lo pagas una vez. ¿Prefieres cantidad o tecnología que cierre?"
       ],
       
-      "pagar": [
-        "Excelente. Para asegurar tu slot (recuerda que solo quedan 4), procesa el pago aquí: ${paymentLink}\n\n⚠️ IMPORTANTE: Solo aceptamos Binance Pay por velocidad de activación. Envíame el comprobante por aquí en cuanto lo tengas para pasarte el Formulario de Onboarding. 👺💅🏽"
+      "compra": [
+        "Excelente. Para asegurar tu slot (recuerda que solo quedan 4), procesa el pago aquí: ${paymentLink}\n\n⚠️ IMPORTANTE: Solo aceptamos Binance Pay por velocidad de activación. Envíame el comprobante por aquí en cuanto lo tengas para pasarte el Formulario de Onboarding."
       ],
       
       "post_pago": [
@@ -65,8 +68,7 @@ class SOVYXIA2Conversor {
   async iniciarContexto(clienteId) {
     this.contexto[clienteId] = {
       etapa: "inicio",
-      historial: [],
-      paymentLink: 'https://app.kontigo.com/pay/53a368ed-10d4-4936-accb-deb2e69f349a'
+      historial: []
     };
     return this.contexto[clienteId];
   }
@@ -79,11 +81,11 @@ class SOVYXIA2Conversor {
     return 'default';
   }
 
-  personalizar(txt, ctx) {
+  personalizar(txt) {
     return txt
-      .replace('${precio}', '5,000 USDT')
-      .replace('${paymentLink}', ctx.paymentLink)
-      .replace('${linkFormulario}', this.linkFormulario);
+      .replace(/\${precio}/g, '5,000 USDT')
+      .replace(/\${paymentLink}/g, this.linkKontigo) // Inyecta el link de Kontigo directamente
+      .replace(/\${linkFormulario}/g, this.linkFormulario);
   }
 
   async generarRespuesta({ mensaje, usuario }) {
@@ -93,12 +95,19 @@ class SOVYXIA2Conversor {
     const ctx = this.contexto[clienteId];
     const intencion = this.detectarIntencion(mensaje);
     
-    let respuestaRaw = this.plantillas[intencion] || this.plantillas.default;
+    // Mapeo corregido para usar las plantillas de arriba
+    let clavePlantilla = intencion;
+    if (intencion === 'como_funciona') clavePlantilla = 'como_funciona';
+    if (intencion === 'objecion') clavePlantilla = 'caro';
+    if (intencion === 'compra') clavePlantilla = 'compra';
+
+    let respuestaRaw = this.plantillas[clavePlantilla] || this.plantillas.default;
+    
     if (Array.isArray(respuestaRaw)) {
       respuestaRaw = respuestaRaw[Math.floor(Math.random() * respuestaRaw.length)];
     }
 
-    const respuesta = this.personalizar(respuestaRaw, ctx);
+    const respuesta = this.personalizar(respuestaRaw);
 
     // Lógica de avance de etapa
     if (intencion === 'compra') ctx.etapa = 'pago_pendiente';
