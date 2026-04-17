@@ -14,7 +14,7 @@ async function enviarMensajeIG(userId, texto) {
     await axios.post(url, {
       recipient: { id: userId },
       message: { text: texto },
-      access_token: config.sovyx_acces_token // Tu token de 60 días
+      access_token: config.token.sovyx // Tu token de 60 días
     });
 
     sovyxLogger.info(`Mensaje enviado a IG: ${userId}`);
