@@ -1,4 +1,3 @@
-// api/ia/ia2-onboarding.js
 const express = require('express');
 const router = express.Router();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -6,69 +5,62 @@ const { enviarMensajeIG } = require('../../modules/instagramApi');
 const config = require('../../config/tokens');
 const sovyxLogger = require('../../modules/sovyxLogger');
 
-// Configuración de Gemini (Usando la API Key del config)
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 
 router.post('/webhook-forms', async (req, res) => {
   try {
-    //userId es el IGSID (Instagram Scoped ID) para que el mensaje llegue al DM correcto
-    const { userId, email, linkCurso, nicho, nombreCliente } = req.body;
+    // Recibimos instagram_user del Sheets
+    const { instagram_user, email, linkCurso, nicho, nombreCliente } = req.body;
 
-    if (!userId || !linkCurso) {
-      sovyxLogger.error('Onboarding fallido: Faltan datos', { userId, linkCurso });
-      return res.status(400).json({ error: "Faltan datos críticos (userId o linkCurso)" });
+    if (!instagram_user || !linkCurso) {
+      sovyxLogger.error('Onboarding fallido: Faltan datos críticos');
+      return res.status(400).json({ error: "Faltan datos" });
     }
 
     sovyxLogger.info(`SOVYX Onboarding: Procesando material de ${nombreCliente} 🧬`);
 
-    // 1. LLAMADA A GEMINI PARA ESTRATEGIA PERSONALIZADA
-    const model = genAI.getGenerativeModel({ model: config.gemini.model || "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: config.gemini.model });
     
+    // PROMPT MEJORADO: Nivel "Infraestructura de Lujo"
     const prompt = `
-      Actúa como el estratega de contenido de élite de SOVYX. 
-      Nicho: ${nicho}
-      Material: ${linkCurso}
+      Actúa como el Director de Estrategia de SOVYX. Tu cliente es ${nombreCliente}, del nicho ${nicho}.
+      Material a analizar: ${linkCurso}
       
-      TAREA: Crea 3 guiones breves para Historias de Instagram.
-      Objetivo: Vender este programa como High Ticket (5,000 USDT).
-      Tono: Profesional, sofisticado, directo al dolor y agresivo con el beneficio.
-      Formato: Historia 1 (Hook), Historia 2 (Valor/Autoridad), Historia 3 (CTA directo al DM).
+      TAREA: Crea 3 guiones de alto impacto para Instagram Stories.
+      TONO: Minimalista, opulento, sofisticado y extremadamente directo. Cero relleno.
+      REGLA: No uses frases de vendedor barato. Habla de "infraestructura", "escala" y "automatización de élite".
+      
+      ESTRUCTURA:
+      1. El Gancho: Un dolor específico del nicho que solo la IA resuelve.
+      2. La Autoridad: Por qué este material + la IA de SOVYX es la única salida.
+      3. El Cierre: Llamado a la acción agresivo para ir al DM.
     `;
 
     const result = await model.generateContent(prompt);
     const estrategia = result.response.text();
 
-    // 2. CONSTRUCCIÓN DEL MENSAJE FINAL
     const mensajeFinal = `
-¡Estrategia de historias completada, ${nombreCliente}! 📧💅🏽
+¡Estrategia de infraestructura lista, ${nombreCliente}! 📧💅🏽
 
-He analizado tu material y aquí tienes tu plan de acción para empezar a calentar la cuenta ahora mismo:
+He analizado tu material y este es el despliegue táctico para tus historias de hoy:
 
 ${estrategia}
 
-⌛ LO QUE SIGUE (PROTOCOLO FINAL):
-Mi arquitecto humano está configurando tus tokens de acceso exclusivos y la conexión con Meta Ads Manager. 
+⌛ PROTOCOLO FINAL:
+Mi equipo humano ya tiene la señal de tu pago. Estamos configurando tus accesos exclusivos a Meta Ads. 
 
-En breve recibirás una notificación manual para:
-1. Aceptar la invitación a nuestro Business Manager.
-2. Configurar el método de pago para los anuncios (tú mantienes el control total).
-
-Una vez hecho esto, el motor SOVYX tomará el control total de la escala. 👺🚀
+Pronto recibirás la invitación al Business Manager para que tomes el control del presupuesto. El motor SOVYX está calentando. 👺🚀
     `.trim();
 
-    // 3. ENVIAR POR INSTAGRAM (Asegúrate que enviarMensajeIG use el token correcto de la cuenta matriz)
-    await enviarMensajeIG(userId, mensajeFinal, 'sovyx'); 
+    // ENVIAR POR INSTAGRAM 
+    // Nota: Aquí 'instagram_user' debe ser convertido a ID o usado según tu módulo
+    await enviarMensajeIG(instagram_user, mensajeFinal, 'sovyx'); 
 
-    sovyxLogger.info(`✅ Onboarding exitoso para ${nombreCliente}. Estrategia enviada.`);
-    
-    res.json({ 
-      success: true, 
-      message: "Onboarding de IA2 finalizado. Mensaje enviado a IG." 
-    });
+    res.json({ success: true, message: "Onboarding completado." });
 
   } catch (error) {
-    sovyxLogger.error('Error crítico en Onboarding IA2', { error: error.message });
-    res.status(500).json({ error: "Error en el sistema de onboarding" });
+    sovyxLogger.error('Error crítico en Onboarding', { error: error.message });
+    res.status(500).json({ error: "Error en el sistema" });
   }
 });
 
