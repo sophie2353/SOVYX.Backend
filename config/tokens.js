@@ -5,7 +5,7 @@ module.exports = {
     tokens: {
       sovyx: process.env.INSTAGRAM_TOKEN_SOVYX,
       socredi: process.env.INSTAGRAM_TOKEN_SOCREDI,
-      soeditia: process.env.INSTAGRAM_TOKEN_SOEDITIA, // Añadido para el flujo de 2-3 días
+      soeditia: process.env.INSTAGRAM_TOKEN_SOEDITIA,
       client1: process.env.INSTAGRAM_TOKEN_CLIENT1,
       client2: process.env.INSTAGRAM_TOKEN_CLIENT2,
       client3: process.env.INSTAGRAM_TOKEN_CLIENT3,
@@ -34,24 +34,30 @@ module.exports = {
     baseUrl: 'https://graph.facebook.com/v25.0'
   },
 
-  // MOTOR DE INTELIGENCIA VISUAL Y ESTRATEGIA
   gemini: {
     apiKey: process.env.GEMINI_API_KEY,
     model: 'gemini-1.5-flash' 
   },
 
-  // PASARELAS DE PAGO Y VINCULACIÓN (NUEVO)
+  // PASARELAS DE PAGO (Nivel Rojo 1)
   payments: {
-    kontigo: process.env.KONTIGO_LINK, // Punto 7 de tu lista
+    kontigo: process.env.KONTIGO_LINK, // Para el primer cierre
     binance: {
+      payLink: process.env.BINANCE_PAY_LINK, // Link de Binance Pay para clientes 2, 3 y 4
       apiKey: process.env.BINANCE_API_KEY,
       secretKey: process.env.BINANCE_SECRET_KEY
     }
   },
 
-  // CONFIGURACIÓN ESTRATÉGICA SOVYX
+  // FORMULARIOS DE ACTIVACIÓN (NUEVO)
+  forms: {
+    onboardingVIP: process.env.FORM_A_URL,
+    listaEspera: process.env.FORM_B_URL
+  },
+
   sovyx: {
     mode: process.env.SOVYX_MODE || 'development',
+    slotsRestantes: parseInt(process.env.SOVYX_SLOTS_RESTANTES) || 4, // Control de escasez real
     maxClients: parseInt(process.env.SOVYX_MAX_CLIENTS) || 4, 
     targetCloses: parseInt(process.env.SOVYX_TARGET_CLOSES) || 2700,
     redirectUri: process.env.REDIRECT_URI || 'https://sovyx.onrender.com/api/auth/ig/callback'
