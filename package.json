@@ -20,8 +20,6 @@
     "moment": "^2.29.4",
     "uuid": "^9.0.0",
   "@google/generative-ai": "^0.1.0"
-}
-
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
