@@ -1,6 +1,8 @@
 // modules/sovyxIA2Conversor.js
 const sovyxLogger = require('./sovyxLogger');
 const config = require('../config/tokens'); 
+const metaAdsApi = require('./metaAdsApi'); // Importado para el reporte de conversión
+const ia3 = require('./sovyxIA3Analyzer'); // Importado para el análisis de éxito
 
 class SOVYXIA2Conversor {
   constructor(estilo = 'high_ticket_client') {
@@ -15,12 +17,12 @@ class SOVYXIA2Conversor {
       ],
       
       "cuánto cuesta": [
-        "La inversión en la infraestructura completa de SOVYX es de ${precio}. Esto incluye el despliegue de las 3 IAs y 11 meses de desarrollo técnico a tu servicio. ¿Ves el ROI que esto genera en tu nicho?",
+        "La inversión en la infraestructura completa de SOVYX es de ${precio}. Esto incluye el despliegue de las 3 IAs y 12 meses de desarrollo técnico a tu servicio. ¿Ves el ROI que esto genera en tu nicho?",
         "Son ${precio} (Pago único). Actualmente solo nos quedan ${slots} slots disponibles porque el despliegue es personalizado. ¿Estás listo para este nivel de escala?"
       ],
       
       "como_funciona": [
-        "Es un ecosistema de 3 núcleos:\n1️⃣ IA1: Filtra solo gente con alto poder adquisitivo.\n2️⃣ IA2: Filtra y cierra por ti en DMs (como ahora).\n3️⃣ IA3: Analiza cada venta y optimiza a las otras dos.\n\nBásicamente, tú solo subes el contenido y la máquina hace el resto. 🚀"
+        "Es un ecosistema de 3 núcleos:\n1️⃣ IA1: Filtra solo gente con alto poder adquisitivo.\n2️⃣ IA2: Filtra y cierra por ti en DMs (como ahora).\n3️⃣ IA3: Analiza cada venta y optimiza a las otras dos.\n\nBásicamente, tú solo subes el contenido y la máquina hace el resto."
       ],
       
       "resultados": [
@@ -37,11 +39,11 @@ class SOVYXIA2Conversor {
       ],
 
       "agotado": [
-        "Lo siento, acabamos de asignar el último slot de infraestructura disponible para este ciclo. 🚫\n\nSin embargo, por el nivel de interés que mostraste, puedo darte acceso a la **Lista de Espera VIP**. Si alguien no concreta su pago en las próximas 24h o para el lanzamiento de SOEDITIA, serás el primero en la fila.\n\nRegístrate aquí para guardar tu prioridad: ${linkFormulario}"
+        "Lo siento, acabamos de asignar el último slot de infraestructura disponible para este ciclo.\n\nSin embargo, por el nivel de interés que mostraste, puedo darte acceso a la Lista de Espera VIP. Si alguien no concreta su pago en las próximas 24h o para el lanzamiento de SOEDITIA, serás el primero en la fila.\n\nRegístrate aquí para guardar tu prioridad: ${linkFormulario}"
       ],
       
       "post_pago": [
-        "✅ ¡Pago detectado en el núcleo! 🎉\n\nBienvenido a la infraestructura SOVYX. Ahora el paso definitivo:\n\n📋 Completa este formulario de activación: ${linkFormulario}\n\nEn cuanto lo envíes, mi núcleo generativo analizará tu contenido y te enviará una estrategia de historias por IG para que empecetes HOY. \n\nMientras tanto, configuraré tu acceso a Meta para que tú mismo pongas tu tarjeta. ¿Hacemos historia?"
+        "✅ ¡Pago detectado en el núcleo!\n\nBienvenido a la infraestructura SOVYX. Ahora el paso definitivo:\n\n📋 Completa este formulario de activación: ${linkFormulario}\n\nEn cuanto lo envíes, mi núcleo generativo analizará tu contenido y te enviará una estrategia de historias por IG para que empecetes HOY. \n\nMientras tanto, configuraré tu acceso a Meta para que tú mismo pongas tu tarjeta. ¿Hacemos historia?"
       ],
       
       "default": [
@@ -69,13 +71,11 @@ class SOVYXIA2Conversor {
     return 'default';
   }
 
-  // MÉTODO MAESTRO: Decide links de pago y formularios dinámicamente
   personalizar(txt) {
     const slots = config.sovyx.slotsRestantes;
     let paymentLink = "";
     let formLink = config.forms.onboardingVIP;
 
-    // Lógica de Doble Pasarela
     if (slots === 4) {
       paymentLink = config.payments.kontigo;
     } else if (slots > 0) {
@@ -100,9 +100,28 @@ class SOVYXIA2Conversor {
     let intencion = this.detectarIntencion(mensaje);
     const slots = config.sovyx.slotsRestantes;
 
-    // Si no hay cupos y quiere comprar, forzamos la plantilla de agotado
     if (intencion === 'compra' && slots <= 0) {
       intencion = 'agotado';
+    }
+
+    // ============================================
+    // DISPARADORES DE ÉXITO (POST-PAGO)
+    // ============================================
+    if (intencion === 'post_pago') {
+      try {
+        // 1. Reportar venta de $5,000 a Meta Ads
+        // Esto optimiza el algoritmo inmediatamente
+        await metaAdsApi.reportarConversionVenta(clienteId, 5000);
+
+        // 2. Ejecutar análisis de éxito en IA3
+        // Aprende del chat para replicar el cierre con otros
+        const analyzer = new ia3();
+        await analyzer.analizarConversacionDeExito(clienteId, 'sovyx');
+
+        sovyxLogger.success(`💰 IA2: Protocolo de venta completado para ${clienteId}`);
+      } catch (err) {
+        sovyxLogger.error('Error en disparadores post-pago IA2', err.message);
+      }
     }
 
     let clavePlantilla = intencion;
@@ -116,7 +135,6 @@ class SOVYXIA2Conversor {
 
     const respuesta = this.personalizar(respuestaRaw);
 
-    // Actualización de etapa
     if (intencion === 'compra') ctx.etapa = 'pago_pendiente';
     if (intencion === 'post_pago') ctx.etapa = 'onboarding';
     if (intencion === 'agotado') ctx.etapa = 'lista_espera';
