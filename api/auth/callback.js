@@ -2,7 +2,6 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
-const config = require('../../config/tokens');
 const sovyxLogger = require('../../modules/sovyxLogger');
 const db = require('../../modules/sovyxDatabase');
 
@@ -21,7 +20,6 @@ router.get('/ig/callback', async (req, res) => {
       params: {
         client_id: config.facebook.appId,
         client_secret: config.facebook.appSecret,
-        redirect_uri: config.sovyx.redirectUri, // Usamos la del config
         code: code
       }
     });
