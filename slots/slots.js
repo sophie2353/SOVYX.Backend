@@ -1,6 +1,5 @@
 // routes/slots.js
 const express = require('express');
-const router = express.Router();
 const metaAdsService = require('../services/metaAdsService');
 
 // Estado en memoria del backend (O guardado en una DB simple)
