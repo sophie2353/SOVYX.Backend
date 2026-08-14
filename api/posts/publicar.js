@@ -42,42 +42,7 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'Error cargando segmentación' });
     }
     
-    // 2. SUBIR IMAGEN A INSTAGRAM
-    const mediaId = await uploadMedia(imageUrl, account.instagram_token);
-    
-    const publishUrl = `https://graph.instagram.com/v25.0/me/media_publish`;
-    
-    const body = {
-      creation_id: mediaId,
-      caption: caption,
-      targeting_spec: targetingJson, 
-      published: true
-    };
-    
-    const response = await fetch(publishUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${account.instagram_token}`
-      },
-      body: JSON.stringify(body)
-    });
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      sovyxLogger.error('Error de Instagram', { error: data.error });
-      
-      // Fallback: publicar sin targeting
-      const fallbackResult = await publishNormal(mediaId, caption, account.instagram_token);
-      return res.json({
-        success: true,
-        message: '⚠️ Post publicado sin targeting (fallback)',
-        postId: fallbackResult.id,
-        cuenta: account.name,
-        modo: 'sin_targeting'
-      });
-    }
+ 
     
     // 4. GUARDAR EN BASE DE DATOS
     const db = require('../../modules/sovyxDatabase');
