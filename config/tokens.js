@@ -18,12 +18,10 @@ module.exports = {
     totalSlots: 4,
     priceInitial: 1000,
     priceFinal: 4000
-  }
 };
   // PASARELAS DE PAGO (Nivel Rojo 1)
   payments: {
     kontigo: process.env.KONTIGO_LINK, // Para el primer cierre
-    }
   },
 
   sovyx: {
@@ -31,6 +29,5 @@ module.exports = {
     slotsRestantes: parseInt(process.env.SOVYX_SLOTS_RESTANTES) || 4, // Control de escasez real
     maxClients: parseInt(process.env.SOVYX_MAX_CLIENTS) || 4, 
     targetCloses: parseInt(process.env.SOVYX_TARGET_CLOSES) || 2700,
-
   }
 };
