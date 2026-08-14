@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const sovyxLogger = require('../../modules/sovyxLogger');
 const IA1 = require('../../modules/sovyxIA1Segmenter');
-const MetaAPI = require('../../modules/metaAdsApi'); // El sistema nervioso
 
 // Instanciamos la IA1 una sola vez
 const ia1 = new IA1();
