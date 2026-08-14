@@ -6,65 +6,41 @@ const sovyxLogger = require('../modules/sovyxLogger');
 const app = express();
 
 // ============================================
-// MIDDLEWARES
+// 1. MIDDLEWARES PRINCIPALES (Van arriba del todo)
 // ============================================
-// Habilita CORS para que tu web (Frontend) pueda hacer peticiones a Render
 app.use(cors({
-  origin: '*', // En producción puedes poner la URL exacta de tu web
+  origin: '*',
   methods: ['GET', 'POST', 'OPTIONS']
 }));
-// Permitir que el servidor procese JSON en el body de las peticiones
+
 app.use(express.json());
-
-// ============================================
-// IMPORTAR RUTAS
-// ============================================
-const chatRoutes = require('./api/chat/chat');
-const slotsRoutes = require('./slots/slots');
-
-// ============================================
-// MONTAR RUTAS API
-// ============================================
-app.use('/api/chat', chatRoutes);
-app.use('/api/slots', slotsRoutes);
-
-// Ruta de prueba (Healthcheck)
-app.get('/', (req, res) => {
-  res.status(200).json({
-    status: 'online',
-    system: 'SOVYX Core AI Engine',
-    version: '2.0.0'
-  });
-});
-
-// Manejador de rutas no encontradas (404)
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint no encontrado en el núcleo de SOVYX.' });
-});
-
-// ============================================
-// INICIALIZACIÓN DEL SERVIDOR
-// ============================================
-app.listen(config.port, () => {
-  console.log(`
-  🦁 ======================================== 🦁
-     SOVYX BACKEND ENGINE v2.0 - ACTIVE
-     Puerto: ${config.port}
-     Ruta Chat: /api/chat
-     Ruta Slots: /api/slots
-  🦁 ======================================== 🦁
- `);
-});
 
 // Logger de tráfico SOVYX (Monitoreo en tiempo real)
 app.use((req, res, next) => {
-  sovyxLogger.info(`${req.method} ${req.path}`);
+  if (sovyxLogger && sovyxLogger.info) {
+    sovyxLogger.info(`${req.method} ${req.path}`);
+  }
   next();
 });
 
 // ============================================
-// RUTAS NÚCLEO & SALUD
+// 2. RUTAS API & NÚCLEO
 // ============================================
+
+// Chat & Slots (Nueva Infraestructura)
+const chatRoutes = require('./api/chat/chat');
+const slotsRoutes = require('./slots/slots');
+app.use('/api/chat', chatRoutes);
+app.use('/api/slots', slotsRoutes);
+
+// Healthchecks
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'online',
+    system: 'SOVYX Core AI Engine',
+    version: '2.0.26'
+  });
+});
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -77,30 +53,17 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ============================================
-// RUTAS DE MÓDULOS INTELIGENTES (CEREBRO)
-// ============================================
-
-// IA1: Gestión de Anuncios y Segmentación
+// Módulos IA
 app.use('/api/ia1', require('./ia/ia1-segmentar')); 
-
-// IA2: Conversaciones por DM y Webhook de Meta
 app.use('/api/ia2', require('./ia/ia2-conversar')); 
-
-
-// IA3: Analítica masiva para escalar a los 27K usuarios
 app.use('/api/ia3', require('./ia/ia3-analizar')); 
 
-// ============================================
-// GESTIÓN DE CLIENTES Y CUENTAS
-// ============================================
-
-// Lógica de Escasez: Máximo 4 personas
+// Escasez y Clientes (Máximo 4)
 app.get('/api/clientes/disponibles', async (req, res) => {
   try {
     const db = require('../modules/sovyxDatabase');
     const slotsOcupados = await db.countClientes();
-    const maxSovyxSlots = 4; // Tu regla de oro para mantener exclusividad
+    const maxSovyxSlots = 4;
     const slotsDisponibles = maxSovyxSlots - slotsOcupados;
     
     res.json({
@@ -115,7 +78,7 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   }
 });
 
-// Gestión de cuentas para el Dashboard (Limpia tokens sensibles)
+// Dashboard & Cuentas
 app.get('/api/accounts', (req, res) => {
   try {
     const ACCOUNTS = require('../config/accounts');
@@ -126,7 +89,6 @@ app.get('/api/accounts', (req, res) => {
       return publicData;
     };
 
-    // Estructura SOVYX Corp (Matriz + Proyectos Propios)
     const mis_cuentas = [
       limpiarCuenta(ACCOUNTS.sovyx),
       limpiarCuenta(ACCOUNTS.socredi),
@@ -134,7 +96,6 @@ app.get('/api/accounts', (req, res) => {
       limpiarCuenta(ACCOUNTS.soalefia)
     ].filter(Boolean);
 
-    // Lista de Clientes (Top 4)
     const clientes = [];
     for (let i = 1; i <= 4; i++) {
       const cliente = limpiarCuenta(ACCOUNTS[`client${i}`]);
@@ -147,37 +108,41 @@ app.get('/api/accounts', (req, res) => {
       total_operando: mis_cuentas.length + clientes.length
     });
   } catch (error) {
-    sovyxLogger.error('Error procesando cuentas', { error: error.message });
+    if (sovyxLogger && sovyxLogger.error) {
+      sovyxLogger.error('Error procesando cuentas', { error: error.message });
+    }
     res.status(500).json({ error: 'Error al cargar configuración de cuentas' });
   }
 });
 
 // ============================================
-// MANEJO DE ERRORES & 404
+// 3. MANEJO DE ERRORES & 404 (DEBE IR AL FINAL)
 // ============================================
-
 app.use((req, res) => {
   res.status(404).json({ error: `Ruta ${req.url} no encontrada en SOVYX OS` });
 });
 
 app.use((err, req, res, next) => {
-  sovyxLogger.error('CRITICAL_SYSTEM_ERROR', { error: err.message });
+  if (sovyxLogger && sovyxLogger.error) {
+    sovyxLogger.error('CRITICAL_SYSTEM_ERROR', { error: err.message });
+  }
   res.status(500).json({ error: 'Falla interna en el motor de SOVYX. Reiniciando secuencia...' });
 });
 
 // ============================================
-// ACTIVACIÓN DEL SISTEMA
+// 4. ACTIVACIÓN ÚNICA DEL SERVIDOR
 // ============================================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || config.port || 10000;
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
-  🚀 SOVYX OS v2.0.26 - SISTEMA ACTIVADO (Rojo Nivel 1)
+  🚀 SOVYX OS v2.0.26 - SISTEMA ACTIVADO
   📡 Puerto: ${PORT}
-  🎯 Objetivo: 27K Usuarios Segmentados (High Retention)
-  🛰️ Onboarding: Gemini-1.5-Flash Online 🧠
+  🎯 Objetivo: 4 Usuarios Segmentados (High Retention)
   💼 Slots: 4 Clientes (Escasez Activada)
-  
-  );
+  💬 Ruta Chat: /api/chat
+  📊 Ruta Slots: /api/slots
+  `);
 });
 
 module.exports = app;
