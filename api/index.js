@@ -5,17 +5,6 @@ const sovyxLogger = require('../modules/sovyxLogger');
 
 const app = express();
 
-// Middlewares de seguridad y capacidad
-app.use(cors());
-// 100mb es vital para recibir el material/enlaces del curso vía Onboarding sin errores
-// index.js
-const express = require('express');
-const cors = require('cors');
-const config = require('./config/tokens');
-const sovyxLogger = require('./modules/sovyxLogger'); // Tu logger si lo mantienes
-
-const app = express();
-
 // ============================================
 // MIDDLEWARES
 // ============================================
