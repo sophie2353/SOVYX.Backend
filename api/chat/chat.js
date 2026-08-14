@@ -1,5 +1,6 @@
 // routes/chat.js
 const express = require('express');
+const router = express.Router();
 const SOVYXIA2 = require('../modules/sovyxIA2Conversor');
 const ia2 = new SOVYXIA2();
 
