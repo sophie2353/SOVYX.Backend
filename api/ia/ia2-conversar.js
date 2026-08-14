@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const sovyxLogger = require('../../modules/sovyxLogger');
 const SOVYXIA2Conversor = require('../../modules/sovyxIA2Conversor');
-const { enviarMensajeIG } = require('../../modules/instagramApi');
 const config = require('../../config/tokens'); // Donde tienes el VERIFY_TOKEN
 
 const ia2 = new SOVYXIA2Conversor();
@@ -47,22 +46,5 @@ router.post('/', async (req, res) => {
   }
 });
 
-/**
- * VERIFICACIÓN DEL WEBHOOK (GET)
- * Usando el token que ya tienes configurado y aceptado por Meta.
- */
-router.get('/', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  // Usamos el token de tu config para mantener la validación de Render
-  if (mode && token === config.metaVerifyToken) {
-    sovyxLogger.info('Webhook de Meta verificado con éxito en Render 👺');
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
-  }
-});
 
 module.exports = router;
