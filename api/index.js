@@ -53,7 +53,7 @@ app.listen(config.port, () => {
      Ruta Chat: /api/chat
      Ruta Slots: /api/slots
   🦁 ======================================== 🦁
-  `);
+ `);
 });
 
 // Logger de tráfico SOVYX (Monitoreo en tiempo real)
@@ -91,7 +91,7 @@ app.use('/api/ia2', require('./ia/ia2-conversar'));
 // IA3: Analítica masiva para escalar a los 27K usuarios
 app.use('/api/ia3', require('./ia/ia3-analizar')); 
 
- ============================================
+// ============================================
 // GESTIÓN DE CLIENTES Y CUENTAS
 // ============================================
 
@@ -171,14 +171,13 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
-  ======================================================
   🚀 SOVYX OS v2.0.26 - SISTEMA ACTIVADO (Rojo Nivel 1)
   📡 Puerto: ${PORT}
   🎯 Objetivo: 27K Usuarios Segmentados (High Retention)
   🛰️ Onboarding: Gemini-1.5-Flash Online 🧠
   💼 Slots: 4 Clientes (Escasez Activada)
-  ======================================================
-  `);
+  
+  );
 });
 
 module.exports = app;
