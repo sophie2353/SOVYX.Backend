@@ -49,7 +49,6 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     version: '2.0.26',
     slots_update: '4 MAX',
-    engine: 'Gemini-1.5-Flash-Enabled'
   });
 });
 
@@ -82,13 +81,6 @@ app.get('/api/clientes/disponibles', async (req, res) => {
 app.get('/api/accounts', (req, res) => {
   try {
     const ACCOUNTS = require('../config/accounts');
-    
-    const limpiarCuenta = (cuenta) => {
-      if (!cuenta) return null;
-      const { instagram_token, instagram_id, facebook_token, ...publicData } = cuenta;
-      return publicData;
-    };
-
     const mis_cuentas = [
       limpiarCuenta(ACCOUNTS.sovyx),
       limpiarCuenta(ACCOUNTS.socredi),
