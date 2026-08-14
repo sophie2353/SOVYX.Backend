@@ -8,8 +8,64 @@ const app = express();
 // Middlewares de seguridad y capacidad
 app.use(cors());
 // 100mb es vital para recibir el material/enlaces del curso vía Onboarding sin errores
-app.use(express.json({ limit: '100mb' })); 
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+// index.js
+const express = require('express');
+const cors = require('cors');
+const config = require('./config/tokens');
+const sovyxLogger = require('./modules/sovyxLogger'); // Tu logger si lo mantienes
+
+const app = express();
+
+// ============================================
+// MIDDLEWARES
+// ============================================
+// Habilita CORS para que tu web (Frontend) pueda hacer peticiones a Render
+app.use(cors({
+  origin: '*', // En producción puedes poner la URL exacta de tu web
+  methods: ['GET', 'POST', 'OPTIONS']
+}));
+// Permitir que el servidor procese JSON en el body de las peticiones
+app.use(express.json());
+
+// ============================================
+// IMPORTAR RUTAS
+// ============================================
+const chatRoutes = require('./api/chat/chat');
+const slotsRoutes = require('./slots/slots');
+
+// ============================================
+// MONTAR RUTAS API
+// ============================================
+app.use('/api/chat', chatRoutes);
+app.use('/api/slots', slotsRoutes);
+
+// Ruta de prueba (Healthcheck)
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'online',
+    system: 'SOVYX Core AI Engine',
+    version: '2.0.0'
+  });
+});
+
+// Manejador de rutas no encontradas (404)
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint no encontrado en el núcleo de SOVYX.' });
+});
+
+// ============================================
+// INICIALIZACIÓN DEL SERVIDOR
+// ============================================
+app.listen(config.port, () => {
+  console.log(`
+  🦁 ======================================== 🦁
+     SOVYX BACKEND ENGINE v2.0 - ACTIVE
+     Puerto: ${config.port}
+     Ruta Chat: /api/chat
+     Ruta Slots: /api/slots
+  🦁 ======================================== 🦁
+  `);
+});
 
 // Logger de tráfico SOVYX (Monitoreo en tiempo real)
 app.use((req, res, next) => {
