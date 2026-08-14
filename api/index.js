@@ -28,8 +28,8 @@ app.use((req, res, next) => {
 // ============================================
 
 // Chat & Slots (Nueva Infraestructura)
-const chatRoutes = require('./api/chat/chat');
-const slotsRoutes = require('.slots/slots');
+const chatRoutes = require('./chat/chat');
+const slotsRoutes = require('../slots/slots');
 app.use('/api/chat', chatRoutes);
 app.use('/slots', slotsRoutes);
 
