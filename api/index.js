@@ -1,12 +1,16 @@
 const express = require('express');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
 
 const app = express();
 
+// Helper para limpiar cuentas si no está importado externamente
+const limpiarCuenta = (cuenta) => cuenta || null;
+
 // ============================================
-// 1. MIDDLEWARES PRINCIPALES (Van arriba del todo)
+// 1. MIDDLEWARES PRINCIPALES
 // ============================================
 app.use(cors({
   origin: '*',
@@ -24,7 +28,27 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// 2. RUTAS API & NÚCLEO
+// 2. CONEXIÓN A BASE DE DATOS (MongoDB)
+// ============================================
+const MONGO_URI = process.env.MONGO_URI || config.mongoUri;
+
+if (MONGO_URI) {
+  mongoose.connect(MONGO_URI)
+    .then(() => {
+      console.log('🟢 [SOVYX DB] Base de datos conectada correctamente.');
+    })
+    .catch((err) => {
+      if (sovyxLogger && sovyxLogger.error) {
+        sovyxLogger.error('Error al conectar MongoDB', { error: err.message });
+      }
+      console.error('🔴 [SOVYX DB] Error de conexión:', err.message);
+    });
+} else {
+  console.warn('⚠️ [SOVYX DB] MONGO_URI no encontrada en .env / config.');
+}
+
+// ============================================
+// 3. RUTAS API & NÚCLEO
 // ============================================
 
 // Chat & Slots (Nueva Infraestructura)
@@ -46,6 +70,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: '🟢 SOVYX OPERATIONAL',
     mode: config.sovyx?.mode || 'production',
+    db_status: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
     timestamp: new Date().toISOString(),
     version: '2.0.26',
     slots_update: '4 MAX',
@@ -108,7 +133,7 @@ app.get('/api/accounts', (req, res) => {
 });
 
 // ============================================
-// 3. MANEJO DE ERRORES & 404 (DEBE IR AL FINAL)
+// 4. MANEJO DE ERRORES & 404
 // ============================================
 app.use((req, res) => {
   res.status(404).json({ error: `Ruta ${req.url} no encontrada en SOVYX OS` });
@@ -122,7 +147,7 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================
-// 4. ACTIVACIÓN ÚNICA DEL SERVIDOR
+// 5. ACTIVACIÓN ÚNICA DEL SERVIDOR
 // ============================================
 const PORT = process.env.PORT || config.port || 10000;
 
@@ -133,7 +158,8 @@ app.listen(PORT, '0.0.0.0', () => {
   🎯 Objetivo: 4 Usuarios Segmentados (High Retention)
   💼 Slots: 4 Clientes (Escasez Activada)
   💬 Ruta Chat: /api/chat
-  📊 Ruta Slots: /api/slots
+  📊 Ruta Slots: /slots
+  🟢 Base de Datos: ${process.env.MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
 });
 
