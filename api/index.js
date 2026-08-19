@@ -57,6 +57,10 @@ const slotsRoutes = require('../slots/slots');
 app.use('/api/chat', chatRoutes);
 app.use('/slots', slotsRoutes);
 
+// Pasarela de Pagos & Webhook de Kontigo
+app.use('/api/pagos', require('./routes/pagos'));
+app.use('/api/webhooks', require('./routes/kontigoWebhook'));
+
 // Healthchecks
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -95,7 +99,7 @@ app.get('/api/clientes/disponibles', async (req, res) => {
       ocupados: slotsOcupados,
       disponibles: slotsDisponibles > 0 ? slotsDisponibles : 0,
       mensaje: slotsDisponibles <= 0 ? "SOLD OUT" : "Slots disponibles",
-      precio: { ticket: 5000, moneda: 'USDT' }
+      precio: { ticket: 1000, moneda: 'USD' }
     });
   } catch (error) {
     res.status(500).json({ error: 'Error en base de datos' });
@@ -159,6 +163,8 @@ app.listen(PORT, '0.0.0.0', () => {
   💼 Slots: 4 Clientes (Escasez Activada)
   💬 Ruta Chat: /api/chat
   📊 Ruta Slots: /slots
+  💳 Ruta Pagos: /api/pagos
+  🪝 Ruta Webhook: /api/webhooks/kontigo
   🟢 Base de Datos: ${process.env.MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
 });
