@@ -3,7 +3,7 @@ require('dotenv').config();
 module.exports = {
   port: process.env.PORT || 10000,
   mongoUri: process.env.MONGO_URI,
-  
+
   meta: {
     accessToken: process.env.META_ADS_ACCESS_TOKEN,
     accountId: process.env.META_ADS_ACCOUNT_ID,
@@ -12,8 +12,11 @@ module.exports = {
     campaignId: process.env.META_CAMPAIGN_ID || null
   },
 
+  kontigo: {
+    slug: process.env.KONTIGO_SLUG || 'SOVYX-Slot'
+  },
+
   security: {
-    paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || 'sovyx_secret_123',
     adminHqSecret: process.env.ADMIN_HQ_SECRET || 'sovyx_hq_key'
   },
 
