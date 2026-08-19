@@ -1,63 +1,59 @@
-// routes/paymentWebhook.js
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const crypto = require('crypto');
 const config = require('../config/tokens');
 const sovyxDatabase = require('../modules/sovyxDatabase');
 
-router.post('/stripe-webhook', async (req, res) => {
-  const { event, data } = req.body; // Adaptar según Stripe, MercadoPago o pasarela utilizada
-
+// POST /api/webhooks/kontigo
+router.post('/kontigo', async (req, res) => {
   try {
-    // 1. Confirmar que el pago fue exitoso
-    if (event === 'payment_intent.succeeded' || data?.status === 'approved') {
-      const userEmail = data.customer_email || data.email;
-      const amount = data.amount || 1000;
+    const payload = req.body;
+    const status = (payload.status || payload.event || '').toUpperCase();
+    const esExitoso = ['APPROVED', 'COMPLETED', 'PAID', 'SUCCESS'].includes(status);
 
-      // 2. Restar slot en la Base de Datos SOVYX
+    if (esExitoso) {
+      const email = payload.customer_email || payload.email || 'cliente@sovyx.com';
+      const monto = payload.amount || 1000;
+
+      // 1. Restar Slot en MongoDB
       const slotActualizado = await sovyxDatabase.registrarCliente({
-        email: userEmail,
-        montoPagado: amount,
+        email,
+        montoPagado: monto,
+        referencia: payload.id || payload.reference,
+        metodo: 'Kontigo Link',
         fecha: new Date()
       });
 
-      // 3. Disparar evento de Compra a Meta (Conversion API - CAPI)
+      // 2. Notificar al Pixel de Meta (Conversion API)
       if (config.meta.pixelId && config.meta.accessToken) {
+        const hashedEmail = crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+
         await axios.post(
-          `https://graph.facebook.com/v25.0/${config.meta.pixelId}/events`,
+          `https://graph.facebook.com/v19.0/${config.meta.pixelId}/events`,
           {
             data: [
               {
                 event_name: 'Purchase',
                 event_time: Math.floor(Date.now() / 1000),
                 action_source: 'website',
-                user_data: {
-                  em: [require('crypto').createHash('sha256').update(userEmail.toLowerCase()).digest('hex')]
-                },
-                custom_data: {
-                  currency: 'USD',
-                  value: amount / 100 // si viene en centavos
-                }
+                user_data: { em: [hashedEmail] },
+                custom_data: { currency: 'USD', value: monto }
               }
             ]
           },
-          {
-            params: { access_token: config.meta.accessToken }
-          }
+          { params: { access_token: config.meta.accessToken } }
         );
       }
 
-      return res.status(200).json({
-        status: 'SUCCESS',
-        mensaje: 'Slot reservado y Pixel de compra notificado',
-        slotsRestantes: slotActualizado.disponibles
-      });
+      console.log(`🟢 [SOVYX DB] Slot reservado para: ${email}`);
+      return res.status(200).json({ status: 'OK', slotsRestantes: slotActualizado.disponibles });
     }
 
-    res.status(200).json({ received: true });
+    res.status(200).json({ status: 'IGNORED' });
   } catch (error) {
-    console.error('🔴 Error procesando compra/Pixel:', error.message);
-    res.status(500).json({ error: 'Falla al sincronizar compra con SOVYX' });
+    console.error('🔴 Error en Webhook Kontigo:', error.message);
+    res.status(500).json({ error: 'Falla al procesar notificación' });
   }
 });
 
