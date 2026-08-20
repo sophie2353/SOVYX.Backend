@@ -7,7 +7,9 @@ const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
 
 // Importar e inicializar el Cronjob automatizado (Ciclo 24h/48h Meta)
+// En lugar de ./jobs/cron24h
 require('../jobs/cron24h');
+
 
 const app = express();
 
