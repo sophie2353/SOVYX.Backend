@@ -10,6 +10,9 @@ module.exports = {
     pixelId: process.env.META_PIXEL_ID,
     pageId: process.env.META_PAGE_ID,
     campaignId: process.env.META_CAMPAIGN_ID || null
+     SOVYX_ADMIN_KEY: process.env.SOVYX_ADMIN_KEY || 'admin1234',
+  BACKEND_URL: process.env.BACKEND_URL || 'https://sovyx-backend.onrender.com',
+  FRONTEND_URL: process.env.FRONTEND_URL || 'https://sovyx.app'
   },
 
   kontigo: {
@@ -26,3 +29,4 @@ module.exports = {
     priceFinal: 4000
   }
 };
+require('dotenv').config();
