@@ -4,6 +4,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const config = require('../config/tokens');
 const sovyxDatabase = require('../modules/sovyxDatabase');
+const metaService = require('../services/metaService');
 
 // ----------------------------------------------------
 // GET /api/pagos/link - Genera la URL oficial de Kontigo
@@ -11,7 +12,7 @@ const sovyxDatabase = require('../modules/sovyxDatabase');
 router.get('/link', (req, res) => {
   const email = req.query.email || '';
   const slug = process.env.KONTIGO_SLUG || 'SOVYX-Slot';
-  const amount = 100000; // $1,000.00 USD en centavos (según especificación de Kontigo)
+  const amount = 100000; // $1,000.00 USD en centavos
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   
   const redirectUrl = `${frontendUrl}/pago-exitoso?email=${encodeURIComponent(email)}`;
@@ -40,7 +41,7 @@ router.post('/confirmar-pago', async (req, res) => {
     });
 
     // 2. Notificar la compra al Pixel de Meta (Conversion API)
-    if (config.meta.pixelId && config.meta.accessToken) {
+    if (config.meta?.pixelId && config.meta?.accessToken) {
       const hashedEmail = crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
 
       await axios.post(
@@ -70,6 +71,74 @@ router.post('/confirmar-pago', async (req, res) => {
   } catch (error) {
     console.error('🔴 Error al confirmar pago:', error.message);
     res.status(500).json({ error: 'Falla al procesar la confirmación del pago en la base de datos.' });
+  }
+});
+
+// ----------------------------------------------------
+// POST /api/pagos/conectar-meta - Vincula Meta tras clic en "Conectar con Facebook"
+// ----------------------------------------------------
+router.post('/conectar-meta', async (req, res) => {
+  try {
+    const { email, userToken } = req.body;
+    if (!email || !userToken) return res.status(400).json({ error: 'Faltan datos requeridos.' });
+
+    const urlCanje = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.META_APP_ID}&client_secret=${process.env.META_APP_SECRET}&fb_exchange_token=${userToken}`;
+    const resCanje = await fetch(urlCanje);
+    const dataCanje = await resCanje.json();
+    const longLivedToken = dataCanje.access_token;
+
+    const urlInfo = `https://graph.facebook.com/v19.0/me?fields=adaccounts,accounts&access_token=${longLivedToken}`;
+    const resInfo = await fetch(urlInfo);
+    const dataInfo = await resInfo.json();
+
+    const adAccountId = dataInfo.adaccounts?.data[0]?.id;
+    const pageId = dataInfo.accounts?.data[0]?.id;
+
+    await sovyxDatabase.guardarCredencialesMeta(email, {
+      accessToken: longLivedToken,
+      adAccountId,
+      pageId,
+      estadoMeta: 'CONECTADO'
+    });
+
+    res.status(200).json({ status: 'SUCCESS', mensaje: 'Meta vinculado con éxito.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ----------------------------------------------------
+// POST /api/pagos/iniciar-ciclo - Inicia el Ciclo de 48h disparando la primera campaña
+// ----------------------------------------------------
+router.post('/iniciar-ciclo', async (req, res) => {
+  try {
+    const { email, segmentacionInicial } = req.body;
+    const cliente = await sovyxDatabase.obtenerCliente(email);
+
+    if (!cliente?.meta?.accessToken) {
+      return res.status(400).json({ error: 'El cliente no tiene cuenta de Meta conectada.' });
+    }
+
+    const borrador1 = await metaService.buscarBorrador(
+      cliente.meta.adAccountId, 
+      cliente.meta.accessToken, 
+      "Prueba Hora 1-24"
+    );
+
+    if (!borrador1) {
+      return res.status(404).json({ error: 'No se encontró el borrador "Prueba Hora 1-24".' });
+    }
+
+    await metaService.inyectarSegmentacionYActivar(cliente.meta.accessToken, borrador1.id, segmentacionInicial);
+
+    await sovyxDatabase.actualizarEstadoCiclo(email, 'HORA_1_24_ACTIVA', {
+      'ciclo.fechaInicio': new Date(),
+      'ciclo.campaignId1': borrador1.id
+    });
+
+    res.status(200).json({ status: 'SUCCESS', mensaje: 'Campaña 1-24h activada correctamente.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
