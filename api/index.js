@@ -1,8 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+require('dotenv').config();
+
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
+
+// Importar e inicializar el Cronjob automatizado (Ciclo 24h/48h Meta)
+require('./jobs/cron24h');
 
 const app = express();
 
@@ -57,7 +62,7 @@ const slotsRoutes = require('../slots/slots');
 app.use('/api/chat', chatRoutes);
 app.use('/slots', slotsRoutes);
 
-// Pasarela de Pagos & Webhook de Kontigo
+// Pasarela de Pagos & Webhook
 app.use('/api/pagos', require('./routes/pagos'));
 app.use('/api/webhooks', require('./routes/kontigoWebhook'));
 
@@ -164,7 +169,7 @@ app.listen(PORT, '0.0.0.0', () => {
   💬 Ruta Chat: /api/chat
   📊 Ruta Slots: /slots
   💳 Ruta Pagos: /api/pagos
-  🪝 Ruta Webhook: /api/webhooks/kontigo
+  ⏰ Cronjob Meta 24h/48h: ACTIVADO
   🟢 Base de Datos: ${process.env.MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
 });
