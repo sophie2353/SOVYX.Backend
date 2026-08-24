@@ -11,12 +11,14 @@ const sovyxLogger = require('../modules/sovyxLogger');
 try {
   require('../jobs/cron24h');
 } catch (e) {
-  console.warn('⚠️ [SOVYX CRON] Módulo cron24h no encontrado, omitiendo ejecuciones en segundo plano.');
+  try {
+    require('./jobs/cron24h');
+  } catch (err) {
+    console.warn('⚠️ [SOVYX CRON] Módulo cron24h no encontrado, omitiendo ejecuciones en segundo plano.');
+  }
 }
 
 const app = express();
-
-const limpiarCuenta = (cuenta) => cuenta || null;
 
 // ============================================
 // 1. MIDDLEWARES PRINCIPALES
@@ -64,76 +66,125 @@ if (MONGO_URI) {
 try {
   app.use('/api', require('../routes/configRoutes'));
 } catch (e) {
-  app.get('/api/config', (req, res) => {
-    res.json({
-      SOVYX_ADMIN_KEY: config.SOVYX_ADMIN_KEY || process.env.SOVYX_ADMIN_KEY || 'admin1234',
-      FB_APP_ID: config.meta?.appId || process.env.META_APP_ID || ''
+  try {
+    app.use('/api', require('./routes/configRoutes'));
+  } catch (err) {
+    app.get('/api/config', (req, res) => {
+      res.json({
+        SOVYX_ADMIN_KEY: config.SOVYX_ADMIN_KEY || process.env.SOVYX_ADMIN_KEY || 'admin1234',
+        FB_APP_ID: config.meta?.appId || process.env.META_APP_ID || ''
+      });
     });
-  });
+  }
 }
 
-// B. Pasarela de Pago & Checkout
+// B. Pasarela de Pago & Checkout ($1K, $5K, $9K + Meta CAPI + Slots)
 try {
-  app.use('/api/pago', require('../routes/pago'));
+  const pagoRoutes = require('../routes/pago');
+  app.use('/api/pagos', pagoRoutes);
+  app.use('/api/pago', pagoRoutes);
 } catch (e) {
   try {
-    app.use('/api/pagos', require('./routes/pagos'));
-  } catch (err) { console.warn('Módulo de pagos no cargado.'); }
+    const pagoRoutes = require('./routes/pago');
+    app.use('/api/pagos', pagoRoutes);
+    app.use('/api/pago', pagoRoutes);
+  } catch (err) {
+    console.warn('⚠️ Módulo routes/pago no cargado.');
+  }
 }
 
-// C. Onboarding Tester & Validaciones Meta
+// C. Integración Meta Graph API & Ciclo 48H (IA-1)
+try {
+  app.use('/api/meta', require('../routes/meta'));
+} catch (e) {
+  try {
+    app.use('/api/meta', require('./routes/meta'));
+  } catch (err) {
+    console.warn('⚠️ Módulo routes/meta no cargado.');
+  }
+}
+
+// D. Onboarding Tester & Validaciones Meta
 try {
   app.use('/api/onboarding', require('../routes/onboardingRoutes'));
-} catch (e) { console.warn('Módulo onboardingRoutes no cargado.'); }
+} catch (e) {
+  try {
+    app.use('/api/onboarding', require('./routes/onboardingRoutes'));
+  } catch (err) { console.warn('⚠️ Módulo onboardingRoutes no cargado.'); }
+}
 
-// D. Panel Admin & Aprobaciones
+// E. Panel Admin & Aprobaciones
 try {
   app.use('/api/admin', require('../routes/adminRoutes'));
-} catch (e) { console.warn('Módulo adminRoutes no cargado.'); }
+} catch (e) {
+  try {
+    app.use('/api/admin', require('./routes/adminRoutes'));
+  } catch (err) { console.warn('⚠️ Módulo adminRoutes no cargado.'); }
+}
 
-// E. Carga de Data CSV/XLSX (Multer en RAM $\rightarrow$ MongoDB)
+// F. Carga de Data CSV/XLSX (Multer en RAM -> MongoDB)
 try {
   app.use('/api/upload', require('../routes/uploadRoutes'));
 } catch (e) {
   try {
-    app.use('/api', require('../routes/uploadRoutes'));
-  } catch (err) { console.warn('Módulo uploadRoutes no cargado.'); }
+    app.use('/api/upload', require('./routes/uploadRoutes'));
+  } catch (err) { console.warn('⚠️ Módulo uploadRoutes no cargado.'); }
 }
 
-// F. Autenticación Meta OAuth
+// G. Autenticación Meta OAuth
 try {
   app.use('/api/auth', require('../routes/authRoutes'));
-} catch (e) { console.warn('Módulo authRoutes no cargado.'); }
+} catch (e) {
+  try {
+    app.use('/api/auth', require('./routes/authRoutes'));
+  } catch (err) { console.warn('⚠️ Módulo authRoutes no cargado.'); }
+}
 
-// G. Inyección de Campañas en Borrador & Notificación 24h/48h
+// H. Inyección de Campañas en Borrador & Notificación 24h/48h
 try {
   app.use('/api/ciclo', require('../routes/cicloRoutes'));
-} catch (e) { console.warn('Módulo cicloRoutes no cargado.'); }
-
-// H. Chat Web & Slots
-try {
-  app.use('/api/chat', require('./chat/chat'));
 } catch (e) {
-  app.post('/api/chat', (req, res) => {
-    res.json({ reply: 'Sistema SOVYX: Mensaje recibido. Slot en proceso de asignación.' });
-  });
+  try {
+    app.use('/api/ciclo', require('./routes/cicloRoutes'));
+  } catch (err) { console.warn('⚠️ Módulo cicloRoutes no cargado.'); }
+}
+
+// I. Chat Web & Slots
+try {
+  app.use('/api/chat', require('../chat/chat'));
+} catch (e) {
+  try {
+    app.use('/api/chat', require('./chat/chat'));
+  } catch (err) {
+    app.post('/api/chat', (req, res) => {
+      res.json({ reply: 'Sistema SOVYX: Mensaje recibido. Slot en proceso de asignación.' });
+    });
+  }
 }
 
 try {
   app.use('/slots', require('../slots/slots'));
-} catch (e) { console.warn('Módulo slots no cargado.'); }
+} catch (e) {
+  try {
+    app.use('/slots', require('./slots/slots'));
+  } catch (err) { console.warn('⚠️ Módulo slots no cargado.'); }
+}
 
-// I. Webhooks externos (Kontigo)
+// J. Webhooks externos (Kontigo)
 try {
-  app.use('/api/webhooks', require('./routes/kontigoWebhook'));
-} catch (e) { console.warn('Módulo kontigoWebhook no cargado.'); }
+  app.use('/api/webhooks', require('../routes/kontigoWebhook'));
+} catch (e) {
+  try {
+    app.use('/api/webhooks', require('./routes/kontigoWebhook'));
+  } catch (err) { console.warn('⚠️ Módulo kontigoWebhook no cargado.'); }
+}
 
-// J. Módulos IA
-try { app.use('/api/ia1', require('./ia/ia1-segmentar')); } catch (e) {}
-try { app.use('/api/ia2', require('./ia/ia2-conversar')); } catch (e) {}
-try { app.use('/api/ia3', require('./ia/ia3-analizar')); } catch (e) {}
+// K. Módulos IA
+try { app.use('/api/ia1', require('../ia/ia1-segmentar')); } catch (e) { try { app.use('/api/ia1', require('./ia/ia1-segmentar')); } catch (err) {} }
+try { app.use('/api/ia2', require('../ia/ia2-conversar')); } catch (e) { try { app.use('/api/ia2', require('./ia/ia2-conversar')); } catch (err) {} }
+try { app.use('/api/ia3', require('../ia/ia3-analizar')); } catch (e) { try { app.use('/api/ia3', require('./ia/ia3-analizar')); } catch (err) {} }
 
-// K. Disponibilidad de Slots (Límite 2 Clientes - High Ticket)
+// L. Disponibilidad de Slots (Límite 2 Clientes - High Ticket)
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 2;
   try {
@@ -169,7 +220,6 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   }
 });
 
-// L. Dashboard & Cuentas Operativas (Fallback seguro si no existe accounts.js)
 // M. Healthcheck & Estado del Sistema
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -217,8 +267,9 @@ app.listen(PORT, '0.0.0.0', () => {
   📡 Puerto: ${PORT}
   🎯 Objetivo: 2 Clientes High-Ticket ($10,000 USD Total)
   💼 Slots: 2 Exclusivos (Reserva $1K / Cripto $9K)
+  💳 Ruta Pago: /api/pagos (/link & /notificar-pago)
+  🦁 Ruta Meta: /api/meta (/conectar & /iniciar-ciclo)
   💬 Ruta Chat: /api/chat
-  💳 Ruta Pago: /api/pago/checkout
   🧪 Ruta Onboarding: /api/onboarding
   ⏰ Cronjob Meta 24h/48h: ACTIVADO
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
