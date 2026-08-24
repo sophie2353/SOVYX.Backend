@@ -1,50 +1,58 @@
 const express = require('express');
 const router = express.Router();
-const sovyxLogger = require('../../modules/sovyxLogger');
-const SOVYXIA2Conversor = require('../../modules/sovyxIA2Conversor');
-const config = require('../../config/tokens'); // Donde tienes el VERIFY_TOKEN
+const SOVYXIA2Conversor = require('../modules/sovyxIA2Conversor');
+const sovyxLogger = require('../modules/sovyxLogger');
 
+// Instancia única del conversor
 const ia2 = new SOVYXIA2Conversor();
 
 /**
- * RECEPCIÓN DE MENSAJES (POST)
- * Aquí es donde Meta envía los DMs y SOVYX responde.
+ * ENDPOINT DE CONVERSACIÓN IA2 (POST)
+ * Recibe el mensaje, payload o tipo de negocio desde el Frontend,
+ * lo procesa a través del módulo y devuelve la respuesta JSON.
  */
 router.post('/', async (req, res) => {
-  // 1. Meta exige un 200 OK veloz para no reintentar el envío
-  res.sendStatus(200);
-
   try {
-    const { object, entry } = req.body;
+    const { mensaje, text, payload, tipo, sessionId } = req.body;
+    
+    const textoCliente = mensaje || text || '';
+    const idSesion = sessionId || 'session_guest';
 
-    if (object === 'instagram') {
-      for (const e of entry) {
-        const messagingEvent = e.messaging[0];
-
-        // Procesar solo si el cliente envió texto
-        if (messagingEvent && messagingEvent.message && messagingEvent.message.text) {
-          const senderId = messagingEvent.sender.id;
-          const textoRecibido = messagingEvent.message.text;
-
-          sovyxLogger.info(`SOVYX: DM recibido de ${senderId}`);
-
-          // 2. La IA2 genera la respuesta con autoridad de 5,000 USDT
-          const respuestaIA2 = await ia2.generarRespuesta({
-            mensaje: textoRecibido,
-            usuario: { id: senderId }
-          });
-
-          // 3. Envío directo a los DMs de Instagram
-          await enviarMensajeIG(senderId, respuestaIA2.mensaje);
-          
-          sovyxLogger.info(`SOVYX: Respuesta enviada a ${senderId} | Etapa: ${respuestaIA2.etapa}`);
-        }
-      }
+    if (sovyxLogger && sovyxLogger.info) {
+      sovyxLogger.info(`SOVYX IA2: Procesando solicitud para sesión ${idSesion} | Tipo: ${tipo || 'general'}`);
     }
+
+    // Procesar con el módulo conversacional actualizado
+    const respuestaIA2 = await ia2.generarRespuesta({
+      mensaje: textoCliente,
+      sessionId: idSesion,
+      payload: payload,
+      tipo: tipo
+    });
+
+    return res.json({
+      success: true,
+      reply: respuestaIA2.mensaje,
+      intencion: respuestaIA2.intencion,
+      quickReplies: respuestaIA2.quickReplies,
+      timestamp: new Date().toISOString()
+    });
+
   } catch (error) {
-    sovyxLogger.error('Error procesando Webhook de Meta', { error: error.message });
+    if (sovyxLogger && sovyxLogger.error) {
+      sovyxLogger.error('Error procesando respuesta en IA2', { error: error.message });
+    }
+    console.error('💥 Error en IA2 Router:', error);
+    
+    return res.status(500).json({
+      success: false,
+      reply: "Sistema SOVYX: Ocurrió una interrupción temporal en el motor de IA2. Reintentando...",
+      quickReplies: [
+        { label: "¿Cómo funciona?", payload: "como_funciona" },
+        { label: "Reservar slot ($1,000)", payload: "acceder" }
+      ]
+    });
   }
 });
-
 
 module.exports = router;
