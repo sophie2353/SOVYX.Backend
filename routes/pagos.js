@@ -4,43 +4,56 @@ const axios = require('axios');
 const crypto = require('crypto');
 const config = require('../config/tokens');
 const sovyxDatabase = require('../modules/sovyxDatabase');
-const metaService = require('../services/metaService');
 
 // ----------------------------------------------------
-// GET /api/pagos/link - Genera la URL oficial de Kontigo
+// 1. GET /api/pagos/link - Genera URL de Kontigo según el monto ($1,000, $5,000 o $9,000 USD)
 // ----------------------------------------------------
-router.get('/link', (req, res) => {
-  const email = req.query.email || '';
-  const slug = process.env.KONTIGO_SLUG || 'SOVYX-Slot';
-  const amount = 100000; // $1,000.00 USD en centavos
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  
-  const redirectUrl = `${frontendUrl}/pago-exitoso?email=${encodeURIComponent(email)}`;
-  const paymentUrl = `https://app.kontigo.lat/pay/${slug}?amount=${amount}&redirect_url=${encodeURIComponent(redirectUrl)}`;
+router.get('/link', async (req, res) => {
+  try {
+    const email = req.query.email || '';
+    const monto = parseFloat(req.query.monto || req.query.amount || 1000);
+    const slug = process.env.KONTIGO_SLUG || 'SOVYX-Slot';
+    
+    // Conversión a centavos ($1,000 USD = 100000 centavos)
+    const amountInCents = Math.round(monto * 100); 
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const redirectUrl = `${frontendUrl}/pago-exitoso?email=${encodeURIComponent(email)}&monto=${monto}`;
+    const paymentUrl = `https://app.kontigo.lat/pay/${slug}?amount=${amountInCents}&redirect_url=${encodeURIComponent(redirectUrl)}`;
 
-  res.json({ status: 'SUCCESS', paymentUrl });
+    res.json({ 
+      status: 'SUCCESS', 
+      monto,
+      amountInCents,
+      paymentUrl 
+    });
+  } catch (error) {
+    console.error('🔴 Error al generar enlace de pago:', error.message);
+    res.status(500).json({ error: 'No se pudo generar el enlace de pago.' });
+  }
 });
 
 // ----------------------------------------------------
-// POST /api/pagos/confirmar-pago - Procesa el registro y Meta Pixel CAPI
+// 2. POST /api/pagos/notificar-pago - Recibe Confirmación (Descuenta Slot + Dispara CAPI)
 // ----------------------------------------------------
-router.post('/confirmar-pago', async (req, res) => {
+router.post('/notificar-pago', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, monto, transactionId } = req.body;
+    const montoFinal = parseFloat(monto || 1000);
 
     if (!email) {
-      return res.status(400).json({ error: 'El email es obligatorio para confirmar la reserva del slot.' });
+      return res.status(400).json({ error: 'El email del cliente es obligatorio para procesar el pago.' });
     }
 
-    // 1. Restar el slot en MongoDB
-    const slotActualizado = await sovyxDatabase.registrarCliente({
+    // A. Descontar slot (pasa de 2 a 1) y registrar cliente en MongoDB
+    const clienteActualizado = await sovyxDatabase.registrarCliente({
       email,
-      montoPagado: 1000,
+      montoPagado: montoFinal,
+      transactionId: transactionId || `TX_${Date.now()}`,
       metodo: 'Kontigo Pay',
       fecha: new Date()
     });
 
-    // 2. Notificar la compra al Pixel de Meta (Conversion API)
+    // B. Enviar evento 'Purchase' al Pixel CAPI de Meta con el monto exacto abonado
     if (config.meta?.pixelId && config.meta?.accessToken) {
       const hashedEmail = crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
 
@@ -53,92 +66,30 @@ router.post('/confirmar-pago', async (req, res) => {
               event_time: Math.floor(Date.now() / 1000),
               action_source: 'website',
               user_data: { em: [hashedEmail] },
-              custom_data: { currency: 'USD', value: 1000 }
+              custom_data: { 
+                currency: 'USD', 
+                value: montoFinal,
+                order_id: transactionId || `SOVYX_${Date.now()}`
+              }
             }
           ]
         },
         { params: { access_token: config.meta.accessToken } }
       );
+      console.log(`📡 [META CAPI] Evento Purchase ($${montoFinal} USD) enviado para: ${email}`);
     }
 
-    console.log(`🟢 [SOVYX DB] Slot reservado con éxito para: ${email}`);
+    console.log(`🟢 [SOVYX DB] Pago registrado. Slots disponibles: ${clienteActualizado?.disponibles ?? 1}`);
 
     res.status(200).json({
       status: 'SUCCESS',
-      mensaje: 'Slot reservado correctamente y Pixel notificado.',
-      slotsRestantes: slotActualizado.disponibles
+      mensaje: 'Pago registrado, slot descontado y Pixel notificado correctamente.',
+      montoPagado: montoFinal,
+      slotsRestantes: clienteActualizado?.disponibles ?? 1
     });
   } catch (error) {
-    console.error('🔴 Error al confirmar pago:', error.message);
-    res.status(500).json({ error: 'Falla al procesar la confirmación del pago en la base de datos.' });
-  }
-});
-
-// ----------------------------------------------------
-// POST /api/pagos/conectar-meta - Vincula Meta tras clic en "Conectar con Facebook"
-// ----------------------------------------------------
-router.post('/conectar-meta', async (req, res) => {
-  try {
-    const { email, userToken } = req.body;
-    if (!email || !userToken) return res.status(400).json({ error: 'Faltan datos requeridos.' });
-
-    const urlCanje = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.META_APP_ID}&client_secret=${process.env.META_APP_SECRET}&fb_exchange_token=${userToken}`;
-    const resCanje = await fetch(urlCanje);
-    const dataCanje = await resCanje.json();
-    const longLivedToken = dataCanje.access_token;
-
-    const urlInfo = `https://graph.facebook.com/v19.0/me?fields=adaccounts,accounts&access_token=${longLivedToken}`;
-    const resInfo = await fetch(urlInfo);
-    const dataInfo = await resInfo.json();
-
-    const adAccountId = dataInfo.adaccounts?.data[0]?.id;
-    const pageId = dataInfo.accounts?.data[0]?.id;
-
-    await sovyxDatabase.guardarCredencialesMeta(email, {
-      accessToken: longLivedToken,
-      adAccountId,
-      pageId,
-      estadoMeta: 'CONECTADO'
-    });
-
-    res.status(200).json({ status: 'SUCCESS', mensaje: 'Meta vinculado con éxito.' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ----------------------------------------------------
-// POST /api/pagos/iniciar-ciclo - Inicia el Ciclo de 48h disparando la primera campaña
-// ----------------------------------------------------
-router.post('/iniciar-ciclo', async (req, res) => {
-  try {
-    const { email, segmentacionInicial } = req.body;
-    const cliente = await sovyxDatabase.obtenerCliente(email);
-
-    if (!cliente?.meta?.accessToken) {
-      return res.status(400).json({ error: 'El cliente no tiene cuenta de Meta conectada.' });
-    }
-
-    const borrador1 = await metaService.buscarBorrador(
-      cliente.meta.adAccountId, 
-      cliente.meta.accessToken, 
-      "Prueba Hora 1-24"
-    );
-
-    if (!borrador1) {
-      return res.status(404).json({ error: 'No se encontró el borrador "Prueba Hora 1-24".' });
-    }
-
-    await metaService.inyectarSegmentacionYActivar(cliente.meta.accessToken, borrador1.id, segmentacionInicial);
-
-    await sovyxDatabase.actualizarEstadoCiclo(email, 'HORA_1_24_ACTIVA', {
-      'ciclo.fechaInicio': new Date(),
-      'ciclo.campaignId1': borrador1.id
-    });
-
-    res.status(200).json({ status: 'SUCCESS', mensaje: 'Campaña 1-24h activada correctamente.' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('🔴 Error al procesar pago:', error.message);
+    res.status(500).json({ error: 'Falla al procesar el pago en el servidor.' });
   }
 });
 
