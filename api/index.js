@@ -8,7 +8,11 @@ const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
 
 // Tarea Programada: Ciclo automatizado Meta Ads 24h/48h
-require('../jobs/cron24h');
+try {
+  require('../jobs/cron24h');
+} catch (e) {
+  console.warn('⚠️ [SOVYX CRON] Módulo cron24h no encontrado, omitiendo ejecuciones en segundo plano.');
+}
 
 const app = express();
 
@@ -63,7 +67,7 @@ try {
   app.get('/api/config', (req, res) => {
     res.json({
       SOVYX_ADMIN_KEY: config.SOVYX_ADMIN_KEY || process.env.SOVYX_ADMIN_KEY || 'admin1234',
-      FB_APP_ID: config.META_APP_ID || process.env.META_APP_ID || ''
+      FB_APP_ID: config.meta?.appId || process.env.META_APP_ID || ''
     });
   });
 }
@@ -72,7 +76,9 @@ try {
 try {
   app.use('/api/pago', require('../routes/pago'));
 } catch (e) {
-  app.use('/api/pagos', require('./routes/pagos'));
+  try {
+    app.use('/api/pagos', require('./routes/pagos'));
+  } catch (err) { console.warn('Módulo de pagos no cargado.'); }
 }
 
 // C. Onboarding Tester & Validaciones Meta
@@ -85,19 +91,23 @@ try {
   app.use('/api/admin', require('../routes/adminRoutes'));
 } catch (e) { console.warn('Módulo adminRoutes no cargado.'); }
 
-// E. Carga de Data CSV/XLSX
+// E. Carga de Data CSV/XLSX (Multer en RAM $\rightarrow$ MongoDB)
 try {
-  app.use('/api', require('../routes/uploadRoutes'));
-} catch (e) { console.warn('Módulo uploadRoutes no cargado.'); }
+  app.use('/api/upload', require('../routes/uploadRoutes'));
+} catch (e) {
+  try {
+    app.use('/api', require('../routes/uploadRoutes'));
+  } catch (err) { console.warn('Módulo uploadRoutes no cargado.'); }
+}
 
 // F. Autenticación Meta OAuth
 try {
   app.use('/api/auth', require('../routes/authRoutes'));
 } catch (e) { console.warn('Módulo authRoutes no cargado.'); }
 
-// G. Inyección de Campañas en Borrador (Ciclo 48h)
+// G. Inyección de Campañas en Borrador & Notificación 24h/48h
 try {
-  app.use('/api/pagos', require('../routes/cicloRoutes'));
+  app.use('/api/ciclo', require('../routes/cicloRoutes'));
 } catch (e) { console.warn('Módulo cicloRoutes no cargado.'); }
 
 // H. Chat Web & Slots
@@ -123,12 +133,12 @@ try { app.use('/api/ia1', require('./ia/ia1-segmentar')); } catch (e) {}
 try { app.use('/api/ia2', require('./ia/ia2-conversar')); } catch (e) {}
 try { app.use('/api/ia3', require('./ia/ia3-analizar')); } catch (e) {}
 
-// K. Disponibilidad de Slots (Límite 4 Clientes)
+// K. Disponibilidad de Slots (Límite 2 Clientes - High Ticket)
 app.get('/api/clientes/disponibles', async (req, res) => {
+  const maxSovyxSlots = config.sovyx?.totalSlots || 2;
   try {
     const db = require('../modules/sovyxDatabase');
     const slotsOcupados = await db.countClientes();
-    const maxSovyxSlots = 4;
     const slotsDisponibles = maxSovyxSlots - slotsOcupados;
     
     res.json({
@@ -136,52 +146,37 @@ app.get('/api/clientes/disponibles', async (req, res) => {
       ocupados: slotsOcupados,
       disponibles: slotsDisponibles > 0 ? slotsDisponibles : 0,
       mensaje: slotsDisponibles <= 0 ? "SOLD OUT" : "Slots disponibles",
-      precio: { ticket: 1000, moneda: 'USD' }
+      precio: { 
+        reserva: config.sovyx?.priceInitial || 1000, 
+        final: config.sovyx?.priceFinal || 9000,
+        total: 10000,
+        moneda: 'USD' 
+      }
     });
   } catch (error) {
     res.json({
-      totalSlots: 4,
+      totalSlots: maxSovyxSlots,
       ocupados: 0,
-      disponibles: 4,
+      disponibles: maxSovyxSlots,
       mensaje: "Slots disponibles",
-      precio: { ticket: 1000, moneda: 'USD' }
+      precio: { 
+        reserva: 1000, 
+        final: 9000,
+        total: 10000,
+        moneda: 'USD' 
+      }
     });
   }
 });
 
-// L. Dashboard & Cuentas Operativas
-app.get('/api/accounts', (req, res) => {
-  try {
-    const ACCOUNTS = require('../config/accounts');
-    const mis_cuentas = [
-      limpiarCuenta(ACCOUNTS.sovyx),
-      limpiarCuenta(ACCOUNTS.socredi),
-      limpiarCuenta(ACCOUNTS.soeditia),
-      limpiarCuenta(ACCOUNTS.soalefia)
-    ].filter(Boolean);
-
-    const clientes = [];
-    for (let i = 1; i <= 4; i++) {
-      const cliente = limpiarCuenta(ACCOUNTS[`client${i}`]);
-      if (cliente) clientes.push(cliente);
-    }
-
-    res.json({
-      mis_cuentas,
-      clientes,
-      total_operando: mis_cuentas.length + clientes.length
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Error al cargar configuración de cuentas' });
-  }
-});
-
+// L. Dashboard & Cuentas Operativas (Fallback seguro si no existe accounts.js)
 // M. Healthcheck & Estado del Sistema
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
     system: 'SOVYX Core AI Engine',
-    version: '2.0.26'
+    version: '2.0.26',
+    slots: config.sovyx?.totalSlots || 2
   });
 });
 
@@ -192,7 +187,7 @@ app.get('/api/health', (req, res) => {
     db_status: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
     timestamp: new Date().toISOString(),
     version: '2.0.26',
-    slots_update: '4 MAX',
+    slots_update: `${config.sovyx?.totalSlots || 2} MAX ($10K High Ticket)`,
   });
 });
 
@@ -220,8 +215,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`
   🚀 SOVYX OS v2.0.26 - SISTEMA ACTIVADO
   📡 Puerto: ${PORT}
-  🎯 Objetivo: 4 Usuarios Segmentados (High Retention)
-  💼 Slots: 4 Clientes (Escasez Activada)
+  🎯 Objetivo: 2 Clientes High-Ticket ($10,000 USD Total)
+  💼 Slots: 2 Exclusivos (Reserva $1K / Cripto $9K)
   💬 Ruta Chat: /api/chat
   💳 Ruta Pago: /api/pago/checkout
   🧪 Ruta Onboarding: /api/onboarding
