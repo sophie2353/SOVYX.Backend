@@ -12,7 +12,7 @@ try {
   require('../jobs/cron24h');
 } catch (e) {
   try {
-    require('./jobs/cron24h');
+    require('../jobs/cron24h');
   } catch (err) {
     console.warn('⚠️ [SOVYX CRON] Módulo cron24h no encontrado, omitiendo ejecuciones en segundo plano.');
   }
@@ -157,7 +157,7 @@ try {
     app.use('/api/chat', require('./chat/chat'));
   } catch (err) {
     app.post('/api/chat', (req, res) => {
-      res.json({ reply: 'Sistema SOVYX: Mensaje recibido. Slot en proceso de asignación.' });
+      res.json({ reply: 'Sistema SODIE: Mensaje recibido. Slot en proceso de asignación.' });
     });
   }
 }
@@ -166,7 +166,7 @@ try {
   app.use('/slots', require('../slots/slots'));
 } catch (e) {
   try {
-    app.use('/slots', require('./slots/slots'));
+    app.use('/slots', require('../slots/slots'));
   } catch (err) { console.warn('⚠️ Módulo slots no cargado.'); }
 }
 
