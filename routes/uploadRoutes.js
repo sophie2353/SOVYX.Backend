@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const sessionsDB = require('../config/db');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
