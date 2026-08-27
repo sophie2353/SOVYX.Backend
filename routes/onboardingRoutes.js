@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const sessionsDB = require('../config/db');
 
 // Registro de usuario FB para Tester
 router.post('/tester-request', (req, res) => {
