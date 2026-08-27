@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const tokens = require('../config/tokens');
-const sessionsDB = require('../config/db');
 
 router.post('/tester-approved', (req, res) => {
   const { sessionId, adminKey } = req.body;
