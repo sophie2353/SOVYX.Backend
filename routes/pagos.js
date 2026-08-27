@@ -58,7 +58,7 @@ router.post('/notificar-pago', async (req, res) => {
       const hashedEmail = crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
 
       await axios.post(
-        `https://graph.facebook.com/v19.0/${config.meta.pixelId}/events`,
+        `https://graph.facebook.com/v25.0/${config.meta.pixelId}/events`,
         {
           data: [
             {
