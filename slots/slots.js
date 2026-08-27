@@ -5,7 +5,7 @@ const metaAdsService = require('../services/metaAdsService');
 
 // Estado en memoria del backend (O guardado en una DB simple)
 let slotsState = {
-  totalSlots: 4,
+  totalSlots: 2,
   takenSlots: 0,
   launchTimestamp: new Date('2026-08-14T00:00:00Z') // Ajusta la hora exacta del lanzamiento
 };
