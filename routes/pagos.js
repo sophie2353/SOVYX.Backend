@@ -6,78 +6,61 @@ const config = require('../config/tokens');
 const sovyxDatabase = require('../modules/sovyxDatabase');
 
 // ====================================================
-// MATRIZ CENTRALIZADA DE LINKS DE PAGO
+// ALMACÉN DINÁMICO DE LINKS (Actualizable desde la Web/Postman)
 // ====================================================
-// Mañana solo pegas tus 6 URLs de Kontigo aquí o vía Admin
-const PAYMENT_LINKS = {
-  // --- MODO PRUEBA / ADMIN ---
-  admin: {
-    1:    "", // Link de $1 (Inicial / Slot)
-    1000: "", // Link de $1 USD (Simulando 1K)
-    9000: ""  // Link de $1 USD (Simulando 9K)
-  },
-  // --- CLIENTES REALES ---
-  client: {
-    1000: "", // Link Kontigo de $1,000 USD (Slot inicial)
-    9000: "", // Link Kontigo de $9,000 USD (Cierre post-48h)
-    5000: ""  // Link Kontigo de $5,000 USD (Mensualidad)
-  }
+// Aquí se guardarán los links que envíes desde tu panel admin o Postman
+const dynamicPaymentStore = {
+  // Ej: { "1": "url...", "1000": "url...", "9000": "url...", "5000": "url..." }
 };
 
 // ----------------------------------------------------
-// 1. POST /api/pagos/admin/set-links 
-// (Para actualizar o guardar los links desde tu panel o Postman)
+// 1. POST /api/pagos/admin/set-link 
+// (Envías el monto y el link desde tu web admin o Postman para guardarlo)
 // ----------------------------------------------------
-router.post('/admin/set-links', (req, res) => {
-  const { profile, amount, paymentUrl } = req.body; // profile: 'admin' | 'client'
+router.post('/admin/set-link', (req, res) => {
+  const { amount, paymentUrl } = req.body;
 
-  if (!profile || !amount || !paymentUrl) {
-    return res.status(400).json({ error: 'Faltan datos (profile, amount o paymentUrl)' });
+  if (!amount || !paymentUrl) {
+    return res.status(400).json({ error: 'Faltan datos obligatorios: amount y paymentUrl' });
   }
 
-  const targetProfile = profile === 'admin' ? 'admin' : 'client';
   const numAmount = Number(amount);
-
-  // Agregar parámetro de retorno automático a tu app
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const redirectParam = encodeURIComponent(`${frontendUrl}/?payment=success&profile=${targetProfile}&amount=${numAmount}`);
   
+  // Añadir parámetro de redirección automática al frontend para cuando Kontigo devuelva al usuario
+  const redirectParam = encodeURIComponent(`${frontendUrl}/?payment=success&amount=${numAmount}`);
   const finalUrl = paymentUrl.includes('?') 
     ? `${paymentUrl}&redirect_url=${redirectParam}`
     : `${paymentUrl}?redirect_url=${redirectParam}`;
 
-  // Guardar en la matriz
-  PAYMENT_LINKS[targetProfile][numAmount] = finalUrl;
+  // Guardar en el almacén en memoria
+  dynamicPaymentStore[numAmount] = finalUrl;
 
-  console.log(`[PAYMENT LINK CONFIG] Perfil: ${targetProfile} | Monto: $${numAmount} -> Link Guardado`);
+  console.log(`[PAGOS ADMIN] Link registrado exitosamente para el monto: $${numAmount}`);
 
   res.json({
-    ok: true,
-    message: `Link de $${numAmount} guardado correctamente para el perfil [${targetProfile}]`,
-    links: PAYMENT_LINKS
+    status: 'SUCCESS',
+    message: `Link configurado correctamente para el monto $${numAmount}`,
+    storedLinks: dynamicPaymentStore
   });
 });
 
 // ----------------------------------------------------
 // 2. GET /api/pagos/get-link 
-// (app.js solo envía ?amount=1000&profile=client y recibe su URL al instante)
+// (La web del cliente consulta el link según el monto que va a pagar)
 // ----------------------------------------------------
 router.get('/get-link', (req, res) => {
   const amount = Number(req.query.amount || 1000);
-  const profile = (req.query.profile === 'admin' || req.query.isAdmin === 'true') ? 'admin' : 'client';
-
-  // Buscar el link en la matriz
-  const paymentUrl = PAYMENT_LINKS[profile]?.[amount] || PAYMENT_LINKS.client?.[amount];
+  const paymentUrl = dynamicPaymentStore[amount];
 
   if (!paymentUrl) {
     return res.status(404).json({ 
-      error: `No hay un link de pago configurado para el perfil '${profile}' y monto $${amount}.` 
+      error: `No hay ningún link de pago configurado para el monto $${amount}. Regístralo primero desde el admin o Postman.` 
     });
   }
 
   res.json({
     status: 'SUCCESS',
-    profile,
     amount,
     paymentUrl
   });
@@ -85,7 +68,7 @@ router.get('/get-link', (req, res) => {
 
 // ----------------------------------------------------
 // 3. POST /api/pagos/confirm 
-// (Recibe la confirmación del pago, descuenta slot y envía CAPI)
+// (Recibe el retorno de pago exitoso, descuenta slot y dispara CAPI de Meta)
 // ----------------------------------------------------
 router.post('/confirm', async (req, res) => {
   try {
@@ -95,7 +78,7 @@ router.post('/confirm', async (req, res) => {
     const idCliente = clientId || 'cliente_sovyx';
     const emailCliente = email || `${idCliente}@sovyx.com`;
 
-    // A. Registrar pago en MongoDB y descontar slot
+    // A. Registrar el pago en base de datos y descontar slot
     const clienteActualizado = await sovyxDatabase.registrarCliente({
       email: emailCliente,
       montoPagado: montoFinal,
@@ -104,7 +87,7 @@ router.post('/confirm', async (req, res) => {
       fecha: new Date()
     });
 
-    // B. Notificar a Meta Pixel CAPI
+    // B. Enviar evento 'Purchase' al Pixel CAPI de Meta con el valor exacto
     if (config.meta?.pixelId && config.meta?.accessToken) {
       const hashedEmail = crypto.createHash('sha256').update(emailCliente.toLowerCase().trim()).digest('hex');
 
@@ -134,13 +117,18 @@ router.post('/confirm', async (req, res) => {
 
     res.status(200).json({
       status: 'SUCCESS',
-      mensaje: 'Pago registrado y Pixel notificado con éxito.',
+      mensaje: 'Pago registrado, slot descontado y Pixel notificado correctamente.',
       montoPagado: montoFinal
     });
   } catch (error) {
-    console.error('🔴 Error al procesar confirmación:', error.message);
+    console.error('🔴 Error al procesar confirmación de pago:', error.message);
     res.status(500).json({ error: 'Falla al procesar el pago en el servidor.' });
   }
+});
+
+// Alias por compatibilidad por si alguna versión anterior de app.js llama a esta ruta
+router.post('/notificar-pago', (req, res) => {
+  res.redirect(307, '/api/pagos/confirm');
 });
 
 module.exports = router;
