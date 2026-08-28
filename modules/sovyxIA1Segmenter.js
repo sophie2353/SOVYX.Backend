@@ -3,7 +3,6 @@ const Audiencia = require('../models/Audiencia');
 const sovyxLogger = require('../modules/sovyxLogger');
 
 class IA1Segmenter {
-
   getMode(arr) {
     if (!arr || !arr.length) return null;
     const freq = {};
@@ -21,7 +20,7 @@ class IA1Segmenter {
     return valid.length ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length) : 30;
   }
 
-  // 1. Generaliza miles de registros de data (edad, email, nicho, país, ciudad)
+  // Generaliza miles de filas de CSV
   parseAndGeneralizeCsv(fileContent) {
     const lines = fileContent.split(/\r?\n/).filter(l => l.trim() !== '');
     if (lines.length < 2) return null;
@@ -32,9 +31,9 @@ class IA1Segmenter {
       const obj = {};
       headers.forEach((h, i) => obj[h] = values[i] || '');
       return {
-        country: obj.country || obj.pais || 'US',
+        country: obj.country || obj.pais || obj.geo || 'US',
         city: obj.city || obj.ciudad || '',
-        niche: obj.niche || obj.nicho || 'marketing',
+        niche: obj.niche || obj.nicho || obj.category || 'fitness_coach',
         age: parseInt(obj.age || obj.edad || 30, 10)
       };
     });
@@ -46,7 +45,7 @@ class IA1Segmenter {
 
     const topCountry = this.getMode(countries) || 'US';
     const topCity = this.getMode(cities);
-    const topNiche = this.getMode(niches) || 'marketing';
+    const topNiche = this.getMode(niches) || 'fitness_coach';
     const avgAge = this.getAverageAge(ages);
 
     return {
@@ -61,16 +60,18 @@ class IA1Segmenter {
     };
   }
 
-  // 2. Almacena en la BD (Audiencia)
-  async procesarYGuardarSegmentacion(fileContent, sessionId) {
+  // Almacena en MongoDB con el modelo Audiencia exacto
+  async procesarYGuardarSegmentacion({ fileContent, sessionId, fileUrl, fileName }) {
     const generalData = this.parseAndGeneralizeCsv(fileContent);
-    if (!generalData) throw new Error('No se pudo extraer data suficiente del archivo CSV.');
+    if (!generalData) throw new Error('No se pudo extraer data válida del archivo.');
 
     const audiencia = await Audiencia.findOneAndUpdate(
       { sessionId },
       {
-        estado: 'PENDIENTE_CONFIRMACION',
-        segmentacion: generalData
+        fileUrl: fileUrl || '/uploads/default.csv',
+        fileName: fileName || 'audiencia.csv',
+        segmentacion: generalData,
+        estado: 'PENDIENTE_CONFIRMACION'
       },
       { upsert: true, new: true }
     );
@@ -78,8 +79,7 @@ class IA1Segmenter {
     if (sovyxLogger) {
       sovyxLogger.info('IA1: Segmentación procesada y guardada en Audiencia', {
         sessionId,
-        topNiche: generalData.nicho,
-        totalProcessed: generalData.totalProcessed
+        topNiche: generalData.nicho
       });
     }
 
