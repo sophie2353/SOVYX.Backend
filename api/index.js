@@ -59,15 +59,17 @@ if (MONGO_URI) {
 }
 
 // ============================================
-// 3. RUTAS Y MÓDULOS DE API (NUEVOS & LEGACY)
+// 3. RUTAS Y MÓDULOS DE API (MAPEO DIRECTO APP.JS)
 // ============================================
 
-// A. Configuración Pública Frontend (Render ENV variables)
+// A. Configuración Pública Frontend
 try {
-  app.use('/api', require('../routes/configRoutes'));
+  const configRoutes = require('../routes/configRoutes');
+  app.use('/api', configRoutes);
 } catch (e) {
   try {
-    app.use('/api', require('./routes/configRoutes'));
+    const configRoutes = require('./routes/configRoutes');
+    app.use('/api', configRoutes);
   } catch (err) {
     app.get('/api/config', (req, res) => {
       res.json({
@@ -93,12 +95,14 @@ try {
   }
 }
 
-// C. Integración Meta Graph API & Ciclo 48H (IA-1)
+// C. Integración Meta Graph API & Ciclo 48H
 try {
-  app.use('/api/meta', require('../routes/meta'));
+  const metaRoutes = require('../routes/meta');
+  app.use('/api/meta', metaRoutes);
 } catch (e) {
   try {
-    app.use('/api/meta', require('./routes/meta'));
+    const metaRoutes = require('./routes/meta');
+    app.use('/api/meta', metaRoutes);
   } catch (err) {
     console.warn('⚠️ Módulo routes/meta no cargado.');
   }
@@ -106,55 +110,67 @@ try {
 
 // D. Onboarding Tester & Validaciones Meta
 try {
-  app.use('/api/onboarding', require('../routes/onboardingRoutes'));
+  const onboardingRoutes = require('../routes/onboardingRoutes');
+  app.use('/api/onboarding', onboardingRoutes);
 } catch (e) {
   try {
-    app.use('/api/onboarding', require('./routes/onboardingRoutes'));
+    const onboardingRoutes = require('./routes/onboardingRoutes');
+    app.use('/api/onboarding', onboardingRoutes);
   } catch (err) { console.warn('⚠️ Módulo onboardingRoutes no cargado.'); }
 }
 
 // E. Panel Admin & Aprobaciones
 try {
-  app.use('/api/admin', require('../routes/adminRoutes'));
+  const adminRoutes = require('../routes/adminRoutes');
+  app.use('/api/admin', adminRoutes);
 } catch (e) {
   try {
-    app.use('/api/admin', require('./routes/adminRoutes'));
+    const adminRoutes = require('./routes/adminRoutes');
+    app.use('/api/admin', adminRoutes);
   } catch (err) { console.warn('⚠️ Módulo adminRoutes no cargado.'); }
 }
 
-// F. Carga de Data CSV/XLSX (Multer en RAM -> MongoDB)
+// F. Carga de Data CSV/XLSX
 try {
-  app.use('/api/upload', require('../routes/uploadRoutes'));
+  const uploadRoutes = require('../routes/uploadRoutes');
+  app.use('/api/upload', uploadRoutes);
 } catch (e) {
   try {
-    app.use('/api/upload', require('./routes/uploadRoutes'));
+    const uploadRoutes = require('./routes/uploadRoutes');
+    app.use('/api/upload', uploadRoutes);
   } catch (err) { console.warn('⚠️ Módulo uploadRoutes no cargado.'); }
 }
 
 // G. Autenticación Meta OAuth
 try {
-  app.use('/api/auth', require('../routes/authRoutes'));
+  const authRoutes = require('../routes/authRoutes');
+  app.use('/api/auth', authRoutes);
 } catch (e) {
   try {
-    app.use('/api/auth', require('./routes/authRoutes'));
+    const authRoutes = require('./routes/authRoutes');
+    app.use('/api/auth', authRoutes);
   } catch (err) { console.warn('⚠️ Módulo authRoutes no cargado.'); }
 }
 
-// H. Inyección de Campañas en Borrador & Notificación 24h/48h
+// H. Inyección de Campañas en Borrador & Notificación
 try {
-  app.use('/api/ciclo', require('../routes/cicloRoutes'));
+  const cicloRoutes = require('../routes/cicloRoutes');
+  app.use('/api/ciclo', cicloRoutes);
 } catch (e) {
   try {
-    app.use('/api/ciclo', require('./routes/cicloRoutes'));
+    const cicloRoutes = require('./routes/cicloRoutes');
+    app.use('/api/ciclo', cicloRoutes);
   } catch (err) { console.warn('⚠️ Módulo cicloRoutes no cargado.'); }
 }
 
 // I. Chat Web & Slots
 try {
-  app.use('/api/chat', require('../chat/chat'));
+  const chatRoutes = require('../chat/chat');
+  app.use('/api/chat', chatRoutes);
 } catch (e) {
   try {
-    app.use('/api/chat', require('./chat/chat'));
+    const chatRoutes = require('./chat/chat');
+    app.use('/api/chat', chatRoutes);
   } catch (err) {
     app.post('/api/chat', (req, res) => {
       res.json({ reply: 'Sistema SODIE: Mensaje recibido. Slot en proceso de asignación.' });
@@ -163,28 +179,58 @@ try {
 }
 
 try {
-  app.use('/slots', require('../slots/slots'));
+  const slotsRoutes = require('../slots/slots');
+  app.use('/slots', slotsRoutes);
 } catch (e) {
   try {
-    app.use('/slots', require('../slots/slots'));
+    const slotsRoutes = require('./slots/slots');
+    app.use('/slots', slotsRoutes);
   } catch (err) { console.warn('⚠️ Módulo slots no cargado.'); }
 }
 
 // J. Webhooks externos (Kontigo)
 try {
-  app.use('/api/webhooks', require('../routes/kontigoWebhook'));
+  const kontigoWebhook = require('../routes/kontigoWebhook');
+  app.use('/api/webhooks', kontigoWebhook);
 } catch (e) {
   try {
-    app.use('/api/webhooks', require('./routes/kontigoWebhook'));
+    const kontigoWebhook = require('./routes/kontigoWebhook');
+    app.use('/api/webhooks', kontigoWebhook);
   } catch (err) { console.warn('⚠️ Módulo kontigoWebhook no cargado.'); }
 }
 
 // K. Módulos IA
-try { app.use('/api/ia1', require('../ia/ia1-segmentar')); } catch (e) { try { app.use('/api/ia1', require('./ia/ia1-segmentar')); } catch (err) {} }
-try { app.use('/api/ia2', require('../ia/ia2-conversar')); } catch (e) { try { app.use('/api/ia2', require('./ia/ia2-conversar')); } catch (err) {} }
-try { app.use('/api/ia3', require('../ia/ia3-analizar')); } catch (e) { try { app.use('/api/ia3', require('./ia/ia3-analizar')); } catch (err) {} }
+try { 
+  const ia1 = require('../ia/ia1-segmentar');
+  app.use('/api/ia1', ia1); 
+} catch (e) { 
+  try { 
+    const ia1 = require('./ia/ia1-segmentar');
+    app.use('/api/ia1', ia1); 
+  } catch (err) {} 
+}
 
-// L. Disponibilidad de Slots (Límite 2 Clientes - High Ticket)
+try { 
+  const ia2 = require('../ia/ia2-conversar');
+  app.use('/api/ia2', ia2); 
+} catch (e) { 
+  try { 
+    const ia2 = require('./ia/ia2-conversar');
+    app.use('/api/ia2', ia2); 
+  } catch (err) {} 
+}
+
+try { 
+  const ia3 = require('../ia/ia3-analizar');
+  app.use('/api/ia3', ia3); 
+} catch (e) { 
+  try { 
+    const ia3 = require('./ia/ia3-analizar');
+    app.use('/api/ia3', ia3); 
+  } catch (err) {} 
+}
+
+// L. Disponibilidad de Slots
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 2;
   try {
