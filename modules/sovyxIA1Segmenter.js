@@ -1,6 +1,5 @@
 // modules/sovyxIA1Segmenter.js
-const Audiencia = require('../models/Audiencia');
-const sovyxLogger = require('../modules/sovyxLogger');
+const sovyxLogger = require('./sovyxLogger'); // O '../modules/sovyxLogger' según tu estructura
 
 class IA1Segmenter {
   getMode(arr) {
@@ -20,70 +19,69 @@ class IA1Segmenter {
     return valid.length ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length) : 30;
   }
 
-  // Generaliza miles de filas de CSV
-  parseAndGeneralizeCsv(fileContent) {
+  parseCsvToObjects(fileContent) {
     const lines = fileContent.split(/\r?\n/).filter(l => l.trim() !== '');
-    if (lines.length < 2) return null;
+    if (lines.length < 2) return [];
 
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const rawData = lines.slice(1).map(line => {
+    return lines.slice(1).map(line => {
       const values = line.split(',').map(v => v.trim());
       const obj = {};
       headers.forEach((h, i) => obj[h] = values[i] || '');
       return {
         country: obj.country || obj.pais || obj.geo || 'US',
         city: obj.city || obj.ciudad || '',
-        niche: obj.niche || obj.nicho || obj.category || 'fitness_coach',
+        niche: obj.niche || obj.nicho || obj.category || '',
         age: parseInt(obj.age || obj.edad || 30, 10)
       };
     });
+  }
+
+  // Método consumido por uploadRoutes.js
+  segmentarCsv(fileContent, defaultNiche = 'fitness_coach') {
+    const rawData = this.parseCsvToObjects(fileContent);
+
+    if (!rawData.length) {
+      return {
+        nicho: defaultNiche,
+        country: 'US',
+        age_min: 22,
+        age_max: 45,
+        totalProcessed: 0
+      };
+    }
 
     const countries = rawData.map(d => d.country);
     const cities = rawData.map(d => d.city).filter(Boolean);
-    const niches = rawData.map(d => d.niche);
+    const niches = rawData.map(d => d.niche).filter(Boolean);
     const ages = rawData.map(d => d.age);
 
     const topCountry = this.getMode(countries) || 'US';
     const topCity = this.getMode(cities);
-    const topNiche = this.getMode(niches) || 'fitness_coach';
+    const topNiche = this.getMode(niches) || defaultNiche;
     const avgAge = this.getAverageAge(ages);
 
     return {
       nicho: topNiche,
       country: topCountry,
-      city: topCity,
-      ageRange: {
-        min: Math.max(18, avgAge - 5),
-        max: Math.min(65, avgAge + 5)
-      },
+      ...(topCity ? { city: topCity } : {}),
+      age_min: Math.max(18, avgAge - 5),
+      age_max: Math.min(65, avgAge + 5),
       totalProcessed: rawData.length
     };
   }
 
-  // Almacena en MongoDB con el modelo Audiencia exacto
-  async procesarYGuardarSegmentacion({ fileContent, sessionId, fileUrl, fileName }) {
-    const generalData = this.parseAndGeneralizeCsv(fileContent);
-    if (!generalData) throw new Error('No se pudo extraer data válida del archivo.');
-
-    const audiencia = await Audiencia.findOneAndUpdate(
-      { sessionId },
-      {
-        fileUrl: fileUrl || '/uploads/default.csv',
-        fileName: fileName || 'audiencia.csv',
-        segmentacion: generalData,
-        estado: 'PENDIENTE_CONFIRMACION'
-      },
-      { upsert: true, new: true }
-    );
-
-    if (sovyxLogger) {
-      sovyxLogger.info('IA1: Segmentación procesada y guardada en Audiencia', {
-        sessionId,
-        topNiche: generalData.nicho
-      });
+  generarSegmentacion(nicho, esPrimeraVez = true, customParams = {}) {
+    if (customParams.rawCsv) {
+      return this.segmentarCsv(customParams.rawCsv, nicho);
     }
-
-    return { success: true, segmentation: generalData, audienciaId: audiencia._id };
+    return {
+      nicho: nicho || 'fitness_coach',
+      country: customParams.country || 'US',
+      age_min: 22,
+      age_max: 45,
+      totalProcessed: customParams.totalProcessed || 1
+    };
   }
 }
 
