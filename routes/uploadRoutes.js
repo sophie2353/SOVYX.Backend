@@ -1,11 +1,10 @@
+// routes/uploadRoutes.js
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-// Módulos y Modelos
 const Audiencia = require('../models/Audiencia');
 
-// Importación e instanciación de la IA1
 let ia1Instance = null;
 try {
   const IA1 = require('../modules/sovyxIA1Segmenter');
@@ -29,10 +28,10 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
     const session = sessionId || 'sess_default';
     const nichoObjetivo = nicho || 'fitness_coach';
 
-    // 1. Decodificar el archivo en memoria (Buffer a String)
+    // 1. Decodificar el buffer
     const fileContent = req.file.buffer.toString('utf-8');
 
-    // 2. Procesar y segmentar la data con el módulo de la IA1
+    // 2. Procesar la data con IA1
     let extractedTargeting;
 
     if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
@@ -40,35 +39,31 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
     } else if (ia1Instance && typeof ia1Instance.generarSegmentacion === 'function') {
       extractedTargeting = ia1Instance.generarSegmentacion(nichoObjetivo, false, { rawCsv: fileContent });
     } else {
-      // Fallback de inferencia / targeting predeterminado
       extractedTargeting = {
         nicho: nichoObjetivo,
         age_min: 22,
         age_max: 45,
-        geo_locations: { countries: ['US', 'MX', 'CO'] },
-        interests: [{ id: '6003139266661', name: 'Digital Marketing' }]
+        country: 'US'
       };
     }
 
-    // Asegurar que el nicho esté guardado dentro de la estructura de segmentación
     if (typeof extractedTargeting === 'object' && !extractedTargeting.nicho) {
       extractedTargeting.nicho = nichoObjetivo;
     }
 
-    // 3. Persistir en MongoDB (Crea o actualiza la Audiencia para esta sesión)
+    // 3. Persistir en MongoDB cumpliendo con el Schema de Audiencia
     const audienciaGuardada = await Audiencia.findOneAndUpdate(
       { sessionId: session },
       {
         sessionId: session,
+        fileUrl: `memory://${req.file.originalname}`, // Cumple con required: true en Schema
         fileName: req.file.originalname,
         segmentacion: extractedTargeting,
-        estado: 'PENDIENTE_CONFIRMACION',
-        updatedAt: new Date()
+        estado: 'PENDIENTE_CONFIRMACION'
       },
       { upsert: true, new: true }
     );
 
-    // 4. Mantenemos compatibilidad en memoria si usas sessionsDB global
     if (typeof sessionsDB !== 'undefined') {
       sessionsDB[session] = {
         ...sessionsDB[session],
@@ -78,7 +73,6 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
       };
     }
 
-    // 5. Respuesta al cliente
     return res.json({ 
       ok: true, 
       audienciaId: audienciaGuardada._id,
