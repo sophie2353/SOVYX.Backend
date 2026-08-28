@@ -2,7 +2,7 @@ const sovyxLogger = require('./sovyxLogger');
 
 class SOVYXIA2Conversor {
   constructor(estilo = 'aggressive_closer') {
-    this.name = "SOVYX IA2";
+    this.name = "SODIE IA2";
     this.estilo = estilo;
     this.contexto = {}; 
 
@@ -35,10 +35,10 @@ class SOVYXIA2Conversor {
         "Puedes procesar el pago inicial de $1,000 con Tarjeta de Crédito/Débito Internacional o Apple Pay. Para la liquidación final de $9,000 se habilita la pasarela de cripto/transferencia directa al confirmar resultados."
       ],
 
-      "ecommerce": [
+      "Ecommerce": [
         "Para alcanzar los 100K€ este mes con un producto de 27€ necesitas 3.700 ventas. Con el método tradicional de Meta Ads vas a quemar más de 25.000€ intentando que el Píxel aprenda a quién venderle. No tienes 90 días para especular; te quedan menos de 20. Este es el protocolo de aceleración con SOVYX:\n\n" +
         "• Acceso y Prueba (48 Horas): Inyectas la data de tus compradores validados y activas 1.000€/día en anuncios como lo vienes haciendo.\n" +
-        "• Clonación de Audiencia: SOVYX multiplica cada comprador real en 100 perfiles idénticos de alta conversión.\n" +
+        "• Clonación de Audiencia: SODIE multiplica cada comprador real en 100 perfiles idénticos de alta conversión.\n" +
         "• Validación Condicionada: Si en 48 horas confirmas la aceleración de ventas en tu panel, liquidas los $9.000 del software. Si no hay resultados, te detienes ahí solo con los 1.000$ de acceso.\n" +
         "• Escalado a 100K€: 5K$ de entrada a esta fase y con cada venta nueva procesada cada 24 horas, la IA recalibra el motor para mantener el costo de adquisición congelado o más bajo mientras alcanzas las 3.700 ventas.\n" +
         "• Comisión de Rendimiento: Al alcanzar la meta de los 100K€ en el mes, se aplica un 15% de comisión sobre el resultado generado.\n" +
@@ -97,7 +97,7 @@ class SOVYXIA2Conversor {
     let quickReplies = [...this.defaultQuickReplies];
     if (intencion === 'acceder') {
       quickReplies = [
-        { label: "💳 Checkout Reserva ($1,000)", payload: "checkout_link" },
+        { label: "Checkout Reserva ($1,000)", payload: "checkout_link" },
         { label: "¿Qué hago después de pagar?", payload: "despues_de_pagar" }
       ];
     } else if (intencion === 'ecommerce') {
