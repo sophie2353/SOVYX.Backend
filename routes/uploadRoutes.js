@@ -4,35 +4,55 @@ const multer = require('multer');
 
 // Módulos y Modelos
 const Audiencia = require('../models/Audiencia');
-// Invocación al módulo de procesamiento de IA1
-const ia1Module = require('../modules/ia1Segmentador'); 
+
+// Importación e instanciación de la IA1
+let ia1Instance = null;
+try {
+  const IA1 = require('../modules/sovyxIA1Segmenter');
+  ia1Instance = new IA1();
+} catch (e) {
+  try {
+    const IA1 = require('../../modules/sovyxIA1Segmenter');
+    ia1Instance = new IA1();
+  } catch (err) {
+    console.warn('⚠️ [UPLOAD] No se pudo instanciar sovyxIA1Segmenter. Usando fallback.');
+  }
+}
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.post('/upload-csv', upload.single('file'), async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const { sessionId, nicho } = req.body;
     if (!req.file) return res.status(400).json({ error: 'Archivo no recibido' });
 
     const session = sessionId || 'sess_default';
+    const nichoObjetivo = nicho || 'fitness_coach';
 
     // 1. Decodificar el archivo en memoria (Buffer a String)
     const fileContent = req.file.buffer.toString('utf-8');
 
     // 2. Procesar y segmentar la data con el módulo de la IA1
-    // Si tu módulo procesa el buffer/texto directamente, le pasamos el contenido; 
-    // de lo contrario, se genera la inferencia de targeting.
     let extractedTargeting;
-    if (ia1Module && typeof ia1Module.segmentarCsv === 'function') {
-      extractedTargeting = await ia1Module.segmentarCsv(fileContent);
+
+    if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
+      extractedTargeting = await ia1Instance.segmentarCsv(fileContent, nichoObjetivo);
+    } else if (ia1Instance && typeof ia1Instance.generarSegmentacion === 'function') {
+      extractedTargeting = ia1Instance.generarSegmentacion(nichoObjetivo, false, { rawCsv: fileContent });
     } else {
-      // Extracción de patrones / Fallback de inferencia
+      // Fallback de inferencia / targeting predeterminado
       extractedTargeting = {
+        nicho: nichoObjetivo,
         age_min: 22,
         age_max: 45,
         geo_locations: { countries: ['US', 'MX', 'CO'] },
         interests: [{ id: '6003139266661', name: 'Digital Marketing' }]
       };
+    }
+
+    // Asegurar que el nicho esté guardado dentro de la estructura de segmentación
+    if (typeof extractedTargeting === 'object' && !extractedTargeting.nicho) {
+      extractedTargeting.nicho = nichoObjetivo;
     }
 
     // 3. Persistir en MongoDB (Crea o actualiza la Audiencia para esta sesión)
@@ -48,7 +68,7 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // 4. Mantenemos compatibilidad con memoria si usas sessionsDB global
+    // 4. Mantenemos compatibilidad en memoria si usas sessionsDB global
     if (typeof sessionsDB !== 'undefined') {
       sessionsDB[session] = {
         ...sessionsDB[session],
