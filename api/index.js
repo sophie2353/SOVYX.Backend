@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const path = require('path');
 require('dotenv').config();
 
 // Configuración & Logging Centralizado
@@ -29,6 +30,9 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Servir archivos subidos (CSV/Archivos de Audiencia)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Logger global de tráfico SOVYX
 app.use((req, res, next) => {
@@ -146,7 +150,7 @@ try {
   } catch (err) { console.warn('⚠️ Módulo adminRoutes no cargado.'); }
 }
 
-// F. Carga de Data CSV/XLSX (IA1)
+// F. Carga de Data CSV/XLSX (IA1 - Upload)
 try {
   const uploadRoutes = require('../routes/uploadRoutes');
   app.use('/api/v1/client/upload-audience', uploadRoutes);
@@ -192,11 +196,23 @@ try {
 }
 
 // I. Módulos IA & Métricas
+
+// IA1: Carga prioritaria desde routes/ia1Routes (Soporta /lanzar, /activar, /aprender)
 try {
-  const ia1 = require('../ia/ia1-segmentar');
-  app.use('/api/ia1', ia1);
+  const ia1Routes = require('../routes/ia1Routes');
+  app.use('/api/ia1', ia1Routes);
 } catch (e) {
-  try { app.use('/api/ia1', require('./ia/ia1-segmentar')); } catch (err) {}
+  try {
+    const ia1Routes = require('./routes/ia1Routes');
+    app.use('/api/ia1', ia1Routes);
+  } catch (err) {
+    try {
+      const ia1Fallback = require('../ia/ia1-segmentar');
+      app.use('/api/ia1', ia1Fallback);
+    } catch (err2) {
+      console.warn('⚠️ Módulo /api/ia1 no cargado.');
+    }
+  }
 }
 
 try {
@@ -313,6 +329,7 @@ app.listen(PORT, '0.0.0.0', () => {
   💳 Rutas Pago: /api/v1/payments & /api/pagos
   💬 Rutas Chat: /api/v1/chat/message & /api/chat
   📁 Rutas Carga: /api/v1/client/upload-audience & /api/upload
+  ⚙️ Rutas IA1: /api/ia1/lanzar & /api/ia1/activar
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
 });
