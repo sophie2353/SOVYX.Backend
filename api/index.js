@@ -150,17 +150,30 @@ try {
   } catch (err) { console.warn('⚠️ Módulo adminRoutes no cargado.'); }
 }
 
-// F. Carga de Data CSV/XLSX (IA1 - Upload)
+// F. Carga de Data CSV/XLSX (IA1 - Upload) & Transmisión SSE Campañas
 try {
-  const uploadRoutes = require('../routes/uploadRoutes');
-  app.use('/api/v1/client/upload-audience', uploadRoutes);
-  app.use('/api/upload', uploadRoutes);
+  const { router: campaignRoutes } = require('../routes/campaignRoutes');
+  app.use('/api/campaigns', campaignRoutes);
+  app.use('/api/v1/client', campaignRoutes);
 } catch (e) {
   try {
-    const uploadRoutes = require('./routes/uploadRoutes');
-    app.use('/api/v1/client/upload-audience', uploadRoutes);
-    app.use('/api/upload', uploadRoutes);
-  } catch (err) { console.warn('⚠️ Módulo uploadRoutes no cargado.'); }
+    const { router: campaignRoutes } = require('./routes/campaignRoutes');
+    app.use('/api/campaigns', campaignRoutes);
+    app.use('/api/v1/client', campaignRoutes);
+  } catch (err) {
+    // Carga de fallback legacy si campaignRoutes no existe
+    try {
+      const uploadRoutes = require('../routes/uploadRoutes');
+      app.use('/api/v1/client/upload-audience', uploadRoutes);
+      app.use('/api/upload', uploadRoutes);
+    } catch (e2) {
+      try {
+        const uploadRoutes = require('./routes/uploadRoutes');
+        app.use('/api/v1/client/upload-audience', uploadRoutes);
+        app.use('/api/upload', uploadRoutes);
+      } catch (err2) { console.warn('⚠️ Módulos de carga/campañas no cargados.'); }
+    }
+  }
 }
 
 // G. Autenticación Meta OAuth
@@ -328,7 +341,7 @@ app.listen(PORT, '0.0.0.0', () => {
   🎯 Objetivo: 2 Clientes High-Ticket ($10,000 USD Total)
   💳 Rutas Pago: /api/v1/payments & /api/pagos
   💬 Rutas Chat: /api/v1/chat/message & /api/chat
-  📁 Rutas Carga: /api/v1/client/upload-audience & /api/upload
+  📁 Rutas Carga/SSE: /api/v1/client/upload-audience & /api/campaigns/stream
   ⚙️ Rutas IA1: /api/ia1/lanzar & /api/ia1/activar
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
