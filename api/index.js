@@ -89,6 +89,23 @@ try {
 }
 
 // B. Pasarela de Pago & Checkout ($1K, $5K, $9K + Meta CAPI + Slots)
+
+// Ruta específica para Inyección de Pasarela Hora 48 ($9,000 / $5,000)
+try {
+  const pagoHora48Routes = require('../routes/pagoHora48');
+  app.use('/api/pagos/inyectar-pasarela', pagoHora48Routes);
+  app.use('/api/pago/inyectar-pasarela', pagoHora48Routes);
+} catch (e) {
+  try {
+    const pagoHora48Routes = require('./routes/pagoHora48');
+    app.use('/api/pagos/inyectar-pasarela', pagoHora48Routes);
+    app.use('/api/pago/inyectar-pasarela', pagoHora48Routes);
+  } catch (err) {
+    console.warn('⚠️ Módulo routes/pagoHora48 no cargado.');
+  }
+}
+
+// Rutas de Pago Generales
 try {
   const pagoRoutes = require('../routes/pago');
   app.use('/api/v1/payments', pagoRoutes);
@@ -397,6 +414,7 @@ app.listen(PORT, '0.0.0.0', () => {
   📡 Puerto: ${PORT}
   🎯 Objetivo: 2 Clientes High-Ticket ($10,000 USD Total)
   💳 Rutas Pago: /api/v1/payments & /api/pagos
+  ⏳ Inyección Hora 48: /api/pagos/inyectar-pasarela -> routes/pagoHora48
   💬 Rutas Chat IA2: /api/v1/chat, /api/chat & /api/ia2
   📁 Rutas Carga/SSE: /api/v1/client/upload-audience & /api/campaigns/stream
   ⚙️ Rutas IA1: /api/ia1/confirmar-borrador, /api/ia1/activar & /api/ia1/lanzar
