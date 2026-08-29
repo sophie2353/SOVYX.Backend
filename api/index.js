@@ -326,10 +326,29 @@ app.get(['/api/v1/metrics/live', '/api/ia3/live'], (req, res) => {
   });
 });
 
-// Endpoint para suscripciones Push Notifications
-app.post(['/api/v1/notifications/subscribe', '/api/notifications/subscribe'], (req, res) => {
-  res.json({ status: 'subscribed', sessionId: req.body.sessionId || 'anonymous' });
-});
+// Push Notifications (Suscripción y envio via routes/notifications.js)
+let notificationsLoaded = false;
+try {
+  const notificationRoutes = require('../routes/notifications');
+  app.use('/api/v1/notifications', notificationRoutes);
+  app.use('/api/notifications', notificationRoutes);
+  notificationsLoaded = true;
+} catch (e) {
+  try {
+    const notificationRoutes = require('./routes/notifications');
+    app.use('/api/v1/notifications', notificationRoutes);
+    app.use('/api/notifications', notificationRoutes);
+    notificationsLoaded = true;
+  } catch (err) {
+    console.warn('⚠️ Módulo routes/notifications no cargado, usando fallback básico.');
+  }
+}
+
+if (!notificationsLoaded) {
+  app.post(['/api/v1/notifications/subscribe', '/api/notifications/subscribe'], (req, res) => {
+    res.json({ status: 'subscribed', sessionId: req.body.sessionId || 'anonymous' });
+  });
+}
 
 // J. Disponibilidad de Slots
 app.get('/api/clientes/disponibles', async (req, res) => {
@@ -418,6 +437,7 @@ app.listen(PORT, '0.0.0.0', () => {
   💬 Rutas Chat IA2: /api/v1/chat, /api/chat & /api/ia2
   📁 Rutas Carga/SSE: /api/v1/client/upload-audience & /api/campaigns/stream
   ⚙️ Rutas IA1: /api/ia1/confirmar-borrador, /api/ia1/activar & /api/ia1/lanzar
+  🔔 Rutas Push: /api/v1/notifications/subscribe -> routes/notifications
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
 });
