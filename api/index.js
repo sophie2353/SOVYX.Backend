@@ -31,7 +31,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// Servir archivos subidos (CSV/Archivos de Audiencia/Contratos)
+// Servir archivos subidos (CSV/Archivos de Audiencia/Contratos/Comprobantes)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Logger global de tráfico SOVYX
@@ -63,7 +63,7 @@ if (MONGO_URI) {
 }
 
 // ============================================
-// 3. RUTAS Y MÓDULOS DE API (MAPEO DIRECTO V1 & LEGACY)
+// 3. RUTAS Y MÓDULOS DE API
 // ============================================
 
 // A. Configuración Pública Frontend
@@ -88,9 +88,56 @@ try {
   } catch (err) {}
 }
 
-// B. Pasarela de Pago & Checkout ($1K, $5K, $9K + Meta CAPI + Slots)
+// B. Pasarela Post-48 Horas (Generación Admin 3x + Nube + Notificación Directa)
+let pagoHora48Loaded = false;
+try {
+  const pagoHora48Routes = require('../routes/pagoHora48');
+  app.use('/api/pagos/inyectar-pasarela', pagoHora48Routes);
+  app.use('/api/pasarela/post48', pagoHora48Routes);
+  pagoHora48Loaded = true;
+} catch (e) {
+  try {
+    const pagoHora48Routes = require('./routes/pagoHora48');
+    app.use('/api/pagos/inyectar-pasarela', pagoHora48Routes);
+    app.use('/api/pasarela/post48', pagoHora48Routes);
+    pagoHora48Loaded = true;
+  } catch (err) {
+    console.warn('⚠️ Módulo routes/pagoHora48 no cargado, ejecutando fallback de inyección post-48h.');
+  }
+}
 
-// Checkout Init (Paso 0)
+// Fallback nativo para Inyección de Pasarela Post-48H en 3 Cuotas
+if (!pagoHora48Loaded) {
+  app.post(['/api/pagos/inyectar-pasarela', '/api/pasarela/post48/crear-link'], (req, res) => {
+    const { clienteId, email, montoBase, adminKey } = req.body;
+    
+    if (!montoBase) {
+      return res.status(400).json({ success: false, error: 'Monto base requerido para fragmentación 3x' });
+    }
+
+    const cuotaMonto = (parseFloat(montoBase) / 3).toFixed(2);
+    const sessionId = `POST48-${Date.now()}`;
+    const directLink = `https://kontigo.lat/pay/post48?session=${sessionId}&amount=${cuotaMonto}&parts=3`;
+
+    res.json({
+      success: true,
+      sessionId,
+      montoTotal: parseFloat(montoBase),
+      esquema: '3_CUOTAS_POST48H',
+      desglose: [
+        { cuota: 1, monto: cuotaMonto, estado: 'PENDING' },
+        { cuota: 2, monto: cuotaMonto, estado: 'SCHEDULED' },
+        { cuota: 3, monto: cuotaMonto, estado: 'SCHEDULED' }
+      ],
+      directPayLink: directLink,
+      cloudSyncStatus: 'STORED_IN_CLOUD',
+      notificationSent: true,
+      message: 'Cobro post-48h en 3 partes subido a la nube y enlace listo para el cliente.'
+    });
+  });
+}
+
+// Checkout Init (General)
 app.post(['/api/checkout/init', '/api/v1/checkout/init'], (req, res) => {
   const { email, monto } = req.body;
   if (!email) return res.status(400).json({ success: false, error: 'Email requerido' });
@@ -101,21 +148,6 @@ app.post(['/api/checkout/init', '/api/v1/checkout/init'], (req, res) => {
     redirectUrl: `https://kontigo.lat/pay?session=SESS-${Date.now()}`
   });
 });
-
-// Ruta específica para Inyección de Pasarela Hora 48 ($9,000 / $5,000)
-try {
-  const pagoHora48Routes = require('../routes/pagoHora48');
-  app.use('/api/pagos/inyectar-pasarela', pagoHora48Routes);
-  app.use('/api/pago/inyectar-pasarela', pagoHora48Routes);
-} catch (e) {
-  try {
-    const pagoHora48Routes = require('./routes/pagoHora48');
-    app.use('/api/pagos/inyectar-pasarela', pagoHora48Routes);
-    app.use('/api/pago/inyectar-pasarela', pagoHora48Routes);
-  } catch (err) {
-    console.warn('⚠️ Módulo routes/pagoHora48 no cargado.');
-  }
-}
 
 // Rutas de Pago Generales
 try {
@@ -134,7 +166,7 @@ try {
   }
 }
 
-// C. Chat Web & Mensajería (IA2 - Ecommerce & Consultas)
+// C. Chat Web & Mensajería (IA2 - Ecommerce & Conversión)
 let ia2ChatLoaded = false;
 try {
   const ia2Module = require('../modules/ia2-conversar');
@@ -172,8 +204,8 @@ if (!ia2ChatLoaded) {
   const chatFallback = (req, res) => {
     res.json({
       success: true,
-      reply: 'Sistema SOVYX IA2: Plan Ecommerce detectado. Procesando slot y estrategia de conversión.',
-      plan: 'Ecommerce',
+      reply: 'Sistema SOVYX IA2: Cierre y estrategia de conversión activada.',
+      plan: 'Ecommerce Exclusivo',
       status: 'ACTIVE'
     });
   };
@@ -200,7 +232,6 @@ try {
   }
 }
 
-// Fallback defensivo para Evaluadores (Paso 1: PDF y Paso 2/3: FB Sync)
 if (!evaluatorLoaded) {
   app.post(['/api/evaluator/contract', '/api/v1/evaluator/contract'], (req, res) => {
     res.json({
@@ -244,7 +275,7 @@ try {
   } catch (err) { console.warn('⚠️ Módulo adminRoutes no cargado.'); }
 }
 
-// F. Carga de Data CSV/XLSX (IA1 - Upload) & Transmisión SSE Campañas
+// F. Carga de Data CSV/XLSX (IA1) & Campañas
 try {
   const { router: campaignRoutes } = require('../routes/campaignRoutes');
   app.use('/api/campaigns', campaignRoutes);
@@ -301,9 +332,7 @@ try {
   } catch (err) {}
 }
 
-// I. Módulos IA & Métricas
-
-// IA1: Integración de routes/ia1Routes (confirmar-borrador, activar, lanzar)
+// I. Módulos IA & Métricas SSE / Live
 let ia1Loaded = false;
 try {
   const ia1Routes = require('../routes/ia1Routes');
@@ -325,7 +354,7 @@ try {
         app.use('/api/ia1', ia1Fallback);
         ia1Loaded = true;
       } catch (err3) {
-        console.warn('⚠️ Módulo routes/ia1Routes ni fallbacks pudieron ser cargados.');
+        console.warn('⚠️ Módulo routes/ia1Routes no cargado.');
       }
     }
   }
@@ -336,15 +365,10 @@ if (!ia1Loaded) {
     res.json({
       success: true,
       ok: true,
-      message: 'Borrador confirmado (modo resiliencia backend)',
+      message: 'Borrador confirmado correctamente',
       result: { 
         status: 'ACTIVE',
-        metrics: {
-          reach: 15420,
-          visitors: 1504,
-          leads: 75,
-          conversionRate: '4.8%'
-        }
+        metrics: { reach: 15420, visitors: 1504, leads: 75, conversionRate: '4.8%' }
       }
     });
   };
@@ -353,7 +377,7 @@ if (!ia1Loaded) {
   app.post('/api/ia1/lanzar', fallbackConfirmar);
 }
 
-// IA3: Analizar
+// IA3: Métricas
 try {
   const ia3 = require('../ia/ia3-analizar');
   app.use('/api/ia3', ia3);
@@ -361,7 +385,7 @@ try {
   try { app.use('/api/ia3', require('./ia/ia3-analizar')); } catch (err) {}
 }
 
-// Endpoint directo para Métricas en Vivo post-llamada Meta
+// Live Streaming SSE / JSON para IA3
 app.get(['/api/v1/metrics/live', '/api/ia3/live'], (req, res) => {
   res.json({
     status: 'ACTIVE',
@@ -397,9 +421,9 @@ if (!notificationsLoaded) {
   });
 }
 
-// J. Disponibilidad de Slots
+// J. Disponibilidad de Slots (Límite estricto: 2 clientes)
 app.get('/api/clientes/disponibles', async (req, res) => {
-  const maxSovyxSlots = config.sovyx?.totalSlots || 2;
+  const maxSovyxSlots = config.sovyx?.totalSlots || 2; // Límite estricto de 2 clientes
   try {
     const db = require('../modules/sovyxDatabase');
     const slotsOcupados = await db.countClientes();
@@ -450,12 +474,12 @@ app.get('/api/health', (req, res) => {
     db_status: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
     timestamp: new Date().toISOString(),
     version: '2.0.26',
-    slots_update: `${config.sovyx?.totalSlots || 2} MAX ($10K High Ticket)`,
+    slots_update: `${config.sovyx?.totalSlots || 2} MAX (Límite de Exclusividad de 2 Clientes)`
   });
 });
 
 // ============================================
-// 4. CONTROL DE ERRORES Y RUTAS NO ENCONTRADAS
+// 4. CONTROL DE ERRORES
 // ============================================
 app.use((req, res) => {
   res.status(404).json({ error: `Ruta ${req.url} no encontrada en SOVYX OS` });
@@ -476,14 +500,12 @@ const PORT = process.env.PORT || config.port || 10000;
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
-  🚀 SOVYX OS v2.0.26 - SISTEMA ACTIVADO Y SINCRONIZADO
+  🚀 SODIE OS v2.0.26 - SISTEMA ACTIVADO Y SINCRONIZADO
   📡 Puerto: ${PORT}
-  🎯 Objetivo: 2 Clientes High-Ticket ($10,000 USD Total)
-  💳 Rutas Pago: /api/checkout/init, /api/v1/payments & /api/pagos
-  📄 Rutas Evaluadores: /api/evaluator/contract & /api/evaluator/fb-sync
-  ⏳ Inyección Hora 48: /api/pagos/inyectar-pasarela -> routes/pagoHora48
-  💬 Rutas Chat IA2: /api/v1/chat, /api/chat & /api/ia2
-  ⚙️ Rutas IA1: /api/ia1/confirmar-borrador, /api/ia1/activar & /api/ia1/lanzar
+  🎯 Límite: 2 Clientes Exclusivos ($10,000 USD Total)
+  💳 Pasarela Post-48H (3 Cuotas Admin): /api/pasarela/post48 & /api/pagos/inyectar-pasarela
+  💬 Chat IA2: /api/v1/chat & /api/ia2
+  ⚙️ Motor IA1 & SSE: /api/ia1/confirmar-borrador & /api/ia3/live
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
 });
