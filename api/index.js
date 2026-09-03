@@ -15,7 +15,7 @@ try {
   try {
     require('./jobs/cron24h');
   } catch (err) {
-    console.warn('⚠️ [SOVYX CRON] Módulo cron24h no encontrado, omitiendo ejecuciones en segundo plano.');
+    console.warn('⚠️ [SODIE CRON] Módulo cron24h no encontrado, omitiendo ejecuciones en segundo plano.');
   }
 }
 
@@ -29,12 +29,13 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Servir archivos subidos (CSV/Archivos de Audiencia/Contratos/Comprobantes)
+// Servir archivos subidos (Videos/CSV/Audiencias/Contratos/PDFs/Excels)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Logger global de tráfico SOVYX
+// Logger global de tráfico SODIE OS
 app.use((req, res, next) => {
   if (sovyxLogger && sovyxLogger.info) {
     sovyxLogger.info(`${req.method} ${req.path}`);
@@ -50,16 +51,16 @@ const MONGO_URI = process.env.MONGO_URI || config.mongoUri;
 if (MONGO_URI) {
   mongoose.connect(MONGO_URI)
     .then(() => {
-      console.log('🟢 [SOVYX DB] Base de datos conectada correctamente.');
+      console.log('🟢 [SODIE DB] Base de datos conectada correctamente.');
     })
     .catch((err) => {
       if (sovyxLogger && sovyxLogger.error) {
         sovyxLogger.error('Error al conectar MongoDB', { error: err.message });
       }
-      console.error('🔴 [SOVYX DB] Error de conexión:', err.message);
+      console.error('🔴 [SODIE DB] Error de conexión:', err.message);
     });
 } else {
-  console.warn('⚠️ [SOVYX DB] MONGO_URI no encontrada en entorno.');
+  console.warn('⚠️ [SODIE DB] MONGO_URI no encontrada en entorno.');
 }
 
 // ============================================
@@ -88,85 +89,135 @@ try {
   } catch (err) {}
 }
 
-// B. Pasarela Post-48 Horas (Generación Admin 3x + Nube + Notificación Directa)
-let pagoHora48Loaded = false;
+// B. Rutas de Pasarela (Kontigo $1K, Link Directo Opción 2 & Post-48H / 72H / 96H)
+let pasarelaLoaded = false;
 try {
-  const pagoHora48Routes = require('../routes/pagoHora48');
-  app.use('/api/pagos/inyectar-pasarela', pagoHora48Routes);
-  app.use('/api/pasarela/post48', pagoHora48Routes);
-  pagoHora48Loaded = true;
+  const pasarelaRoutes = require('../routes/pasarela');
+  app.use('/api/pasarela', pasarelaRoutes);
+  app.use('/api/pagos/admin', pasarelaRoutes);
+  pasarelaLoaded = true;
 } catch (e) {
   try {
-    const pagoHora48Routes = require('./routes/pagoHora48');
-    app.use('/api/pagos/inyectar-pasarela', pagoHora48Routes);
-    app.use('/api/pasarela/post48', pagoHora48Routes);
-    pagoHora48Loaded = true;
+    const pasarelaRoutes = require('./routes/pasarela');
+    app.use('/api/pasarela', pasarelaRoutes);
+    app.use('/api/pagos/admin', pasarelaRoutes);
+    pasarelaLoaded = true;
   } catch (err) {
-    console.warn('⚠️ Módulo routes/pagoHora48 no cargado, ejecutando fallback de inyección post-48h.');
+    console.warn('⚠️ Módulo routes/pasarela no cargado, activando fallbacks de pasarela.');
   }
 }
 
-// Fallback nativo para Inyección de Pasarela Post-48H en 3 Cuotas
-if (!pagoHora48Loaded) {
-  app.post(['/api/pagos/inyectar-pasarela', '/api/pasarela/post48/crear-link'], (req, res) => {
-    const { clienteId, email, montoBase, adminKey } = req.body;
-    
-    if (!montoBase) {
-      return res.status(400).json({ success: false, error: 'Monto base requerido para fragmentación 3x' });
-    }
-
-    const cuotaMonto = (parseFloat(montoBase) / 3).toFixed(2);
-    const sessionId = `POST48-${Date.now()}`;
-    const directLink = `https://kontigo.lat/pay/post48?session=${sessionId}&amount=${cuotaMonto}&parts=3`;
-
-    res.json({
-      success: true,
-      sessionId,
-      montoTotal: parseFloat(montoBase),
-      esquema: '3_CUOTAS_POST48H',
-      desglose: [
-        { cuota: 1, monto: cuotaMonto, estado: 'PENDING' },
-        { cuota: 2, monto: cuotaMonto, estado: 'SCHEDULED' },
-        { cuota: 3, monto: cuotaMonto, estado: 'SCHEDULED' }
-      ],
-      directPayLink: directLink,
-      cloudSyncStatus: 'STORED_IN_CLOUD',
-      notificationSent: true,
-      message: 'Cobro post-48h en 3 partes subido a la nube y enlace listo para el cliente.'
-    });
-  });
-}
-
-// Checkout Init (General)
-app.post(['/api/checkout/init', '/api/v1/checkout/init'], (req, res) => {
-  const { email, monto } = req.body;
-  if (!email) return res.status(400).json({ success: false, error: 'Email requerido' });
-  
-  res.json({
-    success: true,
-    sessionId: `SESS-${Date.now()}`,
-    redirectUrl: `https://kontigo.lat/pay?session=SESS-${Date.now()}`
-  });
-});
-
-// Rutas de Pago Generales
+// C. Rutas de Pago & Aprobación Tester
 try {
   const pagoRoutes = require('../routes/pago');
-  app.use('/api/v1/payments', pagoRoutes);
-  app.use('/api/pagos', pagoRoutes);
   app.use('/api/pago', pagoRoutes);
+  app.use('/api/pagos', pagoRoutes);
+  app.use('/api/v1/payments', pagoRoutes);
 } catch (e) {
   try {
     const pagoRoutes = require('./routes/pago');
-    app.use('/api/v1/payments', pagoRoutes);
-    app.use('/api/pagos', pagoRoutes);
     app.use('/api/pago', pagoRoutes);
+    app.use('/api/pagos', pagoRoutes);
+    app.use('/api/v1/payments', pagoRoutes);
   } catch (err) {
     console.warn('⚠️ Módulo routes/pago no cargado.');
   }
 }
 
-// C. Chat Web & Mensajería (IA2 - Ecommerce & Conversión)
+// D. Lista de Espera SODIE V4 (Nube, Biometría & Temporizador 72h-96h)
+let waitlistLoaded = false;
+try {
+  const waitlistRoutes = require('../routes/waitlist');
+  app.use('/api/v1/waitlist', waitlistRoutes);
+  app.use('/api/waitlist', waitlistRoutes);
+  app.use('/api/lista-espera', waitlistRoutes);
+  waitlistLoaded = true;
+} catch (e) {
+  try {
+    const waitlistRoutes = require('./routes/waitlist');
+    app.use('/api/v1/waitlist', waitlistRoutes);
+    app.use('/api/waitlist', waitlistRoutes);
+    app.use('/api/lista-espera', waitlistRoutes);
+    waitlistLoaded = true;
+  } catch (err) {
+    console.warn('⚠️ Módulo routes/waitlist no cargado, activando fallback para Lista de Espera.');
+  }
+}
+
+if (!waitlistLoaded) {
+  global.fallbackWaitlistDB = global.fallbackWaitlistDB || [];
+  
+  app.post(['/api/v1/waitlist', '/api/lista-espera', '/api/v1/waitlist/registro'], (req, res) => {
+    const { nombre, compania, email, timerHours = 72 } = req.body;
+    const deadline = new Date(Date.now() + (parseInt(timerHours) || 72) * 3600000).toISOString();
+    
+    const nuevoRegistro = {
+      id: `V4-${Date.now()}`,
+      nombre: nombre || 'Usuario V4',
+      compania: compania || 'N/A',
+      email: email || 'espera@sodie.app',
+      draftDeadline: deadline,
+      fase: 'FASE_1_SODIE_V4'
+    };
+
+    global.fallbackWaitlistDB.push(nuevoRegistro);
+
+    res.json({
+      success: true,
+      message: 'Registrado con éxito en la lista de espera SODIE V4 (Modo Resiliencia)',
+      usuario: nuevoRegistro,
+      cuposRestantesFase1: Math.max(0, 18 - global.fallbackWaitlistDB.length)
+    });
+  });
+
+  app.get(['/api/v1/waitlist/estado', '/api/lista-espera/estado'], (req, res) => {
+    const registrados = global.fallbackWaitlistDB.length;
+    res.json({
+      fase: 'Fase 1 - SODIE V4',
+      totalCuposFase1: 18,
+      cuposDisponibles: Math.max(0, 18 - registrados),
+      registrados
+    });
+  });
+}
+
+// E. Subida de Archivos Admin (Videos Dashboard, PDFs Pospago & Excel "Antes vs Después")
+let adminUploadsLoaded = false;
+try {
+  const adminUploadRoutes = require('../routes/adminUpload');
+  app.use('/api/admin/uploads', adminUploadRoutes);
+  app.use('/api/v1/admin/uploads', adminUploadRoutes);
+  adminUploadsLoaded = true;
+} catch (e) {
+  try {
+    const adminUploadRoutes = require('./routes/adminUpload');
+    app.use('/api/admin/uploads', adminUploadRoutes);
+    app.use('/api/v1/admin/uploads', adminUploadRoutes);
+    adminUploadsLoaded = true;
+  } catch (err) {
+    console.warn('⚠️ Módulo routes/adminUpload no cargado.');
+  }
+}
+
+// F. Exportación de Datos CSV ("SODIE Clientes Hora 48")
+let exportDataLoaded = false;
+try {
+  const exportDataRoutes = require('../routes/exportData');
+  app.use('/api/admin/export', exportDataRoutes);
+  app.use('/api/v1/admin/export', exportDataRoutes);
+  exportDataLoaded = true;
+} catch (e) {
+  try {
+    const exportDataRoutes = require('./routes/exportData');
+    app.use('/api/admin/export', exportDataRoutes);
+    app.use('/api/v1/admin/export', exportDataRoutes);
+    exportDataLoaded = true;
+  } catch (err) {
+    console.warn('⚠️ Módulo routes/exportData no cargado.');
+  }
+}
+
+// G. Chat Web & Mensajería (IA2 - Ecommerce & Conversión)
 let ia2ChatLoaded = false;
 try {
   const ia2Module = require('../modules/ia2-conversar');
@@ -204,7 +255,7 @@ if (!ia2ChatLoaded) {
   const chatFallback = (req, res) => {
     res.json({
       success: true,
-      reply: 'Sistema SOVYX IA2: Cierre y estrategia de conversión activada.',
+      reply: 'Sistema SODIE IA2: Cierre y estrategia de conversión activada.',
       plan: 'Ecommerce Exclusivo',
       status: 'ACTIVE'
     });
@@ -214,7 +265,7 @@ if (!ia2ChatLoaded) {
   app.post('/api/ia2/conversar', chatFallback);
 }
 
-// D. Flujo Evaluadores, Onboarding & Validaciones Meta
+// H. Evaluadores, Onboarding & Validaciones Meta
 let evaluatorLoaded = false;
 try {
   const evaluatorRoutes = require('../routes/evaluatorRoutes');
@@ -262,7 +313,7 @@ try {
   } catch (err) { console.warn('⚠️ Módulo onboardingRoutes no cargado.'); }
 }
 
-// E. Panel Admin & Generación de Links
+// I. Panel Admin General
 try {
   const adminRoutes = require('../routes/adminRoutes');
   app.use('/api/v1/admin', adminRoutes);
@@ -275,7 +326,7 @@ try {
   } catch (err) { console.warn('⚠️ Módulo adminRoutes no cargado.'); }
 }
 
-// F. Carga de Data CSV/XLSX (IA1) & Campañas
+// J. Carga de Data CSV/XLSX (IA1) & Campañas
 try {
   const { router: campaignRoutes } = require('../routes/campaignRoutes');
   app.use('/api/campaigns', campaignRoutes);
@@ -300,7 +351,7 @@ try {
   }
 }
 
-// G. Autenticación Meta OAuth
+// K. Autenticación Meta OAuth, Meta Graph API & Webhook Kontigo (CAPI)
 try {
   const authRoutes = require('../routes/authRoutes');
   app.use('/api/auth', authRoutes);
@@ -308,10 +359,9 @@ try {
   try {
     const authRoutes = require('./routes/authRoutes');
     app.use('/api/auth', authRoutes);
-  } catch (err) { console.warn('⚠️ Módulo authRoutes no cargado.'); }
+  } catch (err) {}
 }
 
-// H. Integración Meta Graph API & Webhook Kontigo (CAPI)
 try {
   const metaRoutes = require('../routes/meta');
   app.use('/api/meta', metaRoutes);
@@ -332,7 +382,7 @@ try {
   } catch (err) {}
 }
 
-// I. Módulos IA & Métricas SSE / Live
+// L. Módulos IA & Métricas SSE / Live
 let ia1Loaded = false;
 try {
   const ia1Routes = require('../routes/ia1Routes');
@@ -421,9 +471,9 @@ if (!notificationsLoaded) {
   });
 }
 
-// J. Disponibilidad de Slots (Límite estricto: 2 clientes)
+// M. Disponibilidad de Slots (Límite estricto: 2 clientes)
 app.get('/api/clientes/disponibles', async (req, res) => {
-  const maxSovyxSlots = config.sovyx?.totalSlots || 2; // Límite estricto de 2 clientes
+  const maxSovyxSlots = config.sovyx?.totalSlots || 2;
   try {
     const db = require('../modules/sovyxDatabase');
     const slotsOcupados = await db.countClientes();
@@ -457,11 +507,11 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   }
 });
 
-// K. Healthcheck & Estado del Sistema
+// N. Healthcheck & Estado del Sistema
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
-    system: 'SOVYX Core AI Engine',
+    system: 'SODIE Core AI Engine',
     version: '2.0.26',
     slots: config.sovyx?.totalSlots || 2
   });
@@ -469,7 +519,7 @@ app.get('/', (req, res) => {
 
 app.get('/api/health', (req, res) => {
   res.json({
-    status: '🟢 SOVYX OPERATIONAL',
+    status: '🟢 SODIE OPERATIONAL',
     mode: process.env.NODE_ENV || 'production',
     db_status: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
     timestamp: new Date().toISOString(),
@@ -482,7 +532,7 @@ app.get('/api/health', (req, res) => {
 // 4. CONTROL DE ERRORES
 // ============================================
 app.use((req, res) => {
-  res.status(404).json({ error: `Ruta ${req.url} no encontrada en SOVYX OS` });
+  res.status(404).json({ error: `Ruta ${req.url} no encontrada en SODIE OS` });
 });
 
 app.use((err, req, res, next) => {
@@ -490,7 +540,7 @@ app.use((err, req, res, next) => {
     sovyxLogger.error('CRITICAL_SYSTEM_ERROR', { error: err.message });
   }
   console.error('💥 Error no controlado:', err);
-  res.status(500).json({ error: 'Falla interna en el motor de SOVYX. Reiniciando secuencia...' });
+  res.status(500).json({ error: 'Falla interna en el motor de SODIE. Reiniciando secuencia...' });
 });
 
 // ============================================
@@ -503,7 +553,10 @@ app.listen(PORT, '0.0.0.0', () => {
   🚀 SODIE OS v2.0.26 - SISTEMA ACTIVADO Y SINCRONIZADO
   📡 Puerto: ${PORT}
   🎯 Límite: 2 Clientes Exclusivos ($10,000 USD Total)
-  💳 Pasarela Post-48H (3 Cuotas Admin): /api/pasarela/post48 & /api/pagos/inyectar-pasarela
+  💳 Pasarelas: /api/pasarela/admin/set-link, /api/pasarela/get-link, /api/pasarela/admin/post48-link
+  📋 Lista de Espera SODIE V4 (18 Cupos Fase 1): /api/v1/waitlist/registro
+  📁 Subida de Archivos Admin (Video/PDF/Excel): /api/admin/uploads
+  📊 Exportación CSV Clientes Hora 48: /api/admin/export/export-clientes-hora48
   💬 Chat IA2: /api/v1/chat & /api/ia2
   ⚙️ Motor IA1 & SSE: /api/ia1/confirmar-borrador & /api/ia3/live
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
