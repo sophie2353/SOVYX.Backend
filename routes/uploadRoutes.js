@@ -4,7 +4,7 @@ const router = express.Router();
 const multer = require('multer');
 
 const Audiencia = require('../models/Audiencia');
-const metaService = require('../services/metaService'); // 👈 Importamos metaService
+const metaService = require('../services/metaService');
 
 let ia1Instance = null;
 try {
@@ -29,10 +29,13 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
     const session = sessionId || 'sess_default';
     const nichoObjetivo = nicho || 'fitness_coach';
 
-    // 1. Decodificar el buffer del CSV
-    const fileContent = req.file.buffer.toString('utf-8');
+    // 1. Decodificar el buffer del CSV y limpiar el carácter BOM (\uFEFF) de Excel
+    let fileContent = req.file.buffer.toString('utf-8');
+    if (fileContent.charCodeAt(0) === 0xFEFF) {
+      fileContent = fileContent.slice(1);
+    }
 
-    // 2. Procesar la data con IA1 (extrae edad, países y el usersPayload con VALUE)
+    // 2. Procesar la data con IA1
     let extractedTargeting;
 
     if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
@@ -54,7 +57,7 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
       extractedTargeting.nicho = nichoObjetivo;
     }
 
-    // 3. Persistir en MongoDB cumpliendo con el Schema de Audiencia
+    // 3. Persistir en MongoDB
     const audienciaGuardada = await Audiencia.findOneAndUpdate(
       { sessionId: session },
       {
@@ -67,17 +70,17 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
       { upsert: true, new: true }
     );
 
-    if (typeof sessionsDB !== 'undefined') {
-      sessionsDB[session] = {
-        ...sessionsDB[session],
+    // Actualizar base de datos global en memoria si existe
+    if (typeof global.sessionsDB !== 'undefined') {
+      global.sessionsDB[session] = {
+        ...(global.sessionsDB[session] || {}),
         fileUploaded: true,
         targetingData: extractedTargeting,
         audienciaId: audienciaGuardada._id
       };
     }
 
-    // 4. 🚀 INYECCIÓN DIRECTA EN META SERVICES (LAL 1% Value-Based)
-    // Si la petición incluye las credenciales de Meta y el borrador, inyectamos la data inmediatamente
+    // 4. Inyección directa en Meta Services
     let metaResult = null;
     const userToken = token || process.env.META_ACCESS_TOKEN;
     const userAdAccount = adAccountId || process.env.META_AD_ACCOUNT_ID;
@@ -94,18 +97,16 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
         }
       };
 
-      // Inyectar en borrador o bloques acumulados
       metaResult = await metaService.procesarBorradorYActivar({
         sessionId: session,
         token: userToken,
         adAccountId: userAdAccount,
         nombreBorrador: draftName,
         dataSegmentacion: dataSegmentacion,
-        usersPayload: extractedTargeting.usersPayload || [],    // 👈 Inyecta emails, phones y VALUE
-        countriesFound: extractedTargeting.countriesFound || ['US'] // 👈 Pasa ['CO', 'MX', 'US']
+        usersPayload: extractedTargeting.usersPayload || [],
+        countriesFound: extractedTargeting.countriesFound || ['US']
       });
 
-      // Actualizar estado en DB a PROCESADO
       await Audiencia.findByIdAndUpdate(audienciaGuardada._id, { estado: 'COMPLETADO_Y_ACTIVADO' });
     }
 
