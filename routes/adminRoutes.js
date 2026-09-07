@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const tokens = require('../config/tokens');
+const { enviarEventoCompraCAPI } = require('../services/capiService');
 
 // Configuración de almacenamiento local para uploads
 const storage = multer.diskStorage({
@@ -24,6 +25,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 global.dashboardVideoConfig = global.dashboardVideoConfig || { url: null, mostrarEnDashboard: false };
 global.dashboardExcelConfig = global.dashboardExcelConfig || { url: null, fijoEnDashboard: false };
+global.uploadedPdfsDB = global.uploadedPdfsDB || {};
 
 // 1. Subir Video desde Admin y fijar en Dashboard
 router.post('/upload-video', upload.single('video'), (req, res) => {
@@ -89,6 +91,51 @@ router.post('/upload-excel-antes-despues', upload.single('excel'), (req, res) =>
     message: 'Excel "Antes vs Después" fijado en el dashboard principal 🤬',
     excelConfig: global.dashboardExcelConfig
   });
+});
+
+// 4. Confirmación de Pago Manual y Disparo Directo a Meta CAPI
+router.post('/confirmar-pago-manual', async (req, res) => {
+  try {
+    const { adminKey, slotNumber = 1, emailCliente = 'cliente@sovyx.com', monto = 10000 } = req.body;
+
+    if (adminKey && adminKey !== tokens.SOVYX_ADMIN_KEY) {
+      return res.status(403).json({ error: 'Llave de administración inválida' });
+    }
+
+    // A. Disparo del evento 'Purchase' a Meta Conversions API (CAPI)
+    const capiResult = await enviarEventoCompraCAPI({
+      email: emailCliente,
+      monto: Number(monto),
+      currency: 'USD',
+      eventName: 'Purchase'
+    });
+
+    // B. Actualización del slot y estado global en memoria
+    if (typeof global.sessionsDB !== 'undefined') {
+      const sessionKey = `slot_${slotNumber}`;
+      global.sessionsDB[sessionKey] = {
+        ...(global.sessionsDB[sessionKey] || {}),
+        pagoConfirmado: true,
+        montoPagado: monto,
+        fechaPago: new Date().toISOString()
+      };
+    }
+
+    res.json({
+      success: true,
+      message: `Pago del Slot #${slotNumber} confirmado e inyectado en Meta CAPI 😮‍💨🙌🏼`,
+      slotNumber,
+      monto,
+      capiResult
+    });
+  } catch (error) {
+    console.error('💥 Error al procesar confirmación manual de pago:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error interno procesando el pago y enviando el evento a Meta CAPI.',
+      details: error.message
+    });
+  }
 });
 
 module.exports = router;
