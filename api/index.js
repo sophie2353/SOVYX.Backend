@@ -326,27 +326,31 @@ try {
   } catch (err) { console.warn('⚠️ Módulo adminRoutes no cargado.'); }
 }
 
-// J. Carga de Data CSV/XLSX (IA1) & Campañas
+// J. Carga de Data CSV/XLSX (IA1) & Campañas (CONEXIÓN MEJORADA)
 try {
-  const { router: campaignRoutes } = require('../routes/campaignRoutes');
-  app.use('/api/campaigns', campaignRoutes);
-  app.use('/api/v1/client', campaignRoutes);
+  const uploadRoutes = require('../routes/uploadRoutes');
+  app.use('/api', uploadRoutes); // ✅ Permite recibir POST directo en /api/upload-csv
+  app.use('/api/v1/client/upload-audience', uploadRoutes);
+  app.use('/api/upload', uploadRoutes);
 } catch (e) {
   try {
-    const { router: campaignRoutes } = require('./routes/campaignRoutes');
-    app.use('/api/campaigns', campaignRoutes);
-    app.use('/api/v1/client', campaignRoutes);
+    const uploadRoutes = require('./routes/uploadRoutes');
+    app.use('/api', uploadRoutes); // ✅ Permite recibir POST directo en /api/upload-csv
+    app.use('/api/v1/client/upload-audience', uploadRoutes);
+    app.use('/api/upload', uploadRoutes);
   } catch (err) {
     try {
-      const uploadRoutes = require('../routes/uploadRoutes');
-      app.use('/api/v1/client/upload-audience', uploadRoutes);
-      app.use('/api/upload', uploadRoutes);
+      const { router: campaignRoutes } = require('../routes/campaignRoutes');
+      app.use('/api/campaigns', campaignRoutes);
+      app.use('/api/v1/client', campaignRoutes);
     } catch (e2) {
       try {
-        const uploadRoutes = require('./routes/uploadRoutes');
-        app.use('/api/v1/client/upload-audience', uploadRoutes);
-        app.use('/api/upload', uploadRoutes);
-      } catch (err2) { console.warn('⚠️ Módulos de carga/campañas no cargados.'); }
+        const { router: campaignRoutes } = require('./routes/campaignRoutes');
+        app.use('/api/campaigns', campaignRoutes);
+        app.use('/api/v1/client', campaignRoutes);
+      } catch (err2) { 
+        console.warn('⚠️ Módulos de carga/campañas no cargados.'); 
+      }
     }
   }
 }
@@ -471,7 +475,7 @@ if (!notificationsLoaded) {
   });
 }
 
-// M. Disponibilidad de Slots (Límite estricto: 2 clientes)
+// M. Disponibilidad de Slots
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 2;
   try {
@@ -524,7 +528,7 @@ app.get('/api/health', (req, res) => {
     db_status: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
     timestamp: new Date().toISOString(),
     version: '2.0.26',
-    slots_update: `${config.sovyx?.totalSlots || 2} MAX (Límite de Exclusividad de 2 Clientes)`
+    slots_update: `${config.sovyx?.totalSlots || 2} MAX (Límite de Exclusividad)`
   });
 });
 
@@ -553,10 +557,11 @@ app.listen(PORT, '0.0.0.0', () => {
   🚀 SODIE OS v2.0.26 - SISTEMA ACTIVADO Y SINCRONIZADO
   📡 Puerto: ${PORT}
   🎯 Límite: 2 Clientes Exclusivos ($10,000 USD Total)
-  💳 Pasarelas: /api/pasarela/admin/set-link, /api/pasarela/get-link, /api/pasarela/admin/post48-link
-  📋 Lista de Espera SODIE V4 (18 Cupos Fase 1): /api/v1/waitlist/registro
-  📁 Subida de Archivos Admin (Video/PDF/Excel): /api/admin/uploads
-  📊 Exportación CSV Clientes Hora 48: /api/admin/export/export-clientes-hora48
+  💳 Pasarelas: /api/pasarela/admin/set-link, /api/pasarela/get-link
+  📂 Subida CSV: /api/upload-csv
+  📋 Lista de Espera SODIE V4: /api/v1/waitlist/registro
+  📁 Subida Archivos Admin: /api/admin/uploads
+  📊 Exportación CSV: /api/admin/export/export-clientes-hora48
   💬 Chat IA2: /api/v1/chat & /api/ia2
   ⚙️ Motor IA1 & SSE: /api/ia1/confirmar-borrador & /api/ia3/live
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
