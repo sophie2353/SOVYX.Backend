@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Client = require('../models/Client'); // Ajusta según la ubicación de tu modelo
-const { FB_CONFIG } = require('../config/tokens'); // Importación de configuración de tokens
+const { META_ADS_ACCOUNT_ID } = require('../config/tokens'); // Importación de configuración de tokens
 
 // ============================================
 // 1. CONECTAR Y GUARDAR EN MONGO
