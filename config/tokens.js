@@ -8,6 +8,7 @@ module.exports = {
   SOVYX_ADMIN_KEY: process.env.SOVYX_ADMIN_KEY || 'admin23555',
   BACKEND_URL: process.env.BACKEND_URL || 'https://api.sodie.app',
   FRONTEND_URL: process.env.FRONTEND_URL || 'https://sodie.app',
+  REDIRECT_URI: process.env.REDIRECT_URI || `${process.env.FRONTEND_URL || 'https://sodie.app'}/confirmacion.html`,
 
   // Integración Meta Ads API
   meta: {
