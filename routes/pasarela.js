@@ -11,25 +11,40 @@ router.get('/get-link', (req, res) => {
     const slot = slotNumber === '2' ? 'slot2' : 'slot1';
     const elapsedHours = parseInt(hours, 10) || 0;
 
-    let targetUrl = '';
+    let rawUrl = '';
 
     // Lógica de selección según la hora de la prueba
     if (stage === 'POST_48H' || elapsedHours >= 48) {
       if (elapsedHours >= 96) {
-        targetUrl = tokensConfig.payments[`hora96_${slot}`];
+        rawUrl = tokensConfig.payments[`hora96_${slot}`];
       } else if (elapsedHours >= 72) {
-        targetUrl = tokensConfig.payments[`hora72_${slot}`];
+        rawUrl = tokensConfig.payments[`hora72_${slot}`];
       } else {
-        targetUrl = tokensConfig.payments[`hora48_${slot}`];
+        rawUrl = tokensConfig.payments[`hora48_${slot}`];
       }
     } else {
       // Por defecto: Hora 24 / Slot inicial via Kontigo
-      targetUrl = tokensConfig.payments[`hora24_${slot}`];
+      rawUrl = tokensConfig.payments[`hora24_${slot}`];
     }
 
-    if (!targetUrl) {
+    if (!rawUrl) {
       // Fallback a Kontigo si no se ha configurado la variable específica
-      targetUrl = tokensConfig.payments[`hora24_${slot}`];
+      rawUrl = tokensConfig.payments[`hora24_${slot}`];
+    }
+
+    // Inyección / Formateo automático de REDIRECT_URI en los enlaces
+    let targetUrl = rawUrl;
+    if (targetUrl) {
+      const redirectUri = tokensConfig.REDIRECT_URI || `${tokensConfig.FRONTEND_URL}/confirmacion.html`;
+      
+      if (targetUrl.includes('{REDIRECT_URI}')) {
+        // Reemplazo si la URL en la variable viene como plantilla
+        targetUrl = targetUrl.replace('{REDIRECT_URI}', encodeURIComponent(redirectUri));
+      } else if (!targetUrl.includes('redirect_uri=') && !targetUrl.includes('returnUrl=')) {
+        // Adjunta dinámicamente el parámetro de retorno según el delimitador de query params
+        const separator = targetUrl.includes('?') ? '&' : '?';
+        targetUrl = `${targetUrl}${separator}redirect_uri=${encodeURIComponent(redirectUri)}`;
+      }
     }
 
     return res.status(200).json({
