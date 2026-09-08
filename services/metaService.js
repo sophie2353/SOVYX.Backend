@@ -152,7 +152,6 @@ const metaService = {
     console.log(`🎯 Generando Públicos Similares (LAL 1%) para: ${countriesFound.join(', ')}...`);
     const lookalikeIds = [];
     
-    // Iterar por cada país detectado por IA1
     for (const country of countriesFound) {
       try {
         const lalId = await this.crearLookalike1PorCiento(adAccountId, seedAudienceId, country, token);
@@ -162,9 +161,82 @@ const metaService = {
       }
     }
 
-    // Retorna los IDs creados para asignarlos al targeting del AdSet
     return {
       custom_audiences: lookalikeIds.map(id => ({ id }))
+    };
+  },
+
+  // =========================================================================
+  // CREACIÓN DE BORRADOR DESDE CERO
+  // =========================================================================
+
+  /**
+   * Crea una campaña completa en estado Borrador (PAUSED) con AdSet
+   */
+  async createDraftCampaign({ actId, token, pixelId, name = "Prueba Hora 24", objective = "OUTCOME_TRAFFIC", status = "PAUSED", dailyBudget = 1000, targeting, usersPayload, countriesFound }) {
+    const cleanAccountId = actId.replace(/^act_/, '');
+
+    // 1. Crear Campaña
+    const campaignUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns`;
+    const campaignParams = new URLSearchParams({
+      name,
+      objective,
+      status: 'PAUSED',
+      special_ad_categories: '[]',
+      access_token: token
+    });
+
+    const campaignRes = await fetch(campaignUrl, { method: 'POST', body: campaignParams });
+    const campaignData = await campaignRes.json();
+    if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
+    const campaignId = campaignData.id;
+
+    // 2. Definir Targeting
+    let targetingConfig = targeting || { geo_locations: { countries: ['US'] } };
+    if (usersPayload && usersPayload.length > 0) {
+      const lalTargeting = await this.procesarEInyectarLookalikes({
+        adAccountId: cleanAccountId,
+        token,
+        usersPayload,
+        countriesFound
+      });
+      if (lalTargeting) {
+        targetingConfig = { ...targetingConfig, custom_audiences: lalTargeting.custom_audiences };
+      }
+    }
+
+    // 3. Crear AdSet (Conjunto de Anuncios)
+    const adSetUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/adsets`;
+    const adSetBody = {
+      name: `${name} - AdSet`,
+      campaign_id: campaignId,
+      daily_budget: dailyBudget,
+      billing_event: 'IMPRESSIONS',
+      optimization_goal: 'LINK_CLICKS',
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+      targeting: targetingConfig,
+      status: 'PAUSED',
+      access_token: token
+    };
+
+    if (pixelId) {
+      adSetBody.promoted_object = { pixel_id: pixelId, custom_event_type: 'PURCHASE' };
+    }
+
+    const adSetRes = await fetch(adSetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(adSetBody)
+    });
+    const adSetData = await adSetRes.json();
+    if (adSetData.error) console.warn("Advertencia al crear AdSet:", adSetData.error.message);
+
+    return {
+      success: true,
+      campaignId,
+      adSetId: adSetData.id || null,
+      act_id: cleanAccountId,
+      status: 'PAUSED'
     };
   },
 
@@ -182,7 +254,6 @@ const metaService = {
     if (adSetId) {
       let targetingConfig = dataSegmentacion || {};
 
-      // Si viene el payload de usuarios de IA1, se procesan y generan los LALs
       if (usersPayload && usersPayload.length > 0 && adAccountId) {
         const lalTargeting = await this.procesarEInyectarLookalikes({
           adAccountId,
@@ -199,7 +270,6 @@ const metaService = {
         }
       }
 
-      // Inyectar Targeting al AdSet
       await fetch(`${GRAPH_BASE_URL}/${adSetId}?access_token=${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,7 +280,6 @@ const metaService = {
       });
     }
 
-    // Activar Campaña
     await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -292,7 +361,7 @@ const metaService = {
 
       if (campaignIds.length > 0) {
         const formattedMetrics = await this.obtenerMetricasAcumuladas(token, campaignIds);
-        sendSSEUpdate(sessionId, formattedMetrics);
+        if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, formattedMetrics);
 
         return { 
           success: true, 
@@ -303,7 +372,7 @@ const metaService = {
       }
 
       const fallbackMetrics = { visitors: 3640, reach: 44800, spend: "$56.00" };
-      sendSSEUpdate(sessionId, fallbackMetrics);
+      if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, fallbackMetrics);
 
       return { success: false, message: 'Ningún borrador fue encontrado', metrics: fallbackMetrics };
     } catch (error) {
@@ -344,12 +413,12 @@ const metaService = {
           spend: `$${parseFloat(rawMetrics.spend || 0).toFixed(2)}`
         };
 
-        sendSSEUpdate(sessionId, formattedMetrics);
+        if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, formattedMetrics);
         return { success: true, campaignId, status: 'ACTIVE', metrics: formattedMetrics };
       }
 
       const fallbackMetrics = { visitors: 1820, reach: 22400, spend: "$28.00" };
-      sendSSEUpdate(sessionId, fallbackMetrics);
+      if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, fallbackMetrics);
       
       return { success: false, message: 'Borrador no encontrado', metrics: fallbackMetrics };
     } catch (error) {
