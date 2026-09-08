@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Client = require('../models/Client'); // Ajusta según la ubicación de tu modelo
 const tokens = require('../config/tokens'); // Configuración centralizada de tokens y claves
-const metaServices = require('../services/metaServices'); // Servicio para lógica avanzada de Meta Ads
+const metaServices = require('../services/metaService'); // Servicio de Meta Ads
 
-// Normalización automática tomando los valores del objeto `meta` en config/tokens
+// Normalización tomando los valores del objeto `meta` exportado en config/tokens.js
 const FB_CONFIG = {
   MY_ACT_ID: tokens.meta?.accountId || '',
   MY_ACCESS_TOKEN: tokens.meta?.accessToken || '',
@@ -18,8 +18,6 @@ const FB_CONFIG = {
 router.post('/connect', async (req, res) => {
   try {
     const { userId, userAccessToken } = req.body;
-    
-    // Usar token enviado o el de contingencia de tokens.meta.accessToken
     const tokenToUse = userAccessToken || FB_CONFIG.MY_ACCESS_TOKEN;
 
     if (!userId && !tokenToUse) {
@@ -30,7 +28,6 @@ router.post('/connect', async (req, res) => {
     let pixelId = FB_CONFIG.DEFAULT_PIXEL_ID;
     let accountName = "Cuenta Meta Ads";
 
-    // 1. Intentar consultar Graph API con el token
     try {
       const adAccountRes = await fetch(`https://graph.facebook.com/v25.0/me/adaccounts?fields=id,name&access_token=${tokenToUse}`);
       const adAccountData = await adAccountRes.json();
@@ -40,7 +37,6 @@ router.post('/connect', async (req, res) => {
         actId = firstAccount.id;
         accountName = firstAccount.name;
 
-        // Obtener Pixel ID de la cuenta si existe
         const pixelRes = await fetch(`https://graph.facebook.com/v25.0/${actId}/adspixels?fields=id,name&access_token=${tokenToUse}`);
         const pixelData = await pixelRes.json();
         if (pixelData.data && pixelData.data[0]) {
@@ -51,7 +47,6 @@ router.post('/connect', async (req, res) => {
       console.warn("Advertencia al consultar Graph API en /connect, usando defaults:", apiErr);
     }
 
-    // 2. Almacenamiento en MongoDB si viene userId
     let clientMeta = { act_id: actId, pixel_id: pixelId, account_name: accountName };
     if (userId) {
       const clientUpdated = await Client.findOneAndUpdate(
@@ -180,18 +175,26 @@ router.get('/campaigns/user', async (req, res) => {
 });
 
 // ============================================
-// 3. CREAR O GESTIONAR CAMPAÑAS (BORRADOR CON SEGMENTACIÓN)
+// 3. CREAR O GESTIONAR CAMPAÑAS (DELEGADO A METASERVICE)
 // ============================================
 // POST /api/facebook/campaigns
 router.post('/campaigns', async (req, res) => {
   try {
-    const { userId, name = "Prueba Hora 24", objective = 'OUTCOME_TRAFFIC', status = 'PAUSED', dailyBudget, targeting } = req.body;
+    const { 
+      userId, 
+      name = "Prueba Hora 24", 
+      objective = 'OUTCOME_TRAFFIC', 
+      status = 'PAUSED', 
+      dailyBudget, 
+      targeting,
+      usersPayload,
+      countriesFound 
+    } = req.body;
 
     let act_id = FB_CONFIG.MY_ACT_ID;
     let fb_token = FB_CONFIG.MY_ACCESS_TOKEN;
     let pixel_id = FB_CONFIG.DEFAULT_PIXEL_ID;
 
-    // Buscar credenciales del cliente especifico en Mongo si userId está presente
     if (userId) {
       const client = await Client.findOne({ userId });
       if (client && client.meta) {
@@ -201,58 +204,29 @@ router.post('/campaigns', async (req, res) => {
       }
     }
 
-    // Si metaServices incluye el método de creación con segmentación, se delega:
-    if (metaServices && typeof metaServices.createDraftCampaign === 'function') {
-      const campaignResult = await metaServices.createDraftCampaign({
-        actId: act_id,
-        token: fb_token,
-        pixelId: pixel_id,
-        name,
-        objective,
-        status,
-        dailyBudget,
-        targeting
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Campaña en borrador creada exitosamente vía metaServices",
-        data: campaignResult
-      });
-    }
-
-    // Fallback directo a Graph API
-    const campaignUrl = `https://graph.facebook.com/v25.0/${act_id}/campaigns`;
-    const params = new URLSearchParams({
+    // Delegación completa a metaServices
+    const campaignResult = await metaServices.createDraftCampaign({
+      actId: act_id,
+      token: fb_token,
+      pixelId: pixel_id,
       name,
       objective,
       status,
-      special_ad_categories: '[]',
-      access_token: fb_token
+      dailyBudget,
+      targeting,
+      usersPayload,
+      countriesFound
     });
-
-    if (dailyBudget) {
-      params.append('daily_budget', dailyBudget);
-    }
-
-    const fbRes = await fetch(campaignUrl, { method: 'POST', body: params });
-    const fbData = await fbRes.json();
-
-    if (fbData.error) {
-      return res.status(400).json({ success: false, error: "Error al crear campaña en Meta", details: fbData.error });
-    }
 
     return res.status(200).json({
       success: true,
-      message: "Campaña creada exitosamente en Meta Ads",
-      campaignId: fbData.id,
-      act_id,
-      pixel_id
+      message: "Campaña borrador creada y procesada exitosamente en Meta Ads",
+      data: campaignResult
     });
 
   } catch (err) {
     console.error("Error en /api/facebook/campaigns:", err);
-    return res.status(500).json({ success: false, error: "Error interno al procesar campaña" });
+    return res.status(500).json({ success: false, error: err.message || "Error interno al procesar campaña" });
   }
 });
 
