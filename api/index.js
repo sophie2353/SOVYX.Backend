@@ -368,16 +368,12 @@ try {
 
 // Carga de Router de Facebook
 let facebookRoutesLoaded = false;
+// En tu index.js (Sección 3. K)
 try {
-  const facebookRoutes = require('../routes/facebook');
+  const facebookRoutes = require('./routes/facebookRoutes');
   app.use('/api/facebook', facebookRoutes);
-  facebookRoutesLoaded = true;
-} catch (e) {
-  try {
-    const facebookRoutes = require('./routes/facebook');
-    app.use('/api/facebook', facebookRoutes);
-    facebookRoutesLoaded = true;
-  } catch (err) {}
+} catch (err) {
+  console.warn('⚠️ Módulo routes/facebookRoutes no encontrado.');
 }
 
 // Manejador / Fallback directo para POST /api/facebook/connect
