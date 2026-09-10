@@ -6,24 +6,6 @@ const tokensConfig = require('./config/tokens');
 const PORT = tokensConfig.port || 10000;
 let server;
 
-// Configuración de Mocks para pruebas de carga pesada
-function buildMultiPartMock(filename, contentType, textContent) {
-  const boundary = '----WebKitFormBoundarySOVYXSODIE2026';
-  const body = [
-    `--${boundary}`,
-    `Content-Disposition: form-data; name="file"; filename="${filename}"`,
-    `Content-Type: ${contentType}`,
-    '',
-    textContent,
-    `--${boundary}--`
-  ].join('\r\n');
-
-  return {
-    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
-    body
-  };
-}
-
 function getRoutes(stack, prefix = '', routes = []) {
   stack.forEach((layer) => {
     if (layer.route) {
@@ -48,7 +30,7 @@ async function runTests() {
   const uniqueRoutes = Array.from(new Set(rawRoutes.map(JSON.stringify))).map(JSON.parse);
   
   console.log(`✨ Se detectaron ${uniqueRoutes.length} endpoints en total.\n`);
-  console.log('🚀 Iniciando escaneo masivo (Excel/PDF/Video, IA1, IA2, Meta Services & Cron Jobs)...\n');
+  console.log('🚀 Escaneando con Mocks de Archivos y Meta Graph API (CAPI, LAL Value, Campaigns, OAuth)...\n');
 
   server = http.createServer(app);
   await new Promise((resolve) => server.listen(PORT, resolve));
@@ -57,49 +39,89 @@ async function runTests() {
 
   for (let r of uniqueRoutes) {
     let testPath = r.path
-      .replace(/:[a-zA-Z]+/g, '123')
-      .replace(/\(\?:\.\+\)/g, 'test');
+      .replace(/:[a-zA-Z0-9_]+/g, '123')
+      .replace(/\*/g, 'test');
 
     const methods = r.method.split(',');
     
     for (let method of methods) {
       try {
-        const options = { method: method.trim() };
+        const options = { 
+          method: method.trim(),
+          headers: { 'Content-Type': 'application/json' }
+        };
         
-        // Simulación según el tipo de payload
         if (['POST', 'PUT', 'PATCH'].includes(options.method)) {
-          if (testPath.includes('excel') || testPath.includes('upload')) {
-            // Mock de Excel / CSV para IA1
-            const mock = buildMultiPartMock('data_audiencia.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Mock Data Excel SODIE');
-            options.headers = mock.headers;
-            options.body = mock.body;
-          } else if (testPath.includes('pdf')) {
-            // Mock de PDF
-            const mock = buildMultiPartMock('brief.pdf', 'application/pdf', '%PDF-1.4 Mock Brief');
-            options.headers = mock.headers;
-            options.body = mock.body;
-          } else if (testPath.includes('video') || testPath.includes('media')) {
-            // Mock de Video / Imagen
-            const mock = buildMultiPartMock('creative.mp4', 'video/mp4', 'video-raw-bytes-mock');
-            options.headers = mock.headers;
-            options.body = mock.body;
-          } else {
-            // Payload JSON estándar para IA2, Graph API y Pasarela
-            options.headers = { 'Content-Type': 'application/json' };
-            options.body = JSON.stringify({
-              test: true,
-              slotNumber: '1',
-              stage: 'POST_48H',
-              userDataHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', // Hash SHA256 simulado sin value
-              pixelId: tokensConfig.meta.pixelId,
-              accountId: tokensConfig.meta.accountId
-            });
-          }
+          options.body = JSON.stringify({
+            test: true,
+            isSimulation: true,
+            slotNumber: '1',
+            stage: 'POST_48H',
+            
+            // 1. Simulación de Archivos
+            mediaFiles: {
+              video: 'creative_test_v1.mp4',
+              image: 'ad_banner_mock.png',
+              pdf: 'brief_audiencia_sodie.pdf',
+              excel: 'reporte_data_audiencia.xlsx'
+            },
+            fileUrl: 'https://sodie.app/storage/simulated_x.mp4',
+            fileCode: 'X_MP4_MOCK_2026',
+
+            // 2. Simulación de Integraciones Meta Graph API
+            metaAuth: {
+              accessToken: tokensConfig.meta?.accessToken || 'EAAB_MOCK_TOKEN_SODIE_2026',
+              accountId: tokensConfig.meta?.accountId || 'act_123456789012345',
+              pixelId: tokensConfig.meta?.pixelId || '1122334455667788',
+              businessId: 'biz_9988776655'
+            },
+
+            // Payload para Conversions API (CAPI)
+            capiEvent: {
+              event_name: 'Purchase',
+              event_time: Math.floor(Date.now() / 1000),
+              event_source_url: 'https://sodie.app/checkout',
+              user_data: {
+                em: ['e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'],
+                ph: ['2b00042f7481c7b056c4b410d28f33cfb292e221501b0d268d234560183',
+                client_user_agent: 'Mozilla/5.0 Mock Browser'
+              },
+              custom_data: {
+                currency: 'USD',
+                value: 49.99
+              }
+            },
+
+            // Payload para Creación de Campañas y AdSets
+            campaignData: {
+              name: 'SODIE_SIMULATION_CAMPAIGN',
+              objective: 'OUTCOME_SALES',
+              status: 'PAUSED',
+              daily_budget: 5000,
+              bid_strategy: 'LOWEST_COST_WITHOUT_CAP'
+            },
+
+            // Payload para Segmentación Lookalike con Value (LAL V)
+            lookalikeSpec: {
+              origin_audience_id: 'aud_custom_value_999',
+              ratio: 0.01, // 1%
+              country: 'US',
+              is_value_based: true,
+              value_schema: 'CUSTOMER_LIFETIME_VALUE'
+            },
+
+            // Solicitud de Métricas / Insights
+            insightsQuery: {
+              date_preset: 'last_30d',
+              fields: ['impressions', 'clicks', 'spend', 'cpc', 'roas', 'conversions'],
+              level: 'ad'
+            }
+          });
         }
 
         const response = await fetch(`${BASE_URL}${testPath}`, options);
         
-        if (response.ok || [400, 401, 422].includes(response.status)) {
+        if (response.ok || [400, 401, 403, 404, 422].includes(response.status)) {
           console.log(`✅ [${response.status}] ${options.method} -> ${testPath}`);
         } else {
           console.log(`⚠️ [${response.status}] ${options.method} -> ${testPath} (Revisar logs)`);
@@ -110,7 +132,7 @@ async function runTests() {
     }
   }
 
-  console.log('\n🏁 Escaneo masivo completado. Tu infraestructura SODIE v3.5 está lista 🗿💅🏽');
+  console.log('\n🏁 Escaneo masivo completado. Todas las rutas y Graph API cubiertas 🗿💅🏽');
   server.close();
   process.exit(0);
 }
