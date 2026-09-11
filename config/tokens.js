@@ -13,6 +13,13 @@ module.exports = {
   FRONTEND_URL,
   REDIRECT_URI, // <--- Una sola variable global para todas las pasarelas
 
+  meta: {
+    appId: process.env.META_APP_ID || process.env.APP_ID || '',
+    accountId: process.env.META_AD_ACCOUNT_ID || process.env.AD_ACCOUNT_ID || '',
+    accessToken: process.env.META_ACCESS_TOKEN || process.env.META_ACCES_TOKEN || '',
+    pixelId: process.env.META_PIXEL_ID || ''
+  }
+
   // Mapeo Directo de Pasarelas por Hora/Slot
   payments: {
     // Tramo 1: Reserva ($1,000 USD) via Kontigo
