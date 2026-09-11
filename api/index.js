@@ -291,6 +291,7 @@ if (!evaluatorLoaded) {
       message: 'Contrato recibido correctamente en el panel de administración.'
     });
   });
+} // ✅ CORREGIDO: Cierre del bloque `if (!evaluatorLoaded)`
 
 try {
   const onboardingRoutes = require('../routes/onboardingRoutes');
@@ -358,8 +359,6 @@ try {
 }
 
 // Carga de Router de Facebook
-let facebookRoutesLoaded = false;
-// En tu index.js (Sección 3. K)
 try {
   const facebookRoutes = require('./routes/facebookRoutes');
   app.use('/api/facebook', facebookRoutes);
@@ -376,7 +375,6 @@ const fbConnectHandler = async (req, res) => {
       sovyxLogger.info('Sincronizando conexión Facebook/Meta Pixel & Ads', { userId, pixelId });
     }
 
-    // Aquí procesas la vinculación del Pixel y Ad Account consumiendo el SDK o Graph API de Meta
     return res.json({
       success: true,
       status: 'CONNECTED',
@@ -508,12 +506,19 @@ if (!notificationsLoaded) {
   });
 }
 
-// 1. Servir carpeta pública para vídeos, imágenes y PDFs
-const mediaRoutes = require('../routes/mediaRoutes');
+// Servir carpeta pública para vídeos, imágenes y PDFs
+try {
+  const mediaRoutes = require('../routes/mediaRoutes');
+  app.use('/api/media', mediaRoutes);
+} catch (e) {
+  try {
+    const mediaRoutes = require('./routes/mediaRoutes');
+    app.use('/api/media', mediaRoutes);
+  } catch (err) {
+    console.warn('⚠️ Módulo mediaRoutes no cargado.');
+  }
+}
 
-// 3. Montar endpoints
-app.use('/api/media', mediaRoutes);
-  
 // M. Disponibilidad de Slots
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 2;
@@ -574,10 +579,13 @@ app.get('/api/health', (req, res) => {
 // ============================================
 // 4. CONTROL DE ERRORES
 // ============================================
+
+// ✅ CORREGIDO: Cierre apropiado de middleware 404
 app.use((req, res) => {
   res.status(404).json({ error: `Ruta ${req.url} no encontrada en SODIE OS` });
 });
 
+// Middleware Global de Errores
 app.use((err, req, res, next) => {
   if (sovyxLogger && sovyxLogger.error) {
     sovyxLogger.error('CRITICAL_SYSTEM_ERROR', { error: err.message });
