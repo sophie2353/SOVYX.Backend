@@ -1,6 +1,6 @@
 {
   "name": "sodie-backend",
-  "version": "2.0.26",
+  "version": "2.0.28",
   "description": "SODIE Core AI Engine - Web SaaS",
   "main": "index.js",
   "scripts": {
