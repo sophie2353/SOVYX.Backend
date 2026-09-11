@@ -395,7 +395,17 @@ const metaService = {
       console.error('Error en procesarCicloHora24:', error);
       throw error;
     }
-  }
+    /**
+   * Verificar si la campaña fue activada por el usuario en Meta Ads Manager
+   */
+  async verificarEstadoCampana(token, campaignId) {
+    if (!campaignId) return false;
+    const url = `${GRAPH_BASE_URL}/${campaignId}?fields=status,name&access_token=${token}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) throw new Error(`Meta API Error: ${data.error.message}`);
+    return data.status === 'ACTIVE';
+  },
 };
 
 module.exports = metaService;
