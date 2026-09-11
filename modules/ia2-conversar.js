@@ -26,7 +26,7 @@ class SOVYXIA2Conversor {
       ],
 
       "como_funciona": [
-        "1. Las herramientas de contenido te ayudan a redactar o diseñar más rápido, pero no evitan que quemes presupuesto en pauta. Si lanzas 50 anuncios generados por IA a una audiencia mal segmentada, solo estás quemando tu dinero a mayor velocidad. SODIE no resuelve un problema de redacción; resuelve la ineficiencia de tu gasto publicitario.\n\n" +
+        "Las herramientas de contenido te ayudan a redactar o diseñar más rápido, pero no evitan que quemes presupuesto en pauta. Si lanzas 50 anuncios generados por IA a una audiencia mal segmentada, solo estás quemando tu dinero a mayor velocidad. SODIE no resuelve un problema de redacción; resuelve la ineficiencia de tu gasto publicitario.\n\n" +
         "El proceso de integración es de precisión militar:\n" +
         "1️⃣ Reservas 1 de los 2 cupos para evaluadores ($1,000).\n" +
         "2️⃣ Subes la hoja de cálculo exportada de Shopify/CRM con tu data de compradores previos para calibración espejo (IA1 + IA3).\n" +
@@ -43,6 +43,10 @@ class SOVYXIA2Conversor {
 
       "diferencia_herramientas": [
         "Si estás buscando una herramienta de $30 dólares al mes para generar publicaciones de redes sociales, hay cientos en el mercado. SODIE es exclusivo para negocios que manejan presupuesto publicitario real, entienden el costo de oportunidad de esperar meses por resultados y necesitan eficiencia de capital inmediata. Por estabilidad y rendimiento del algoritmo, solo operamos con un máximo de 20 cuentas activas con 2 inicialmente para evaluadores."
+      ],
+
+      "cupo_3": [
+        "El Cupo 3 significa empezar la lista de espera de 18 cupos que se activa la V4 en 14 días. Si ya están los 2 cupos disponibles, únete a la lista de espera y puedes ver la base de la V4 y resultados en tiempo real de los 2 evaluadores cerca del día 14. ¿Quieres obtener un ROAS de 4 a 10 con SODIE o prefieres quedar fuera perdiendo miles al mes?"
       ],
 
       "despues_de_pagar": [
@@ -84,8 +88,9 @@ class SOVYXIA2Conversor {
       como_funciona: ['como funciona', 'explica', 'proceso', 'como es', 'pasos', 'protocolo'],
       comparacion: ['comparacion', 'comparar', 'saas', 'agencia', 'agencias', 'copywriter', 'diseñador', 'roas', 'fee', 'low-ticket', 'low ticket'],
       diferencia_herramientas: ['30', 'herramienta', 'barato', 'redes sociales', 'publicaciones', 'contenido', 'creativos', 'redaccion'],
+      cupo_3: ['cupo 3', 'cupo3', 'tercer cupo', '3er cupo', 'lista de espera', 'v4', 'lleno', 'sin cupos'],
       despues_de_pagar: ['despues de pagar', 'que hago despues', 'que sigue', 'luego de pagar', 'pague', 'evaluador'],
-      metodos_pago: ['pago', 'tarjeta', 'apple pay', 'como pago', 'transferencia', 'checkout', 'kontigo', 'cripto'],
+      metodos_pago: ['pago', 'tarjeta', 'apple pay', 'como pago', 'transferencia', 'checkout', 'kontigo', 'cripto', 'binance'],
       objecion: ['caro', 'riesgo', 'seguro', 'perder', 'lo pienso', 'garantia'],
       acceder: ['quiero entrar', 'acceder', 'comprar', 'pagar', 'reserva', 'cupo', 'enlace', 'link']
     };
@@ -122,6 +127,11 @@ class SOVYXIA2Conversor {
       quickReplies = [
         { label: "Reservar Slot ($1,000)", payload: "acceder" },
         { label: "¿Qué hago después de pagar?", payload: "despues_de_pagar" }
+      ];
+    } else if (intencion === 'cupo_3') {
+      quickReplies = [
+        { label: "Unirme a Lista de Espera (V4)", payload: "cupo_3" },
+        { label: "Reservar Slot ($1,000)", payload: "acceder" }
       ];
     } else if (intencion === 'comparacion' || intencion === 'diferencia_herramientas') {
       quickReplies = [
