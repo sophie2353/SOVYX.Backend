@@ -4,11 +4,12 @@ const Client = require('../models/Client');
 const tokens = require('../config/tokens');
 const metaService = require('../services/metaService');
 
-// Configuración centralizada de fallback (Admin) desde config/tokens.js
+// Configuración centralizada de Meta Ads extraída de config/tokens.js
 const FB_CONFIG = {
-  MY_ACT_ID: tokens.meta?.accountId || process.env.META_MASTER_ACT_ID || '',
-  MY_ACCESS_TOKEN: tokens.meta?.accessToken || process.env.META_MASTER_ACCESS_TOKEN || '',
-  DEFAULT_PIXEL_ID: tokens.meta?.pixelId || process.env.META_DEFAULT_PIXEL_ID || null,
+  APP_ID: tokens.meta?.appId || process.env.META_APP_ID || process.env.APP_ID || '',
+  MY_ACT_ID: tokens.meta?.accountId || process.env.META_AD_ACCOUNT_ID || process.env.AD_ACCOUNT_ID || '',
+  MY_ACCESS_TOKEN: tokens.meta?.accessToken || process.env.META_ACCESS_TOKEN || process.env.META_ACCES_TOKEN || '',
+  DEFAULT_PIXEL_ID: tokens.meta?.pixelId || process.env.META_PIXEL_ID || null,
   REDIRECT_URI: process.env.META_REDIRECT_URI || 'https://tu-dominio.com/confirmacionauth'
 };
 
@@ -39,7 +40,6 @@ async function getUserMetaContext(userId, sessionId) {
     account_name
   };
 }
-
 // ============================================
 // 1. CONEXIÓN Y REDIRECCIÓN OAUTH CON META
 // ============================================
