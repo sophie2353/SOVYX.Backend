@@ -1,4 +1,3 @@
-// services/metaService.js
 const crypto = require('crypto');
 const { sendSSEUpdate } = require('../routes/campaignRoutes');
 
@@ -20,8 +19,8 @@ const metaService = {
   // BÚSQUEDA Y LECTURA
   // =========================================================================
 
-  // 1. Buscar borrador por nombre exacto
-  async buscarBorrador(adAccountId, token, nombreBorrador) {
+  // Buscar borrador/campaña por nombre exacto ("Prueba Hora 24")
+  async buscarBorrador(adAccountId, token, nombreBorrador = "Prueba Hora 24") {
     const cleanAccountId = adAccountId.replace(/^act_/, '');
     const url = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns?fields=id,name,status&access_token=${token}`;
     const res = await fetch(url);
@@ -48,7 +47,7 @@ const metaService = {
       body: JSON.stringify({
         name: name,
         subtype: 'CUSTOM',
-        description: 'Semilla inyectada desde IA1 SOVYX',
+        description: 'Semilla inyectada desde IA1 SOVYX (Value-Based)',
         customer_file_source: 'USER_PROVIDED_ONLY',
         is_value_based: true, // 👈 Activa Value-Based Audience
         access_token: token
@@ -57,11 +56,11 @@ const metaService = {
     
     const data = await res.json();
     if (data.error) throw new Error(`Meta API Error (Custom Audience): ${data.error.message}`);
-    return data.id; // Retorna custom_audience_id
+    return data.id;
   },
 
   /**
-   * Inyectar usuarios cifrados (SHA-256) + Campo VALUE (sin hash)
+   * Inyectar usuarios cifrados (SHA-256) + Campo VALUE (numérico sin hash)
    */
   async inyectarUsuariosSemilla(audienceId, usersPayload, token) {
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
@@ -73,7 +72,7 @@ const metaService = {
       hashData(u.firstName),
       hashData(u.lastName),
       hashData(u.country),
-      typeof u.value === 'number' ? u.value : parseFloat(u.value || 0) // VALUE numérico (Sin SHA-256)
+      typeof u.value === 'number' ? u.value : parseFloat(u.value || 0) // VALUE numérico plano
     ]).filter(row => row[0] || row[1]); // Debe poseer al menos email o teléfono
 
     if (!formattedData.length) {
@@ -99,7 +98,7 @@ const metaService = {
   },
 
   /**
-   * Generar Lookalike del 1% (ratio: 0.01) para un país específico
+   * Generar Lookalike del 1% (ratio: 0.01) para un país específico priorizando valor
    */
   async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token) {
     const cleanAccountId = adAccountId.replace(/^act_/, '');
@@ -113,8 +112,8 @@ const metaService = {
         subtype: 'LOOKALIKE',
         origin_audience_id: seedAudienceId,
         lookalike_spec: JSON.stringify({
-          type: 'value_driven', // Prioriza usuarios parecidos a los de mayor valor
-          ratio: 0.01,         // 1% de precisión máxima
+          type: 'value_driven', // Prioriza usuarios de mayor valor
+          ratio: 0.01,         // Precision 1%
           location_spec: {
             geo_locations: {
               countries: [countryCode.toUpperCase()]
@@ -127,11 +126,11 @@ const metaService = {
 
     const data = await res.json();
     if (data.error) throw new Error(`Meta API Error (Lookalike ${countryCode}): ${data.error.message}`);
-    return data.id; // Retorna lookalike_audience_id
+    return data.id;
   },
 
   /**
-   * Generar proceso completo de segmentación LAL para todos los países del CSV
+   * Generar proceso completo de cifrado e inyección LAL por valor
    */
   async procesarEInyectarLookalikes({ adAccountId, token, usersPayload, countriesFound = ['US'] }) {
     if (!usersPayload || !usersPayload.length) {
@@ -139,17 +138,16 @@ const metaService = {
       return null;
     }
 
-    console.log(`🚀 Creando Semilla Basada en Valor con ${usersPayload.length} registros...`);
+    console.log(`🚀 Cifrando datos e inyectando Semilla de Valor con ${usersPayload.length} registros...`);
     const seedAudienceId = await this.crearAudienciaSemillaConValor(
       adAccountId, 
       token, 
       `SOVYX_Seed_Value_${Date.now()}`
     );
 
-    console.log('🔐 Inyectando datos cifrados SHA-256 + VALUE...');
     await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, token);
 
-    console.log(`🎯 Generando Públicos Similares (LAL 1%) para: ${countriesFound.join(', ')}...`);
+    console.log(`🎯 Generando Públicos Similares (LAL 1% Value-Driven) para: ${countriesFound.join(', ')}...`);
     const lookalikeIds = [];
     
     for (const country of countriesFound) {
@@ -167,21 +165,21 @@ const metaService = {
   },
 
   // =========================================================================
-  // CREACIÓN DE BORRADOR DESDE CERO
+  // CREACIÓN DE CAMPAÑA DE VENTAS EN SITIO WEB (DESDE CERO)
   // =========================================================================
 
   /**
-   * Crea una campaña completa en estado Borrador (PAUSED) con AdSet
+   * Crea una campaña enfocada en Ventas (OUTCOME_SALES / Value Optimization)
    */
-  async createDraftCampaign({ actId, token, pixelId, name = "Prueba Hora 24", objective = "OUTCOME_TRAFFIC", status = "PAUSED", dailyBudget = 1000, targeting, usersPayload, countriesFound }) {
+  async crearCampanaVentas({ actId, token, pixelId, name = "Prueba Hora 24", status = "PAUSED", dailyBudget = 1000, targeting, usersPayload, countriesFound }) {
     const cleanAccountId = actId.replace(/^act_/, '');
 
-    // 1. Crear Campaña
+    // 1. Crear Campaña con objetivo OUTCOME_SALES (Ventas en sitio web)
     const campaignUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns`;
     const campaignParams = new URLSearchParams({
       name,
-      objective,
-      status: 'PAUSED',
+      objective: 'OUTCOME_SALES', // 🎯 Objetivos de Ventas Directas
+      status,
       special_ad_categories: '[]',
       access_token: token
     });
@@ -191,8 +189,8 @@ const metaService = {
     if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
     const campaignId = campaignData.id;
 
-    // 2. Definir Targeting
-    let targetingConfig = targeting || { geo_locations: { countries: ['US'] } };
+    // 2. Procesar Audiencias Lookalike por Valor
+    let targetingConfig = targeting || { geo_locations: { countries: countriesFound || ['US'] } };
     if (usersPayload && usersPayload.length > 0) {
       const lalTargeting = await this.procesarEInyectarLookalikes({
         adAccountId: cleanAccountId,
@@ -205,22 +203,24 @@ const metaService = {
       }
     }
 
-    // 3. Crear AdSet (Conjunto de Anuncios)
+    // 3. Crear AdSet Optimizado para Conversión/Valor en Sitio Web
     const adSetUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/adsets`;
     const adSetBody = {
-      name: `${name} - AdSet`,
+      name: `${name} - AdSet Value Sales`,
       campaign_id: campaignId,
       daily_budget: dailyBudget,
       billing_event: 'IMPRESSIONS',
-      optimization_goal: 'LINK_CLICKS',
-      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+      optimization_goal: 'VALUE', // 👈 Optimización orientada a maximizar el valor de conversiones
       targeting: targetingConfig,
-      status: 'PAUSED',
+      status,
       access_token: token
     };
 
     if (pixelId) {
-      adSetBody.promoted_object = { pixel_id: pixelId, custom_event_type: 'PURCHASE' };
+      adSetBody.promoted_object = { 
+        pixel_id: pixelId, 
+        custom_event_type: 'PURCHASE' // 🛒 Evento de compra en sitio web
+      };
     }
 
     const adSetRes = await fetch(adSetUrl, {
@@ -228,23 +228,38 @@ const metaService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(adSetBody)
     });
+    
     const adSetData = await adSetRes.json();
-    if (adSetData.error) console.warn("Advertencia al crear AdSet:", adSetData.error.message);
+    if (adSetData.error) {
+      // Fallback a OFFSITE_CONVERSIONS si el ad account no tiene habilitado optimización por VALUE directa
+      if (adSetData.error.message.includes('VALUE')) {
+        adSetBody.optimization_goal = 'OFFSITE_CONVERSIONS';
+        const fallbackRes = await fetch(adSetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(adSetBody)
+        });
+        const fallbackData = await fallbackRes.json();
+        if (fallbackData.error) console.warn("Advertencia al crear AdSet (Fallback):", fallbackData.error.message);
+        adSetData.id = fallbackData.id;
+      } else {
+        console.warn("Advertencia al crear AdSet:", adSetData.error.message);
+      }
+    }
 
     return {
       success: true,
+      act_id: cleanAccountId,
       campaignId,
       adSetId: adSetData.id || null,
-      act_id: cleanAccountId,
-      status: 'PAUSED'
+      status
     };
   },
 
   // =========================================================================
-  // ACTIVACIÓN Y EJECUCIÓN EN BORRADOR
+  // ACTIVACIÓN, PAUSA Y CICLO DE 24 HORAS
   // =========================================================================
 
-  // 2. Inyectar segmentación al AdSet y activar campaña
   async inyectarSegmentacionYActivar(token, campaignId, dataSegmentacion, adAccountId, usersPayload, countriesFound) {
     const adSetUrl = `${GRAPH_BASE_URL}/${campaignId}/adsets?access_token=${token}`;
     const resSet = await fetch(adSetUrl);
@@ -290,9 +305,8 @@ const metaService = {
     });
   },
 
-  // 3. Pausar campaña al cumplir las 24h
   async pausarCampana(token, campaignId) {
-    await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${token}`, {
+    const res = await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -300,129 +314,85 @@ const metaService = {
         access_token: token 
       })
     });
+    return res.json();
   },
 
-  // 4. Leer métricas individuales para una campaña
   async obtenerMetricas(token, campaignId) {
-    const url = `${GRAPH_BASE_URL}/${campaignId}/insights?fields=impressions,clicks,cpc,ctr,spend,reach&access_token=${token}`;
+    const url = `${GRAPH_BASE_URL}/${campaignId}/insights?fields=impressions,clicks,cpc,ctr,spend,reach,action_values,actions&access_token=${token}`;
     const res = await fetch(url);
     const data = await res.json();
     return data.data?.[0] || {};
   },
 
-  // 5. Sumar métricas de múltiples campañas
-  async obtenerMetricasAcumuladas(token, campaignIds = []) {
-    let totalClicks = 0;
-    let totalReach = 0;
-    let totalSpend = 0;
-
-    for (const cId of campaignIds) {
-      if (!cId) continue;
-      const rawMetrics = await this.obtenerMetricas(token, cId);
-      totalClicks += parseInt(rawMetrics.clicks || 0);
-      totalReach += parseInt(rawMetrics.reach || rawMetrics.impressions || 0);
-      totalSpend += parseFloat(rawMetrics.spend || 0);
-    }
-
-    return {
-      visitors: totalClicks,
-      reach: totalReach,
-      spend: `$${totalSpend.toFixed(2)}`
-    };
-  },
-
-  // 6. Procesar y sumar automáticamente los dos bloques ('Prueba Hora 24-1' y 'Prueba Hora 24-2')
-  async procesarBloquesYAcumular({ 
+  /**
+   * Ciclo de 24 Horas: Pausa la campaña previa "Prueba Hora 24" o crea/activa la nueva desde cero
+   */
+  async procesarCicloHora24({ 
     sessionId, 
     token, 
     adAccountId, 
-    nombresBorradores = ['Prueba Hora 24-1', 'Prueba Hora 24-2'], 
+    pixelId,
+    nombreBorrador = 'Prueba Hora 24', 
     dataSegmentacion,
     usersPayload,
-    countriesFound 
+    countriesFound,
+    dailyBudget
   }) {
     try {
-      const campaignIds = [];
+      const cleanAccountId = adAccountId.replace(/^act_/, '');
+      const borradorExistente = await this.buscarBorrador(cleanAccountId, token, nombreBorrador);
 
-      for (const nombre of nombresBorradores) {
-        const borrador = await this.buscarBorrador(adAccountId, token, nombre);
-        if (borrador) {
-          campaignIds.push(borrador.id);
-          await this.inyectarSegmentacionYActivar(
-            token, 
-            borrador.id, 
-            dataSegmentacion, 
-            adAccountId, 
-            usersPayload, 
-            countriesFound
-          );
-        }
-      }
+      let campaignId;
 
-      if (campaignIds.length > 0) {
-        const formattedMetrics = await this.obtenerMetricasAcumuladas(token, campaignIds);
-        if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, formattedMetrics);
-
-        return { 
-          success: true, 
-          campaignIds, 
-          status: 'PROCESSED', 
-          metrics: formattedMetrics 
-        };
-      }
-
-      const fallbackMetrics = { visitors: 3640, reach: 44800, spend: "$56.00" };
-      if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, fallbackMetrics);
-
-      return { success: false, message: 'Ningún borrador fue encontrado', metrics: fallbackMetrics };
-    } catch (error) {
-      console.error('Error en procesarBloquesYAcumular:', error);
-      throw error;
-    }
-  },
-
-  // 7. Método unificado original
-  async procesarBorradorYActivar({ 
-    sessionId, 
-    token, 
-    adAccountId, 
-    nombreBorrador, 
-    dataSegmentacion,
-    usersPayload,
-    countriesFound 
-  }) {
-    try {
-      const borrador = await this.buscarBorrador(adAccountId, token, nombreBorrador);
-      const campaignId = borrador ? borrador.id : null;
-
-      if (campaignId) {
+      if (borradorExistente) {
+        // Pausar si estaba activa para refrescar el ciclo
+        await this.pausarCampana(token, borradorExistente.id);
+        campaignId = borradorExistente.id;
+        
         await this.inyectarSegmentacionYActivar(
           token, 
           campaignId, 
           dataSegmentacion, 
-          adAccountId, 
+          cleanAccountId, 
           usersPayload, 
           countriesFound
         );
-        
-        const rawMetrics = await this.obtenerMetricas(token, campaignId);
-        
-        const formattedMetrics = {
-          visitors: parseInt(rawMetrics.clicks || 0),
-          reach: parseInt(rawMetrics.reach || rawMetrics.impressions || 0),
-          spend: `$${parseFloat(rawMetrics.spend || 0).toFixed(2)}`
-        };
-
-        if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, formattedMetrics);
-        return { success: true, campaignId, status: 'ACTIVE', metrics: formattedMetrics };
+      } else {
+        // Crear de 0 con objetivo Ventas + Lookalike por valor
+        const nuevaCampana = await this.crearCampanaVentas({
+          actId: cleanAccountId,
+          token,
+          pixelId,
+          name: nombreBorrador,
+          status: 'ACTIVE',
+          dailyBudget,
+          targeting: dataSegmentacion,
+          usersPayload,
+          countriesFound
+        });
+        campaignId = nuevaCampana.campaignId;
       }
 
-      const fallbackMetrics = { visitors: 1820, reach: 22400, spend: "$28.00" };
-      if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, fallbackMetrics);
+      const rawMetrics = await this.obtenerMetricas(token, campaignId);
       
-      return { success: false, message: 'Borrador no encontrado', metrics: fallbackMetrics };
+      const formattedMetrics = {
+        visitors: parseInt(rawMetrics.clicks || 0),
+        reach: parseInt(rawMetrics.reach || rawMetrics.impressions || 0),
+        spend: `$${parseFloat(rawMetrics.spend || 0).toFixed(2)}`,
+        conversions: rawMetrics.actions?.find(a => a.action_type === 'purchase')?.value || 0
+      };
+
+      if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, formattedMetrics);
+
+      return { 
+        success: true, 
+        act_id: cleanAccountId,
+        campaignId, 
+        status: 'ACTIVE', 
+        metrics: formattedMetrics 
+      };
     } catch (error) {
-      console.error('Error en procesarBorradorYActivar:', error);
+      console.error('Error en procesarCicloHora24:', error);
       throw error;
     }
   }
