@@ -71,7 +71,7 @@ if (MONGO_URI) {
 const configHandler = (req, res) => {
   res.json({
     SOVYX_ADMIN_KEY: config.SOVYX_ADMIN_KEY || process.env.SOVYX_ADMIN_KEY || 'admin23555',
-    FB_APP_ID: config.meta?.appId || process.env.META_APP_ID || '',
+    FB_APP_ID: config.meta?.appId || process.env.APP_ID || '',
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || ''
   });
 };
@@ -292,15 +292,6 @@ if (!evaluatorLoaded) {
     });
   });
 
-  app.post(['/api/evaluator/fb-sync', '/api/v1/evaluator/fb-sync'], (req, res) => {
-    res.json({
-      success: true,
-      status: 'SYNCED',
-      message: 'Credenciales de Facebook sincronizadas con el panel de administración.'
-    });
-  });
-}
-
 try {
   const onboardingRoutes = require('../routes/onboardingRoutes');
   app.use('/api/v1/client', onboardingRoutes);
@@ -517,6 +508,12 @@ if (!notificationsLoaded) {
   });
 }
 
+// 1. Servir carpeta pública para vídeos, imágenes y PDFs
+const mediaRoutes = require('../routes/mediaRoutes');
+
+// 3. Montar endpoints
+app.use('/api/media', mediaRoutes);
+  
 // M. Disponibilidad de Slots
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 2;
@@ -602,7 +599,6 @@ app.listen(PORT, '0.0.0.0', () => {
   💳 Pasarelas: /api/pasarela/admin/set-link, /api/pasarela/get-link
   📂 Subida CSV: /api/upload-csv
   📋 Lista de Espera SODIE V4: /api/v1/waitlist/registro
-  📁 Subida Archivos Admin: /api/admin/uploads
   📊 Exportación CSV: /api/admin/export/export-clientes-hora48
   💬 Chat IA2: /api/v1/chat & /api/ia2
   ⚙️ Motor IA1 & SSE: /api/ia1/confirmar-borrador & /api/ia3/live
