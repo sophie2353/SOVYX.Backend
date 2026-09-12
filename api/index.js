@@ -89,7 +89,7 @@ try {
   } catch (err) {}
 }
 
-// B. Rutas de Pasarela (Kontigo $1K, Link Directo Opción 2 & Post-48H / 72H / 96H)
+// B. Rutas de Pasarela
 let pasarelaLoaded = false;
 try {
   const pasarelaRoutes = require('../routes/pasarela');
@@ -124,7 +124,7 @@ try {
   }
 }
 
-// D. Lista de Espera SODIE V4 (Nube, Biometría & Temporizador 72h-96h)
+// D. Lista de Espera SODIE V4
 let waitlistLoaded = false;
 try {
   const waitlistRoutes = require('../routes/waitlist');
@@ -181,7 +181,7 @@ if (!waitlistLoaded) {
   });
 }
 
-// E. Subida de Archivos Admin (Videos Dashboard, PDFs Pospago & Excel "Antes vs Después")
+// E. Subida de Archivos Admin
 let adminUploadsLoaded = false;
 try {
   const adminUploadRoutes = require('../routes/adminUpload');
@@ -199,7 +199,7 @@ try {
   }
 }
 
-// F. Exportación de Datos CSV ("SODIE Clientes Hora 48")
+// F. Exportación de Datos CSV
 let exportDataLoaded = false;
 try {
   const exportDataRoutes = require('../routes/exportData');
@@ -217,7 +217,7 @@ try {
   }
 }
 
-// G. Chat Web & Mensajería (IA2 - Ecommerce & Conversión)
+// G. Chat Web & Mensajería (IA2)
 let ia2ChatLoaded = false;
 try {
   const ia2Module = require('../modules/ia2-conversar');
@@ -291,7 +291,7 @@ if (!evaluatorLoaded) {
       message: 'Contrato recibido correctamente en el panel de administración.'
     });
   });
-} // ✅ CORREGIDO: Cierre del bloque `if (!evaluatorLoaded)`
+}
 
 try {
   const onboardingRoutes = require('../routes/onboardingRoutes');
@@ -318,16 +318,16 @@ try {
   } catch (err) { console.warn('⚠️ Módulo adminRoutes no cargado.'); }
 }
 
-// J. Carga de Data CSV/XLSX (IA1) & Campañas (CONEXIÓN MEJORADA)
+// J. Carga de Data CSV/XLSX (IA1) & Campañas
 try {
   const uploadRoutes = require('../routes/uploadRoutes');
-  app.use('/api', uploadRoutes); // ✅ Permite recibir POST directo en /api/upload-csv
+  app.use('/api', uploadRoutes);
   app.use('/api/v1/client/upload-audience', uploadRoutes);
   app.use('/api/upload', uploadRoutes);
 } catch (e) {
   try {
     const uploadRoutes = require('./routes/uploadRoutes');
-    app.use('/api', uploadRoutes); // ✅ Permite recibir POST directo en /api/upload-csv
+    app.use('/api', uploadRoutes);
     app.use('/api/v1/client/upload-audience', uploadRoutes);
     app.use('/api/upload', uploadRoutes);
   } catch (err) {
@@ -347,7 +347,7 @@ try {
   }
 }
 
-// K. Autenticación Meta OAuth, Facebook Connect, Graph API & Webhook Kontigo (CAPI)
+// K. Autenticación Meta OAuth, Facebook Connect & Webhook Kontigo
 try {
   const authRoutes = require('../routes/authRoutes');
   app.use('/api/auth', authRoutes);
@@ -358,33 +358,32 @@ try {
   } catch (err) {}
 }
 
-// Carga de Router de Facebook
+// Router de Facebook (Soporte /api/facebook)
 try {
-  const facebookRoutes = require('./routes/facebookRoutes');
+  const facebookRoutes = require('../routes/facebookRoutes');
   app.use('/api/facebook', facebookRoutes);
 } catch (err) {
-  console.warn('⚠️ Módulo routes/facebookRoutes no encontrado.');
+  try {
+    const facebookRoutes = require('./routes/facebookRoutes');
+    app.use('/api/facebook', facebookRoutes);
+  } catch (e) {
+    console.warn('⚠️ Módulo routes/facebookRoutes no encontrado.');
+  }
 }
 
 // Manejador / Fallback directo para POST /api/facebook/connect
 const fbConnectHandler = async (req, res) => {
   try {
-    const { accessToken, userId, pixelId, adAccountId } = req.body;
+    const { sessionId } = req.body;
+    const appId = config.meta?.appId || process.env.APP_ID || '';
+    const redirectUri = process.env.META_REDIRECT_URI || 'http://localhost:3000/api/facebook/auth/callback';
     
-    if (sovyxLogger && sovyxLogger.info) {
-      sovyxLogger.info('Sincronizando conexión Facebook/Meta Pixel & Ads', { userId, pixelId });
-    }
+    const redirectUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${sessionId || ''}&scope=ads_management,ads_read`;
 
     return res.json({
       success: true,
-      status: 'CONNECTED',
-      message: 'Conexión con Facebook Graph API, Pixel y Ad Account establecida.',
-      data: {
-        userId: userId || 'fb_user_active',
-        pixelId: pixelId || config.meta?.pixelId || process.env.FB_PIXEL_ID || '3591029402910',
-        adAccountId: adAccountId || config.meta?.adAccountId || process.env.FB_AD_ACCOUNT_ID || 'act_1020304050',
-        syncedAt: new Date().toISOString()
-      }
+      status: 'REDIRECT_REQUIRED',
+      redirectUrl
     });
   } catch (error) {
     return res.status(500).json({
@@ -506,20 +505,22 @@ if (!notificationsLoaded) {
   });
 }
 
-// Servir carpeta pública para vídeos, imágenes y PDFs
+// Media Upload Routes (Soporte Dual para /api/media y /api/v1/media)
 try {
   const mediaRoutes = require('../routes/mediaRoutes');
   app.use('/api/media', mediaRoutes);
+  app.use('/api/v1/media', mediaRoutes);
 } catch (e) {
   try {
     const mediaRoutes = require('./routes/mediaRoutes');
     app.use('/api/media', mediaRoutes);
+    app.use('/api/v1/media', mediaRoutes);
   } catch (err) {
     console.warn('⚠️ Módulo mediaRoutes no cargado.');
   }
 }
 
-// M. Disponibilidad de Slots
+// M. Disponibilidad de Slots (Restablecido a 2 clientes)
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 2;
   try {
@@ -580,12 +581,10 @@ app.get('/api/health', (req, res) => {
 // 4. CONTROL DE ERRORES
 // ============================================
 
-// ✅ CORREGIDO: Cierre apropiado de middleware 404
 app.use((req, res) => {
   res.status(404).json({ error: `Ruta ${req.url} no encontrada en SODIE OS` });
 });
 
-// Middleware Global de Errores
 app.use((err, req, res, next) => {
   if (sovyxLogger && sovyxLogger.error) {
     sovyxLogger.error('CRITICAL_SYSTEM_ERROR', { error: err.message });
@@ -605,7 +604,7 @@ app.listen(PORT, '0.0.0.0', () => {
   📡 Puerto: ${PORT}
   🎯 Límite: 2 Clientes Exclusivos ($10,000 USD Total)
   💳 Pasarelas: /api/pasarela/admin/set-link, /api/pasarela/get-link
-  📂 Subida CSV: /api/upload-csv
+  📂 Subida Media & CSV: /api/v1/media/upload & /api/upload-csv
   📋 Lista de Espera SODIE V4: /api/v1/waitlist/registro
   📊 Exportación CSV: /api/admin/export/export-clientes-hora48
   💬 Chat IA2: /api/v1/chat & /api/ia2
