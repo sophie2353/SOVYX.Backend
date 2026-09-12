@@ -34,35 +34,17 @@ async function getUserMetaContext(userId, sessionId) {
   };
 }
 
-// =========================================================================
-// 1. PASO CLIENTE: AUTH / CALLBACK
-// =========================================================================
-
-router.post('/connect', (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    const redirectUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${FB_CONFIG.APP_ID}&redirect_uri=${encodeURIComponent(FB_CONFIG.REDIRECT_URI)}&state=${sessionId || ''}&scope=ads_management,ads_read`;
-
-    return res.json({ success: true, redirectUrl });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
+// 1. POST AUTH CALLBACK
 router.get('/auth/callback', async (req, res) => {
   try {
-    const { state: sessionId, code } = req.query;
-    // Redirigimos directamente al HTML estático de confirmación en el frontend
-    return res.redirect(`/confirmacion_auth.html?sessionId=${sessionId || ''}&code=${code || ''}`);
+    const { state: sessionId } = req.query;
+    return res.redirect(`/confirmacion.html?step=procesar_excel&sessionId=${sessionId || ''}`);
   } catch (err) {
-    return res.redirect('/index.html?error=auth_failed');
+    return res.redirect('/confirmacion.html?step=error&message=auth_failed');
   }
 });
 
-// =========================================================================
-// 2. CREAR AUDIENCIA SEMILLA + BORRADOR
-// =========================================================================
-
+// 2. CREAR BORRADOR
 router.post('/crear-borrador', async (req, res) => {
   try {
     const { userId, sessionId, usersPayload, countriesFound, dataSegmentacion } = req.body;
@@ -84,24 +66,32 @@ router.post('/crear-borrador', async (req, res) => {
       { $set: { 'meta.lastCampaignId': borradorResult.campaignId } }
     );
 
-    // Retorna JSON para que el frontend (app.js) controle la navegación suave
     return res.json({
       success: true,
-      campaignId: borradorResult.campaignId,
-      actId: metaCtx.act_id,
-      redirectUrl: `/confirmacion_campana_activa.html?step=activar_campana&campaignId=${borradorResult.campaignId}&actId=${metaCtx.act_id}`
+      redirectUrl: `/confirmacion.html?step=activar_campana&campaignId=${borradorResult.campaignId}&actId=${metaCtx.act_id}`
     });
 
   } catch (err) {
-    console.error("❌ Error al crear borrador:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// =========================================================================
-// 3. ACTIVACIÓN Y VERIFICACIÓN
-// =========================================================================
+// 3. POST PAGO / CAPI / ACTIVACIÓN
+router.post('/capi', async (req, res) => {
+  try {
+    const { sessionId, eventName } = req.body;
+    const client = await Client.findOne({ sessionId });
+    
+    return res.json({
+      success: true,
+      redirectUrl: `/confirmacion.html?step=confirmar_pago&status=success&campaignId=${client?.meta?.lastCampaignId || ''}`
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
+// 4. VERIFICAR SI META LA ACTIVÓ
 router.get('/verificar-estado', async (req, res) => {
   try {
     const { userId, sessionId, campaignId } = req.query;
@@ -117,13 +107,7 @@ router.get('/verificar-estado', async (req, res) => {
       );
     }
 
-    return res.json({
-      success: true,
-      isActive: isNowActive,
-      campaignId: targetCampaignId,
-      actId: metaCtx.act_id
-    });
-
+    return res.json({ success: true, isActive: isNowActive, campaignId: targetCampaignId, actId: metaCtx.act_id });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
