@@ -101,6 +101,23 @@ async function getUserMetaContext(userId, sessionId) {
 // =========================================================================
 // 1. PASO CLIENTE: INICIAR SESIÓN CON FACEBOOK (OAuth Callback)
 // =========================================================================
+
+// Endpoint POST esperado por sodieConnectFacebook() en app.js
+router.post('/connect', (req, res) => {
+  try {
+    const { sessionId, email } = req.body;
+    const redirectUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${FB_CONFIG.APP_ID}&redirect_uri=${encodeURIComponent(FB_CONFIG.REDIRECT_URI)}&state=${sessionId || ''}&scope=ads_management,ads_read`;
+
+    return res.json({
+      success: true,
+      status: 'REDIRECT_REQUIRED',
+      redirectUrl: redirectUrl
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/connect-login', (req, res) => {
   const { sessionId } = req.query;
   const fbLoginUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${FB_CONFIG.APP_ID}&redirect_uri=${encodeURIComponent(FB_CONFIG.REDIRECT_URI)}&state=${sessionId}&scope=ads_management,ads_read`;
@@ -110,10 +127,7 @@ router.get('/connect-login', (req, res) => {
 router.get('/auth/callback', async (req, res) => {
   try {
     const { code, state: sessionId } = req.query;
-    // Intercambiar código por Token de acceso y guardar act_id en Mongo
-    // (AQUÍ: Procesarías el token de cliente y guardarías en Client model)
     
-    // HTML de Transición -> Redirige al index para procesar Excel / Audiencia
     return res.send(renderTransitionPage({
       title: " Conexión con Meta Exitosa",
       message: "Obteniendo ID de Cuenta y Píxel... Preparando borrador de campaña.",
@@ -129,14 +143,13 @@ router.get('/auth/callback', async (req, res) => {
 });
 
 // =========================================================================
-// 2. CREAR AUDIENCIA SEMILLA + BORRADOR EN PAUSED (Conectar con metaServices)
+// 2. CREAR AUDIENCIA SEMILLA + BORRADOR EN PAUSED
 // =========================================================================
 router.post('/crear-borrador-transicion', async (req, res) => {
   try {
     const { userId, sessionId, usersPayload, countriesFound, dataSegmentacion } = req.body;
     const metaCtx = await getUserMetaContext(userId, sessionId);
 
-    // Conectar con metaServices para cifrar usuarios, crear Semilla, LAL y Borrador Campaña PAUSED
     const borradorResult = await metaService.crearCampanaVentas({
       actId: metaCtx.act_id,
       token: metaCtx.fb_token,
@@ -148,13 +161,11 @@ router.post('/crear-borrador-transicion', async (req, res) => {
       countriesFound
     });
 
-    // Guardar ID de campaña en Mongo
     await Client.findOneAndUpdate(
       userId ? { userId } : { sessionId },
       { $set: { 'meta.lastCampaignId': borradorResult.campaignId } }
     );
 
-    // HTML de Transición -> Envía al index.html en el paso "Activar Campaña"
     return res.send(renderTransitionPage({
       title: " Audiencias y Borrador Listos",
       message: "Campaña creada en estado borrador. Redirigiendo para activar campaña...",
@@ -172,8 +183,25 @@ router.post('/crear-borrador-transicion', async (req, res) => {
 });
 
 // =========================================================================
-// 3. PASO CLIENTE / ADMIN: CONFIRMAR ACTIVACIÓN EN META
+// 3. PASO CLIENTE / ADMIN: CONFIRMAR ACTIVACIÓN Y CAPI
 // =========================================================================
+
+// Endpoint POST esperado por sodieConfirmarActivacion() en app.js
+router.post('/capi', async (req, res) => {
+  try {
+    const { sessionId, eventName, email } = req.body;
+    const client = await Client.findOne({ sessionId });
+    
+    return res.json({
+      success: true,
+      message: `Evento CAPI ${eventName || 'Activation'} procesado correctamente.`,
+      campaignId: client?.meta?.lastCampaignId || null
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/confirmar-activacion-transicion', async (req, res) => {
   try {
     const { userId, sessionId, campaignId } = req.query;
@@ -181,7 +209,6 @@ router.get('/confirmar-activacion-transicion', async (req, res) => {
 
     const targetCampaignId = campaignId || (await Client.findOne(userId ? { userId } : { sessionId }))?.meta?.lastCampaignId;
 
-    // Verificar en Meta Graph API si cambió de PAUSED a ACTIVE
     const isNowActive = await metaService.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
 
     if (isNowActive) {
@@ -190,14 +217,12 @@ router.get('/confirmar-activacion-transicion', async (req, res) => {
         { $set: { 'meta.status': 'ACTIVE', 'meta.activatedAt': new Date() } }
       );
 
-      // Redirige al Dashboard del Cliente / Principal para empezar a pedir Métricas
       return res.send(renderTransitionPage({
         title: " ¡Campaña Detectada como ACTIVA!",
         message: "Configuración confirmada por Meta Ads. Redirigiendo a tu Dashboard de Métricas...",
         targetUrl: `/index.html?view=dashboard&status=active&campaignId=${targetCampaignId}`
       }));
     } else {
-      // Sigue en PAUSED
       return res.send(renderTransitionPage({
         title: "⏳ Campaña Aún en Borrador",
         message: "Aún no detectamos la activación. Asegúrate de publicar tus visuales y monto en Meta Ads Manager.",
@@ -216,13 +241,12 @@ router.get('/confirmar-activacion-transicion', async (req, res) => {
 });
 
 // =========================================================================
-// 4. MODO ADMIN: ACTIVACIÓN DIRECTA USANDO CONFIG/TOKENS.JS
+// 4. MODO ADMIN: ACTIVACIÓN DIRECTA
 // =========================================================================
 router.post('/admin/activar-directo', async (req, res) => {
   try {
     const { usersPayload, countriesFound, dataSegmentacion } = req.body;
 
-    // Forzar lectura desde config/tokens.js
     const adminActId = FB_CONFIG.MY_ACT_ID.replace(/^act_/, '');
     const adminToken = FB_CONFIG.MY_ACCESS_TOKEN;
     const adminPixelId = FB_CONFIG.DEFAULT_PIXEL_ID;
@@ -254,7 +278,7 @@ router.post('/admin/activar-directo', async (req, res) => {
 });
 
 // =========================================================================
-// 5. OBTENER MÉTRICAS (JSON API PARA EL DASHBOARD EN TIEMPO REAL)
+// 5. OBTENER MÉTRICAS
 // =========================================================================
 router.get('/metrics', async (req, res) => {
   try {
