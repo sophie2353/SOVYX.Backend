@@ -3,9 +3,17 @@ const router = express.Router();
 
 // Almacenamiento en nube para la Lista de Espera SODIE V4
 global.waitlistDB = global.waitlistDB || [];
+global.waitlistStatusOverride = global.waitlistStatusOverride || null;
 
 // Registro en Lista de Espera SODIE V4 con Biometría
 router.post('/registro', (req, res) => {
+  if (global.waitlistStatusOverride === 'CLOSED') {
+    return res.status(403).json({
+      success: false,
+      error: 'La lista de espera ha sido cerrada manualmente desde el panel de administración.'
+    });
+  }
+
   const { nombre, compania, password, biometriaHash, email, timerHours = 72 } = req.body;
 
   if (!nombre || !email) {
@@ -69,17 +77,42 @@ router.post('/login', (req, res) => {
   });
 });
 
+// Cierre de sesión/fase desde Admin (Bloquea nuevos registros)
+router.post('/close', (req, res) => {
+  global.waitlistStatusOverride = 'CLOSED';
+
+  res.json({
+    success: true,
+    message: 'Lista de espera bloqueada exitosamente.',
+    status: 'LISTA_DE_ESPERA_CERRADA'
+  });
+});
+
+// Activación / Reapertura de Lista de Espera desde Admin
+router.post('/open', (req, res) => {
+  global.waitlistStatusOverride = 'OPEN';
+
+  res.json({
+    success: true,
+    message: 'Lista de espera activada y reabierta exitosamente.',
+    status: 'LISTA_DE_ESPERA_ACTIVADA'
+  });
+});
+
 // Estado general de la lista de espera
 router.get('/estado', (req, res) => {
   const totalRegistrados = global.waitlistDB.length;
-  const cuposDisponibles = Math.max(0, 18 - totalRegistrados);
+  const estaCerradaPorAdmin = global.waitlistStatusOverride === 'CLOSED';
+  const cuposDisponibles = estaCerradaPorAdmin ? 0 : Math.max(0, 18 - totalRegistrados);
 
   res.json({
     fase: 'Fase 1 - SODIE V4',
     totalCuposFase1: 18,
     cuposDisponibles,
     registrados: totalRegistrados,
-    status: cuposDisponibles === 0 ? 'LISTA_DE_ESPERA_CERRADA' : 'LISTA_DE_ESPERA_ACTIVADA'
+    status: (estaCerradaPorAdmin || cuposDisponibles === 0) 
+      ? 'LISTA_DE_ESPERA_CERRADA' 
+      : 'LISTA_DE_ESPERA_ACTIVADA'
   });
 });
 
