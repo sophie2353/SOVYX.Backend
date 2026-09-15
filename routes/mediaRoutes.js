@@ -1,51 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 
-const uploadDir = path.join(__dirname, '../public/uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    // Si se sube o reemplaza el vídeo promocional
-    if (req.body.type === 'promo_video' || file.fieldname === 'video') {
-      const ext = path.extname(file.originalname) || '.mp4';
-      return cb(null, `promo-video-active${ext}`);
-    }
-    // Para imágenes y contratos PDF
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
+// GET /api/v1/media/active-video
+// Devuelve la URL directa del video servido estáticamente
+router.get('/active-video', (req, res) => {
+  return res.json({
+    success: true,
+    videoUrl: '/video_demo.mp4'
+  });
 });
 
-const uploadMedia = multer({
-  storage,
-  limits: { fileSize: 60 * 1024 * 1024 } // 60MB máximo
-});
-
-// POST /api/media/upload
-router.post('/upload', uploadMedia.single('file'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No se recibió ningún archivo de media.' });
-    }
-
-    const publicUrl = `/uploads/${req.file.filename}?v=${Date.now()}`;
-
-    return res.json({
-      success: true,
-      url: publicUrl,
-      filename: req.file.filename,
-      mimetype: req.file.mimetype
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
+// GET /api/v1/media/contract
+// Devuelve la URL directa del PDF del contrato
+router.get('/contract', (req, res) => {
+  return res.json({
+    success: true,
+    contractUrl: '/contrato.pdf'
+  });
 });
 
 module.exports = router;
