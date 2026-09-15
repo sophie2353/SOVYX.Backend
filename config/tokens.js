@@ -8,8 +8,8 @@ module.exports = {
   mongoUri: process.env.MONGO_URI,
 
   // Credenciales & URLs Globales
-  ADMIN_KEY: process.env.ADMIN_KEY || 'admin23555',
-  BACKEND_URL: process.env.BACKEND_URL || 'https://api.sodie.app',
+  ADMIN_KEY: process.env.ADMIN_KEY || '',
+  BACKEND_URL: process.env.BACKEND_URL || '',
   API_URL,
   REDIRECT_URI, // <--- Una sola variable global para todas las pasarelas
 
