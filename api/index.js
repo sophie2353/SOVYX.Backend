@@ -10,9 +10,37 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(` Servidor corriendo de forma segura en el puerto ${PORT}`);
 });
+
 // Configuración & Logging Centralizado
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
+
+// Cargar variables de entorno del sistema (o .env local)
+const API_URL = process.env.API_URL || '';
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
+
+// 1. Endpoint público para que el Frontend obtenga la URL del servidor
+app.get('/api/config', (req, res) => {
+  res.json({
+    API_URL: API_URL
+  });
+});
+
+// 2. Endpoint seguro para validar el inicio de sesión de Admin
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+
+  if (!password) {
+    return res.status(400).json({ success: false, message: 'Contraseña requerida' });
+  }
+
+  // Compara la contraseña enviada con la variable de entorno de Render
+  if (password === ADMIN_KEY) {
+    return res.json({ success: true, message: 'Acceso autorizado' });
+  } else {
+    return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
+  }
+});
 
 // Tarea Programada: Ciclo automatizado Meta Ads 24h/48h
 try {
