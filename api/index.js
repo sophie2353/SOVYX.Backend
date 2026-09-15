@@ -3,7 +3,13 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
+const helmet = require('helmet');
 
+// Servidor escuchando
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(` Servidor corriendo de forma segura en el puerto ${PORT}`);
+});
 // Configuración & Logging Centralizado
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
@@ -21,6 +27,19 @@ try {
 
 const app = express();
 
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  })
+);
+
+app.use(
+// Middleware para parsear JSON y urlencoded
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 2. Servir los archivos estáticos de la carpeta /public (videos, PDFs, imágenes)
+app.use(express.static(path.join(__dirname, 'public')));
 // ============================================
 // 1. MIDDLEWARES PRINCIPALES
 // ============================================
