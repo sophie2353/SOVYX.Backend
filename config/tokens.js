@@ -1,16 +1,16 @@
 require('dotenv').config();
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://sodie.app';
-const REDIRECT_URI = process.env.REDIRECT_URI || `${FRONTEND_URL}/confirmacion.html`;
+const API_URL = process.env.API_URL || '';
+const REDIRECT_URI = process.env.REDIRECT_URI || `${API_URL}/confirmacion.html`;
 
 module.exports = {
   port: process.env.PORT || 10000,
   mongoUri: process.env.MONGO_URI,
 
   // Credenciales & URLs Globales
-  SOVYX_ADMIN_KEY: process.env.SOVYX_ADMIN_KEY || 'admin23555',
+  ADMIN_KEY: process.env.ADMIN_KEY || 'admin23555',
   BACKEND_URL: process.env.BACKEND_URL || 'https://api.sodie.app',
-  FRONTEND_URL,
+  API_URL,
   REDIRECT_URI, // <--- Una sola variable global para todas las pasarelas
 
   meta: {
