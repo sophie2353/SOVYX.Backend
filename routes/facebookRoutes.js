@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
-const Client = require('../models/Client');
+const Client = require('../models/clients');
 const tokens = require('../config/tokens');
 
 // Carga opcional de metaService / metaServices
