@@ -52,20 +52,18 @@ try {
     console.warn('⚠️ [SODIE CRON] Módulo cron24h no encontrado, omitiendo ejecuciones en segundo plano.');
   }
 }
-
 const app = express();
 
+app.use(
   helmet({
     contentSecurityPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" }
   })
 );
 
-app.use(
 // Middleware para parsear JSON y urlencoded
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 // 2. Servir los archivos estáticos de la carpeta /public (videos, PDFs, imágenes)
 app.use(express.static(path.join(__dirname, 'public')));
 // ============================================
