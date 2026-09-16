@@ -54,6 +54,29 @@ async function getUserMetaContext(userId, sessionId) {
   };
 }
 
+const { agregarTesterAutomatico } = require('../services/metaService');
+
+router.post('/capi', async (req, res) => {
+  try {
+    const { sessionId, eventName, fbUserId } = req.body;
+
+    // Si el usuario envió su ID/usuario de Facebook al pagar, lo agregamos como Tester al instante
+    if (fbUserId) {
+      await agregarTesterAutomatico(fbUserId);
+    }
+
+    const client = await Client.findOne({ sessionId });
+    
+    return res.json({
+      success: true,
+      // Lo llevamos a confirmacion.html en el paso de aceptar la invitación
+      redirectUrl: `/confirmacion.html?step=aceptar_rol&sessionId=${sessionId}`
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 /* ==========================================================================
    1. INICIO DE SESIÓN CON FACEBOOK (CONNECT)
    Construye la URL del Login Dialog de Meta con el APP_ID del cliente.
