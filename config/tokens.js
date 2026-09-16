@@ -20,27 +20,28 @@ module.exports = {
     pixelId: process.env.META_PIXEL_ID || ''
   }, // ✅ CORREGIDO: Se agregó la llave de cierre '}' y la coma
 
-  // Mapeo Directo de Pasarelas por Hora/Slot
-  payments: {
-    // Tramo 1: Reserva ($1,000 USD) via Kontigo
-    hora24_slot1: process.env.KONTIGO_PAYMENT_HORA_24_1,
-    hora24_slot2: process.env.KONTIGO_PAYMENT_HORA_24_2,
 
-    // Tramo 2 y 3: Cierre a las 48h / 72h / 96h via Binance Pay
-    hora48_slot1: process.env.BINANCE_PAYMENT_HORA48_1,
-    hora48_slot2: process.env.BINANCE_PAYMENT_HORA48_2,
-    
-    hora72_slot1: process.env.BINANCE_PAYMENT_HORA72_1,
-    hora72_slot2: process.env.BINANCE_PAYMENT_HORA72_2,
+  // Configuración Centralizada de Enlaces de Pago
+  PAYMENTS: {
+    // 1. BLOQUES HELIO PAY (HORA 0, 48 Y 72)
+    HELIO_2500: "https://helio.pay/2500",
+    HELIO_500: "https://helio.pay/500",
+    HELIO_3000: "https://helio.pay/3000", // Para $3.000 ($2.500 + $500)
+    HELIO_5000: "https://helio.pay/5000", // Para $5.000 ($2.500 x 2)
 
-    hora96_slot1: process.env.BINANCE_PAYMENT_HORA96_1,
-    hora96_slot2: process.env.BINANCE_PAYMENT_HORA96_2
-  },
+    // 2. ENLACES KONTIGO (HORA 24 Y COMPLEMENTARIOS)
+    KONTIGO: {
+      HORA_24_CUPO_1_2: "https://kontigo.link/hora24-1000", // $1.000 USD
+      HORA_24_CUPO_3: "https://kontigo.link/hora24-2000",   // $2.000 USD
+      HORA_0_RESERVA: "https://kontigo.link/reserva-hora0",
+    }
+  }
+};
 
   sodie: {
-    totalSlots: 2,
-    priceInitial: 1000,
-    pricePost48h: 9000,
-    priceMonthly: 5000
+    totalSlots: 3,
+    priceInitial: 3000,
+    pricePost96h: 9000 10000,
+    priceMonthly: 15000
   }
 };
