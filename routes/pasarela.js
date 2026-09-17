@@ -1,61 +1,125 @@
+/**
+ * Pasarela Payment Router - routes/pasarela.js
+ * Ruteo de bloques múltiples con redirección final en el último bloque.
+ */
 const express = require('express');
 const router = express.Router();
 const tokensConfig = require('../config/tokens');
 
-// Obtener enlace de pago automático según Hora y Slot (#1 / #2)
+/**
+ * Helper para inyectar la URL de redirección (confirmacion.html)
+ */
+function attachRedirectUri(url, clientId, isFinal = false) {
+  if (!url || typeof url !== 'string' || !url.trim()) return '';
+
+  let formattedUrl = url.trim();
+
+  // Solo inyectamos el redirect si es el paso final del cobro
+  if (isFinal) {
+    const redirectUri = tokensConfig.REDIRECT_URI || 
+      `${tokensConfig.FRONTEND_URL || ''}/confirmacion.html?clientId=${clientId}&status=success`;
+
+    if (formattedUrl.includes('{REDIRECT_URI}')) {
+      formattedUrl = formattedUrl.replace('{REDIRECT_URI}', encodeURIComponent(redirectUri));
+    } else if (!formattedUrl.includes('redirect_uri=') && !formattedUrl.includes('returnUrl=')) {
+      const separator = formattedUrl.includes('?') ? '&' : '?';
+      formattedUrl = `${formattedUrl}${separator}redirect_uri=${encodeURIComponent(redirectUri)}`;
+    }
+  }
+
+  return formattedUrl;
+}
+
 router.get('/get-link', (req, res) => {
   try {
-    const { stage, slotNumber, hours } = req.query;
-    
-    // Asignar número de slot (1 o 2) por defecto si no viene en la petición
-    const slot = slotNumber === '2' ? 'slot2' : 'slot1';
+    const { clientId, client_id, hours, slotNumber, stage } = req.query;
+
+    // Normalizar ID del cliente
+    const rawId = (clientId || client_id || 'CLIENT-01').toString().toUpperCase();
+    let idNumber = '1';
+    if (rawId.includes('3') || slotNumber === '3') idNumber = '3';
+    else if (rawId.includes('2') || slotNumber === '2') idNumber = '2';
+    else idNumber = '1';
+
+    const normalizedClientId = `CLIENT-0${idNumber}`;
     const elapsedHours = parseInt(hours, 10) || 0;
 
-    let rawUrl = '';
+    const payments = tokensConfig.PAYMENTS || {};
+    let blocks = [];
+    let methodType = '';
 
-    // Lógica de selección según la hora de la prueba
-    if (stage === 'POST_48H' || elapsedHours >= 48) {
-      if (elapsedHours >= 96) {
-        rawUrl = tokensConfig.payments[`hora96_${slot}`];
-      } else if (elapsedHours >= 72) {
-        rawUrl = tokensConfig.payments[`hora72_${slot}`];
+    // ==========================================
+    // REGLA 1: HORA 0 (PAGO INICIAL) 👺💅🏽
+    // ==========================================
+    if (elapsedHours === 0 || stage === 'HORA_0') {
+      methodType = 'HELIO_PAY_INITIAL';
+
+      if (idNumber === '3') {
+        // Cupo 3: $2,500 + $2,500 (Redirect en el 2do)
+        blocks = [
+          { step: 1, amount: 2500, url: attachRedirectUri(payments.HELIO_2500, normalizedClientId, false) },
+          { step: 2, amount: 2500, url: attachRedirectUri(payments.HELIO_2500, normalizedClientId, true) }
+        ];
       } else {
-        rawUrl = tokensConfig.payments[`hora48_${slot}`];
+        // Cupos 1 y 2: $2,500 + $500 (Redirect en el 2do)
+        blocks = [
+          { step: 1, amount: 2500, url: attachRedirectUri(payments.HELIO_2500, normalizedClientId, false) },
+          { step: 2, amount: 500,  url: attachRedirectUri(payments.HELIO_500_CLIEN_1_2, normalizedClientId, true) }
+        ];
       }
-    } else {
-      // Por defecto: Hora 24 / Slot inicial via Kontigo
-      rawUrl = tokensConfig.payments[`hora24_${slot}`];
-    }
+    } 
+    // ==========================================
+    // REGLA 2: HORA 24 (KONTIGO)
+    // ==========================================
+    else if (elapsedHours === 24 || stage === 'HORA_24') {
+      methodType = 'KONTIGO';
+      let link = payments.KONTIGO?.HORA24_CUPO_1;
 
-    if (!rawUrl) {
-      // Fallback a Kontigo si no se ha configurado la variable específica
-      rawUrl = tokensConfig.payments[`hora24_${slot}`];
-    }
+      if (idNumber === '3') link = payments.KONTIGO?.HORA24_CLIENT_3 || link;
+      else if (idNumber === '2') link = payments.KONTIGO?.HORA24_CUPO_2 || link;
 
-    // Inyección / Formateo automático de REDIRECT_URI en los enlaces
-    let targetUrl = rawUrl;
-    if (targetUrl) {
-      const redirectUri = tokensConfig.REDIRECT_URI || `${tokensConfig.FRONTEND_URL}/confirmacion.html`;
-      
-      if (targetUrl.includes('{REDIRECT_URI}')) {
-        // Reemplazo si la URL en la variable viene como plantilla
-        targetUrl = targetUrl.replace('{REDIRECT_URI}', encodeURIComponent(redirectUri));
-      } else if (!targetUrl.includes('redirect_uri=') && !targetUrl.includes('returnUrl=')) {
-        // Adjunta dinámicamente el parámetro de retorno según el delimitador de query params
-        const separator = targetUrl.includes('?') ? '&' : '?';
-        targetUrl = `${targetUrl}${separator}redirect_uri=${encodeURIComponent(redirectUri)}`;
+      blocks = [
+        { step: 1, amount: 1000, url: attachRedirectUri(link, normalizedClientId, true) }
+      ];
+    }
+    // ==========================================
+    // REGLA 3: HORA 48+ (HELIO LIQUIDACIÓN)
+    // ==========================================
+    else {
+      methodType = 'HELIO_PAY_SETTLEMENT';
+
+      if (idNumber === '3') {
+        // Ejemplo $5,000 en Hora 48: $2,500 + $2,500
+        blocks = [
+          { step: 1, amount: 2500, url: attachRedirectUri(payments.HELIO_2500, normalizedClientId, false) },
+          { step: 2, amount: 2500, url: attachRedirectUri(payments.HELIO_2500, normalizedClientId, true) }
+        ];
+      } else {
+        // Cupos 1 y 2
+        blocks = [
+          { step: 1, amount: 2500, url: attachRedirectUri(payments.HELIO_2500, normalizedClientId, false) },
+          { step: 2, amount: 500,  url: attachRedirectUri(payments.HELIO_500_CLIEN_1_2, normalizedClientId, true) }
+        ];
       }
     }
 
     return res.status(200).json({
       success: true,
-      paymentUrl: targetUrl,
-      stage,
-      slot
+      clientId: normalizedClientId,
+      hours: elapsedHours,
+      method: methodType,
+      totalSteps: blocks.length,
+      blocks: blocks,
+      // Primer link listo para abrir
+      paymentUrl: blocks[0]?.url || ''
     });
+
   } catch (error) {
-    console.error('Error al resolver link de pago:', error);
-    return res.status(500).json({ error: 'Error al consultar la pasarela' });
+    console.error('🔥 Error al resolver link de pago en pasarela:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Error al consultar las variables de la pasarela' 
+    });
   }
 });
 
