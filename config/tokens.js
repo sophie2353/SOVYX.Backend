@@ -24,10 +24,8 @@ module.exports = {
   // Configuración Centralizada de Enlaces de Pago
   PAYMENTS: {
     // 1. BLOQUES HELIO PAY (HORA 0, 48 Y 72)
-    HELIO_2500: "https://helio.pay/2500",
-    HELIO_500: "https://helio.pay/500",
-    HELIO_3000: "https://helio.pay/3000", // Para $3.000 ($2.500 + $500)
-    HELIO_5000: "https://helio.pay/5000", // Para $5.000 ($2.500 x 2)
+    HELIO_2500: " ",
+    HELIO_500_CLIEN_1_2: " ",
 
     // 2. ENLACES KONTIGO (HORA 24 Y COMPLEMENTARIOS)
     KONTIGO: {
@@ -36,7 +34,6 @@ module.exports = {
       HORA24_CLIENT_3: "",   // $2.000 USD
     }
   }
-};
 
   sodie: {
     totalSlots: 3,
