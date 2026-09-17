@@ -206,8 +206,22 @@ app.use('/api/v1/clients', clientIDRoutes);
 // ==========================================
 // FIN SECCIÓN RUTAS CLIENT ID
 // ==========================================
+// ==========================================
+// IMPORTACIÓN DE RUTAS
+// ==========================================
+const uploadRoutes = require('./routes/uploadRoutes'); // Subida e inyección de CSV/Excel
 
-app.get('/', (req, res) => res.status(200).json({ status: 'online', system: 'SODIE Core AI Engine', version: '2.0.26' }));
+// ==========================================
+// REGISTRO DE RUTAS / API ENDPOINTS
+// ==========================================
+
+// 2. Subida de Audiencias y Media (Redirige las peticiones de /api/v1/media/upload a /upload-csv internamente)
+app.use('/api/v1/media/upload', uploadRoutes);
+
+// ==========================================
+// FIN SECCIÓN RUTAS CLIENT ID & UPLOAD
+// ==========================================
+app.get('/.', (req, res) => res.status(200).json({ status: 'online', system: 'SODIE Core AI Engine', version: '2.0.26' }));
 
 app.get('/api/health', (req, res) => res.json({ status: '🟢 SODIE OPERATIONAL', mode: process.env.NODE_ENV || 'production' }));
 
@@ -225,12 +239,6 @@ app.use((err, req, res, next) => {
   console.error('💥 Error no controlado:', err);
   res.status(500).json({ error: 'Falla interna en el motor de SODIE.' });
 });
-
-const PORT = process.env.PORT || config.port || 10000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 SODIE OS v2.0.26 - SERVIDOR LISTO EN PUERTO ${PORT}`);
-});
-
 // ============================================
 // 5. ACTIVACIÓN DEL SERVIDOR
 // ============================================
