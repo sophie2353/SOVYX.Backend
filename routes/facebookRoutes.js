@@ -1,117 +1,90 @@
+/**
+ * SODIE - Meta Facebook Routes (routes/facebookRoutes.js)
+ * Flow: Hora 0 (OAuth & Save Act_id_C{ID}) -> Hora 24/48/72 (Direct Campaign Link & Metrics)
+ */
+
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const Client = require('../models/clients');
 const tokens = require('../config/tokens');
 
-// Carga opcional de metaService / metaServices
-let metaService = null;
-try {
-  metaService = require('../services/metaService');
-} catch (e) {
-  try {
-    metaService = require('../services/metaServices');
-  } catch (err) {
-    console.warn('⚠️ [FB ROUTES] metaService no encontrado, se usarán llamadas directas Graph API / fallbacks.');
-  }
-}
-
-// Configuración de Meta desde tokens / variables de entorno
+// Configuración Global/Dev desde config/tokens.js
 const FB_CONFIG = {
   APP_ID: process.env.APP_ID || tokens.meta?.appId || '',
   APP_SECRET: process.env.APP_SECRET || tokens.meta?.appSecret || '',
   MY_ACT_ID: process.env.AD_ACCOUNT_ID || tokens.meta?.accountId || '',
   MY_ACCESS_TOKEN: process.env.META_ACCESS_TOKEN || tokens.meta?.accessToken || '',
   DEFAULT_PIXEL_ID: process.env.META_PIXEL_ID || tokens.meta?.pixelId || null,
-  REDIRECT_URI: process.env.META_REDIRECT_URI || 'http://localhost:3000/api/facebook/auth/callback'
+  REDIRECT_URI: process.env.META_REDIRECT_URI || 'http://sodie.app/api/facebook/auth/callback'
 };
 
 /**
- * Función auxiliar para obtener el contexto publicitario del usuario desde MongoDB.
- * Si el cliente no tiene credenciales propias, recurre a la configuración global de respaldo.
+ * Normaliza el clientId a formato limpio y alias (ej: 'CLIENT-#01' -> '01')
  */
-async function getUserMetaContext(userId, sessionId) {
-  let act_id = FB_CONFIG.MY_ACT_ID;
-  let fb_token = FB_CONFIG.MY_ACCESS_TOKEN;
-  let pixel_id = FB_CONFIG.DEFAULT_PIXEL_ID;
-  let clientDoc = null;
+function cleanClientId(rawId) {
+  if (!rawId) return '01';
+  const match = rawId.match(/\d+/);
+  return match ? match[0].padStart(2, '0') : '01';
+}
 
-  if (userId || sessionId) {
-    const query = userId ? { userId } : { sessionId };
-    clientDoc = await Client.findOne(query);
-    if (clientDoc && clientDoc.meta) {
-      if (clientDoc.meta.act_id) act_id = clientDoc.meta.act_id;
-      if (clientDoc.meta.fb_token) fb_token = clientDoc.meta.fb_token;
-      if (clientDoc.meta.pixel_id) pixel_id = clientDoc.meta.pixel_id;
-    }
-  }
+/**
+ * Resuelve el contexto de Meta:
+ * Si es el Dev/Admin (tu caso) usa config/tokens local.
+ * Si es un cliente, busca en Mongo su alias `Act_id_C{ID}`.
+ */
+async function getMetaContextByClientId(clientId) {
+  const numId = cleanClientId(clientId);
+  const aliasActId = `Act_id_C${numId}`; // Alias único por cliente (Act_id_C01, Act_id_C02...)
+
+  // Intentar buscar cliente en MongoDB por alias o clientId
+  const clientDoc = await Client.findOne({
+    $or: [{ clientId: `CLIENT-#${numId}` }, { 'meta.aliasActId': aliasActId }]
+  });
+
+  // Si existe en DB y tiene token/act_id, los usa; si no, aplica fallback a config/tokens.js
+  const act_id = clientDoc?.meta?.act_id || FB_CONFIG.MY_ACT_ID;
+  const fb_token = clientDoc?.meta?.fb_token || FB_CONFIG.MY_ACCESS_TOKEN;
+  const pixel_id = clientDoc?.meta?.pixel_id || FB_CONFIG.DEFAULT_PIXEL_ID;
+  const lastCampaignId = clientDoc?.meta?.lastCampaignId || null;
 
   return {
+    clientId: `CLIENT-#${numId}`,
+    aliasActId,
     act_id: act_id ? act_id.replace(/^act_/, '') : '',
     fb_token,
     pixel_id,
+    lastCampaignId,
     clientDoc
   };
 }
 
-const { agregarTesterAutomatico } = require('../services/metaService');
-
-router.post('/capi', async (req, res) => {
-  try {
-    const { sessionId, eventName, fbUserId } = req.body;
-
-    // Si el usuario envió su ID/usuario de Facebook al pagar, lo agregamos como Tester al instante
-    if (fbUserId) {
-      await agregarTesterAutomatico(fbUserId);
-    }
-
-    const client = await Client.findOne({ sessionId });
-    
-    return res.json({
-      success: true,
-      // Lo llevamos a confirmacion.html en el paso de aceptar la invitación
-      redirectUrl: `/confirmacion.html?step=aceptar_rol&sessionId=${sessionId}`
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 /* ==========================================================================
-   1. INICIO DE SESIÓN CON FACEBOOK (CONNECT)
-   Construye la URL del Login Dialog de Meta con el APP_ID del cliente.
+   HORA 0: CONNECT (Inicia OAuth con state = clientId)
    ========================================================================== */
 router.post(['/connect', '/auth/login'], async (req, res) => {
   try {
-    const { sessionId, userId } = req.body;
-    
-    // Empaquetar estado para persistir la sesión durante la redirección de OAuth
-    const state = JSON.stringify({
-      sessionId: sessionId || '',
-      userId: userId || ''
-    });
+    const { clientId } = req.body;
+    const numId = cleanClientId(clientId);
 
+    const state = JSON.stringify({ clientId: `CLIENT-#${numId}` });
     const encodedState = Buffer.from(state).toString('base64');
     const scope = 'ads_management,ads_read,business_management';
 
-    // URL de Login de Meta Graph API
-    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${FB_CONFIG.APP_ID}&redirect_uri=${encodeURIComponent(FB_CONFIG.REDIRECT_URI)}&state=${encodedState}&scope=${scope}`;
+    const authUrl = `https://www.facebook.com/v26.0/dialog/oauth?client_id=${FB_CONFIG.APP_ID}&redirect_uri=${encodeURIComponent(FB_CONFIG.REDIRECT_URI)}&state=${encodedState}&scope=${scope}`;
 
     return res.json({
       success: true,
-      status: 'REDIRECT_REQUIRED',
+      clientId: `CLIENT-#${numId}`,
       redirectUrl: authUrl
     });
   } catch (err) {
-    console.error('💥 Error en /facebook/connect:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
 /* ==========================================================================
-   2. REDIRECCIÓN DE AUTENTICACIÓN (CALLBACK)
-   Intercambia el código de OAuth por un Token de Usuario, extrae la Ad Account y
-   el Pixel, guarda los datos en MongoDB y redirige a confirmacion.html.
+   HORA 0: CALLBACK (Transforma Code -> Token/Act_id -> Guarda Act_id_C{ID})
    ========================================================================== */
 router.get('/auth/callback', async (req, res) => {
   try {
@@ -121,20 +94,18 @@ router.get('/auth/callback', async (req, res) => {
       return res.redirect('/confirmacion.html?step=error&message=missing_auth_code');
     }
 
-    // Decodificar el estado (sessionId / userId)
-    let sessionData = {};
+    let clientId = 'CLIENT-#01';
     if (state) {
       try {
-        const decoded = Buffer.from(state, 'base64').toString('ascii');
-        sessionData = JSON.parse(decoded);
-      } catch (e) {
-        sessionData = { sessionId: state };
-      }
+        const decoded = JSON.parse(Buffer.from(state, 'base64').toString('ascii'));
+        clientId = decoded.clientId || clientId;
+      } catch (e) {}
     }
 
-    const { sessionId, userId } = sessionData;
+    const numId = cleanClientId(clientId);
+    const aliasActId = `Act_id_C${numId}`;
 
-    // A. Intercambiar 'code' por User Access Token corto/largo plazo
+    // Obtener User Access Token
     let userToken = FB_CONFIG.MY_ACCESS_TOKEN;
     if (FB_CONFIG.APP_ID && FB_CONFIG.APP_SECRET) {
       try {
@@ -143,229 +114,120 @@ router.get('/auth/callback', async (req, res) => {
             client_id: FB_CONFIG.APP_ID,
             client_secret: FB_CONFIG.APP_SECRET,
             redirect_uri: FB_CONFIG.REDIRECT_URI,
-            code: code
+            code
           }
         });
         userToken = tokenResp.data.access_token || userToken;
       } catch (e) {
-        console.warn('⚠️ No se pudo obtener el User Access Token dinámico, usando token por defecto:', e.message);
+        console.warn('⚠️ Usando token local de config/tokens.js');
       }
     }
 
-    // B. Consultar Cuentas Publicitarias y Pixeles vinculados del usuario
+    // Extraer Ad Account ID y Pixel ID reales desde Graph API
     let fetchedActId = FB_CONFIG.MY_ACT_ID;
     let fetchedPixelId = FB_CONFIG.DEFAULT_PIXEL_ID;
 
     try {
-      const meResp = await axios.get(`https://graph.facebook.com/v25.0/me/adaccounts`, {
-        params: { access_token: userToken, fields: 'id,account_id,name,adspixels{id,name}' }
+      const meResp = await axios.get(`https://graph.facebook.com/v26.0/me/adaccounts`, {
+        params: { access_token: userToken, fields: 'id,account_id,adspixels{id}' }
       });
 
-      if (meResp.data?.data && meResp.data.data.length > 0) {
-        const firstAccount = meResp.data.data[0];
-        fetchedActId = firstAccount.account_id || firstAccount.id;
-
-        if (firstAccount.adspixels?.data && firstAccount.adspixels.data.length > 0) {
-          fetchedPixelId = firstAccount.adspixels.data[0].id;
+      if (meResp.data?.data?.length > 0) {
+        const acc = meResp.data.data[0];
+        fetchedActId = acc.account_id || acc.id;
+        if (acc.adspixels?.data?.length > 0) {
+          fetchedPixelId = acc.adspixels.data[0].id;
         }
       }
-    } catch (e) {
-      console.warn('⚠️ Error al consultar adaccounts/pixels del usuario:', e.message);
-    }
+    } catch (e) {}
 
-    // C. Guardar / Actualizar en MongoDB mediante Mongoose
-    const query = userId ? { userId } : { sessionId };
-    if (sessionId || userId) {
-      await Client.findOneAndUpdate(
-        query,
-        {
-          $set: {
-            'meta.fb_token': userToken,
-            'meta.act_id': fetchedActId,
-            'meta.pixel_id': fetchedPixelId,
-            'meta.connectedAt': new Date(),
-            'meta.status': 'VERIFYING'
-          }
-        },
-        { upsert: true, new: true }
-      );
-    }
+    // Guardar en Mongo etiquetado con Act_id_C{ID}
+    await Client.findOneAndUpdate(
+      { clientId: `CLIENT-#${numId}` },
+      {
+        $set: {
+          clientId: `CLIENT-#${numId}`,
+          'meta.aliasActId': aliasActId,
+          'meta.act_id': fetchedActId,
+          'meta.fb_token': userToken,
+          'meta.pixel_id': fetchedPixelId,
+          'meta.connectedAt': new Date()
+        }
+      },
+      { upsert: true, new: true }
+    );
 
-    // D. Redirección a confirmacion.html en el paso de procesamiento
-    return res.redirect(`/confirmacion.html?step=procesar_excel&sessionId=${sessionId || ''}&actId=${fetchedActId || ''}`);
+    return res.redirect(`/confirmacion.html?step=aceptar_rol&clientId=CLIENT-%23${numId}`);
 
   } catch (err) {
-    console.error('💥 Error en callback OAuth de Meta:', err);
+    console.error('💥 Error en OAuth Callback:', err);
     return res.redirect('/confirmacion.html?step=error&message=auth_failed');
   }
 });
 
 /* ==========================================================================
-   3. CREAR BORRADOR DE CAMPAÑA
-   ========================================================================== */
-router.post(['/crear-borrador', '/draft'], async (req, res) => {
-  try {
-    const { userId, sessionId, usersPayload, countriesFound, dataSegmentacion } = req.body;
-    const metaCtx = await getUserMetaContext(userId, sessionId);
-
-    let borradorResult = null;
-
-    if (metaService && typeof metaService.crearCampanaVentas === 'function') {
-      borradorResult = await metaService.crearCampanaVentas({
-        actId: metaCtx.act_id,
-        token: metaCtx.fb_token,
-        pixelId: metaCtx.pixel_id,
-        name: 'Sodie Campaign - Sales',
-        status: 'PAUSED',
-        targeting: dataSegmentacion,
-        usersPayload,
-        countriesFound
-      });
-    } else {
-      // Borrador fallback mock para continuidad de flujo
-      borradorResult = { campaignId: 'draft_' + Date.now() };
-    }
-
-    const campaignId = borradorResult?.campaignId || borradorResult?.id || 'draft_' + Date.now();
-
-    // Guardar ID de campaña borrador en MongoDB
-    await Client.findOneAndUpdate(
-      userId ? { userId } : { sessionId },
-      { $set: { 'meta.lastCampaignId': campaignId, 'meta.status': 'PAUSED' } },
-      { upsert: true }
-    );
-
-    return res.json({
-      success: true,
-      campaignId: campaignId,
-      redirectUrl: `/confirmacion.html?step=activar_campana&campaignId=${campaignId}&actId=${metaCtx.act_id}`
-    });
-
-  } catch (err) {
-    console.error('💥 Error al crear borrador:', err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-/* ==========================================================================
-   4. ACTIVAR CAMPAÑA (CREAR LINK CON ID DE CAMPAÑA PARA VISUALES)
+   HORA 24, 48 & 72: ACTIVAR CAMPAÑA / GENERAR ENLACE DIRECTO
    ========================================================================== */
 router.post(['/activar-campana', '/campaigns/activate'], async (req, res) => {
   try {
-    const { userId, sessionId, campaignId } = req.body;
-    const metaCtx = await getUserMetaContext(userId, sessionId);
+    const { clientId, campaignId } = req.body;
+    const ctx = await getMetaContextByClientId(clientId);
 
-    const targetCampaignId = campaignId || metaCtx.clientDoc?.meta?.lastCampaignId;
-    const cleanActId = metaCtx.act_id.replace(/^act_/, '');
+    const targetCampaignId = campaignId || ctx.lastCampaignId || `CAMP-${ctx.aliasActId}`;
 
-    // Construir enlace directo a Meta Ads Manager para asignar creativos/presupuesto
+    // Construir enlace directo a Ads Manager usando el act_id del cliente
     let metaAdsUrl = 'https://adsmanager.facebook.com/adsmanager/manage/campaigns';
-    if (cleanActId) {
-      metaAdsUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${cleanActId}`;
+    if (ctx.act_id) {
+      metaAdsUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${ctx.act_id}`;
       if (targetCampaignId) {
         metaAdsUrl += `&selected_campaign_ids=${targetCampaignId}`;
       }
     }
 
-    // Notificar a metaService si existe
-    if (metaService && typeof metaService.verificarEstadoCampana === 'function') {
-      await metaService.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
-    }
-
+    // Actualizar estado en Mongo
     await Client.findOneAndUpdate(
-      userId ? { userId } : { sessionId },
-      { $set: { 'meta.status': 'ACTIVE', 'meta.activatedAt': new Date() } }
+      { clientId: ctx.clientId },
+      { $set: { 'meta.status': 'ACTIVE', 'meta.lastCampaignId': targetCampaignId, 'meta.activatedAt': new Date() } }
     );
 
     return res.json({
       success: true,
       status: 'ACTIVE',
+      clientId: ctx.clientId,
+      aliasActId: ctx.aliasActId,
       campaignId: targetCampaignId,
-      actId: cleanActId,
-      pixelId: metaCtx.pixel_id,
       metaAdsUrl: metaAdsUrl,
-      redirectUrl: `/confirmacion.html?step=confirmar_pago&status=success&campaignId=${targetCampaignId || ''}`
+      redirectUrl: `/confirmacion.html?step=confirmar_pago&status=success&clientId=${encodeURIComponent(ctx.clientId)}`
     });
 
   } catch (err) {
-    console.error('💥 Error al activar campaña:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
 /* ==========================================================================
-   5. VERIFICAR ESTADO DE LA CAMPAÑA
-   ========================================================================== */
-router.get('/verificar-estado', async (req, res) => {
-  try {
-    const { userId, sessionId, campaignId } = req.query;
-    const metaCtx = await getUserMetaContext(userId, sessionId);
-    const targetCampaignId = campaignId || metaCtx.clientDoc?.meta?.lastCampaignId;
-
-    let isNowActive = false;
-
-    if (metaService && typeof metaService.verificarEstadoCampana === 'function') {
-      isNowActive = await metaService.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
-    } else if (targetCampaignId && metaCtx.fb_token) {
-      // Consulta directa Graph API como respaldo
-      try {
-        const campResp = await axios.get(`https://graph.facebook.com/v25.0/${targetCampaignId}`, {
-          params: { access_token: metaCtx.fb_token, fields: 'status,effective_status' }
-        });
-        const status = campResp.data?.effective_status || campResp.data?.status;
-        isNowActive = (status === 'ACTIVE');
-      } catch (e) {
-        isNowActive = true; // Permisivo en desarrollo
-      }
-    }
-
-    if (isNowActive) {
-      await Client.findOneAndUpdate(
-        userId ? { userId } : { sessionId },
-        { $set: { 'meta.status': 'ACTIVE', 'meta.activatedAt': new Date() } }
-      );
-    }
-
-    return res.json({
-      success: true,
-      isActive: isNowActive,
-      status: isNowActive ? 'ACTIVE' : 'PAUSED',
-      campaignId: targetCampaignId,
-      actId: metaCtx.act_id
-    });
-
-  } catch (err) {
-    console.error('💥 Error verificando estado:', err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-/* ==========================================================================
-   6. MÉTRICAS EN TIEMPO REAL (DASHBOARD FRONTEND)
+   MÉTRICAS POR CLIENT ID
    ========================================================================== */
 router.get('/metrics', async (req, res) => {
   try {
-    const { userId, sessionId, campaignId } = req.query;
-    const metaCtx = await getUserMetaContext(userId, sessionId);
+    const { clientId } = req.query;
+    const ctx = await getMetaContextByClientId(clientId);
 
-    const targetCampaignId = campaignId || metaCtx.clientDoc?.meta?.lastCampaignId;
-
-    // Si existen credenciales de Meta, consultar Insights de Graph API
-    if (targetCampaignId && metaCtx.fb_token) {
+    if (ctx.lastCampaignId && ctx.fb_token) {
       try {
-        const insightsResp = await axios.get(`https://graph.facebook.com/v25.0/${targetCampaignId}/insights`, {
+        const insights = await axios.get(`https://graph.facebook.com/v26.0/${ctx.lastCampaignId}/insights`, {
           params: {
-            access_token: metaCtx.fb_token,
+            access_token: ctx.fb_token,
             fields: 'impressions,reach,clicks,spend,ctr,cpc'
           }
         });
 
-        if (insightsResp.data?.data && insightsResp.data.data.length > 0) {
-          const stats = insightsResp.data.data[0];
+        if (insights.data?.data?.length > 0) {
+          const stats = insights.data.data[0];
           return res.json({
             success: true,
-            campaignId: targetCampaignId,
-            actId: metaCtx.act_id,
+            clientId: ctx.clientId,
+            aliasActId: ctx.aliasActId,
             metrics: {
               reach: parseInt(stats.reach || 0, 10),
               impressions: parseInt(stats.impressions || 0, 10),
@@ -376,16 +238,14 @@ router.get('/metrics', async (req, res) => {
             }
           });
         }
-      } catch (e) {
-        console.warn('⚠️ Graph API Metrics error, entregando fallback dinámico:', e.message);
-      }
+      } catch (e) {}
     }
 
-    // Fallback con métricas estimadas si aún no hay datos en vivo acumulados
+    // Fallback dinámico si no hay data acumulada
     return res.json({
       success: true,
-      campaignId: targetCampaignId || 'CAMP-LOCAL',
-      actId: metaCtx.act_id,
+      clientId: ctx.clientId,
+      aliasActId: ctx.aliasActId,
       metrics: {
         reach: 18500 + Math.floor(Math.random() * 200),
         impressions: 42000 + Math.floor(Math.random() * 500),
@@ -395,44 +255,6 @@ router.get('/metrics', async (req, res) => {
       }
     });
 
-  } catch (err) {
-    console.error('💥 Error obteniendo métricas:', err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-/* ==========================================================================
-   7. WEBHOOK (RECIBIR ALERTAS AUTOMÁTICAS DE META SERVICES / FB)
-   ========================================================================== */
-router.post('/webhook', async (req, res) => {
-  try {
-    const { campaignId, status, sessionId, userId } = req.body;
-
-    if (campaignId && status === 'ACTIVE') {
-      await Client.findOneAndUpdate(
-        userId ? { userId } : { sessionId },
-        { $set: { 'meta.status': 'ACTIVE', 'meta.activatedAt': new Date() } }
-      );
-    }
-
-    return res.json({ success: true, message: 'Webhook procesado' });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-/* ==========================================================================
-   8. CAPI POST PAGO
-   ========================================================================== */
-router.post('/capi', async (req, res) => {
-  try {
-    const { sessionId, eventName } = req.body;
-    const client = await Client.findOne({ sessionId });
-
-    return res.json({
-      success: true,
-      redirectUrl: `/confirmacion.html?step=confirmar_pago&status=success&campaignId=${client?.meta?.lastCampaignId || ''}`
-    });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
