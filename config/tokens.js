@@ -31,9 +31,9 @@ module.exports = {
 
     // 2. ENLACES KONTIGO (HORA 24 Y COMPLEMENTARIOS)
     KONTIGO: {
-      HORA_24_CUPO_1_2: "https://kontigo.link/hora24-1000", // $1.000 USD
-      HORA_24_CUPO_3: "https://kontigo.link/hora24-2000",   // $2.000 USD
-      HORA_0_RESERVA: "https://kontigo.link/reserva-hora0",
+      HORA0_CUPO_1: " ", // $1.000 USD
+      HORA0_CUPO_2: " ",
+      HORA24_CLIENT_3: "",   // $2.000 USD
     }
   }
 };
