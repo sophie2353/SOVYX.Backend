@@ -31,8 +31,8 @@ module.exports = {
 
     // 2. ENLACES KONTIGO (HORA 24 Y COMPLEMENTARIOS)
     KONTIGO: {
-      HORA0_CUPO_1: " ", // $1.000 USD
-      HORA0_CUPO_2: " ",
+      HORA24_CUPO_1: " ", // $1.000 USD
+      HORA24_CUPO_2: " ",
       HORA24_CLIENT_3: "",   // $2.000 USD
     }
   }
