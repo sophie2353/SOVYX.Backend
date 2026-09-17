@@ -58,7 +58,7 @@ function extraerCamposTexto(buffer) {
   }).filter(item => item.email || item.phone || item.fn || item.value > 0);
 }
 
-router.post('/upload-csv', upload.single('file'), async (req, res) => {
+router.post('/', upload.single('file'), async (req, res) => {
   try {
     const { sessionId, nicho, token, adAccountId, nombreBorrador, autoActivate } = req.body;
     if (!req.file) return res.status(400).json({ error: 'Archivo no recibido' });
