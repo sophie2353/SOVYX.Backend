@@ -191,6 +191,22 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   });
 });
 
+// ==========================================
+// IMPORTACIÓN DE RUTAS
+// ==========================================
+const clientIDRoutes = require('./routes/clientIDRoutes');
+
+// ==========================================
+// REGISTRO DE RUTAS / API ENDPOINTS
+// ==========================================
+
+// Asignación y gestión secuencial de IDs de Cliente (Hora 0 / Confirmación)
+app.use('/api/v1/clients', clientIDRoutes);
+
+// ==========================================
+// FIN SECCIÓN RUTAS CLIENT ID
+// ==========================================
+
 app.get('/', (req, res) => res.status(200).json({ status: 'online', system: 'SODIE Core AI Engine', version: '2.0.26' }));
 
 app.get('/api/health', (req, res) => res.json({ status: '🟢 SODIE OPERATIONAL', mode: process.env.NODE_ENV || 'production' }));
