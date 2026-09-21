@@ -230,6 +230,12 @@ try { app.use('/api/media', require('./routes/mediaRoutes')); } catch(e){}
 try { app.use('/api/pago', require('./routes/pago')); } catch(e){}
 try { app.use('/api/facebook', require('./routes/facebookRoutes')); } catch(e){}
 
+// 1. Importar el módulo IA3 Analyzer
+const ia3AnalyzerModule = require('./modules/ia3-analyzer');
+
+// 2. Montar el módulo en la ruta /api/ia3
+app.use('/api/ia3', ia3AnalyzerModule);
+
 // ============================================
 // 4. CONTROL DE ERRORES Y ACTIVACIÓN
 // ============================================
