@@ -18,9 +18,9 @@ module.exports = {
     accountId: process.env.META_AD_ACCOUNT_ID || process.env.AD_ACCOUNT_ID || '',
     accessToken: process.env.META_ACCESS_TOKEN || process.env.META_ACCES_TOKEN || '',
     pixelId: process.env.META_PIXEL_ID || ''
-  }, // ✅ CORREGIDO: Se agregó la llave de cierre '}' y la coma
+  },
 
-  sodie= {
+  sodie: { // 👈 AQUÍ ESTABA EL ERROR: Tenías 'sodie=' en lugar de 'sodie:'
     totalSlots: 3,
     priceInitial: 7000,
     priceweek: 6000,
