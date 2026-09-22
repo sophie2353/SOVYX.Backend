@@ -20,25 +20,10 @@ module.exports = {
     pixelId: process.env.META_PIXEL_ID || ''
   }, // ✅ CORREGIDO: Se agregó la llave de cierre '}' y la coma
 
-
-  // Configuración Centralizada de Enlaces de Pago
-  PAYMENTS: {
-    // 1. BLOQUES HELIO PAY (HORA 0, 48 Y 72)
-    HELIO_2500: " ",
-    HELIO_500_CLIEN_1_2: " ",
-
-    // 2. ENLACES KONTIGO (HORA 24 Y COMPLEMENTARIOS)
-    KONTIGO: {
-      HORA24_CUPO_1: " ", // $1.000 USD
-      HORA24_CUPO_2: " ",
-      HORA24_CLIENT_3: "",   // $2.000 USD
-    }
-  }
-
   sodie: {
     totalSlots: 3,
-    priceInitial: 3000,
-    pricePost96h: 9000 10000,
-    priceMonthly: 15000
+    priceInitial: 7000,
+    priceweek: 6000,
+    priceMonthly: 5000
   }
 };
