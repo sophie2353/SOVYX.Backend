@@ -3,7 +3,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
-const helmet = require('helmet');
+const cron24h = require(path.join(__dirname, '../jobs/cron24h.js'));
 
 const app = express();
 
@@ -61,17 +61,6 @@ if (MONGO_URI) {
     });
 } else {
   console.warn('⚠️ [SODIE DB] MONGO_URI no encontrada en entorno.');
-}
-
-// Tarea Programada: Ciclo automatizado Meta Ads
-try {
-  require('../jobs/cron24h');
-} catch (e) {
-  try {
-    require('./jobs/cron24h');
-  } catch (err) {
-    console.warn('⚠️ [SODIE CRON] Módulo cron24h no encontrado, omitiendo ejecuciones.');
-  }
 }
 
 // ============================================
