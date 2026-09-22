@@ -20,7 +20,7 @@ module.exports = {
     pixelId: process.env.META_PIXEL_ID || ''
   }, // ✅ CORREGIDO: Se agregó la llave de cierre '}' y la coma
 
-  sodie: {
+  sodie= {
     totalSlots: 3,
     priceInitial: 7000,
     priceweek: 6000,
