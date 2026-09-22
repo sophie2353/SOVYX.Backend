@@ -194,7 +194,7 @@ app.get('/api/clientes/disponibles', async (req, res) => {
 // ==========================================
 // IMPORTACIÓN DE RUTAS
 // ==========================================
-const clientIDRoutes = require('./routes/clientIDRoutes');
+const clientIDRoutes = require('../routes/clientIDRoutes');
 
 // ==========================================
 // REGISTRO DE RUTAS / API ENDPOINTS
@@ -209,7 +209,7 @@ app.use('/api/v1/clients', clientIDRoutes);
 // ==========================================
 // IMPORTACIÓN DE RUTAS
 // ==========================================
-const uploadRoutes = require('./routes/uploadRoutes'); // Subida e inyección de CSV/Excel
+const uploadRoutes = require('../routes/uploadRoutes'); // Subida e inyección de CSV/Excel
 
 // ==========================================
 // REGISTRO DE RUTAS / API ENDPOINTS
@@ -231,7 +231,7 @@ try { app.use('/api/pago', require('./routes/pago')); } catch(e){}
 try { app.use('/api/facebook', require('./routes/facebookRoutes')); } catch(e){}
 
 // 1. Importar el módulo IA3 Analyzer
-const ia3AnalyzerModule = require('./modules/ia3-analyzer');
+const ia3AnalyzerModule = require('../modules/ia3-analyzer');
 
 // 2. Montar el módulo en la ruta /api/ia3
 app.use('/api/ia3', ia3AnalyzerModule);
