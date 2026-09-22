@@ -18,22 +18,18 @@ class SOVYXIA2Conversor {
       { label: "SODIE vs SaaS / Agencias", payload: "comparacion" },
       { label: "Protocolo Ecommerce (100K€)", payload: "ecommerce" },
       { label: "Cupo 4 (Lista de Espera V4)", payload: "cupo_4" },
-      { label: "Reservar slot ($1,000)", payload: "acceder" }
+      { label: "Reservar slot ($7,000)", payload: "acceder" }
     ];
 
     this.plantillas = {
       "hola": [
-        "Gracias por confirmar que este software funciona, ¿qué preguntas tienes?\n\nQuedan pocos cupos disponibles para evaluadores (máximo 20 cuentas activas). La oferta es simple: $1,000 de acceso inicial y $9,000 cuando veas los resultados en 48 horas ($10,000 USD total). ¿Tienes el Ads Manager listo?"
+        "Gracias por confirmar que este software funciona, ¿qué preguntas tienes?\n\nQuedan pocos cupos disponibles para evaluadores (máximo 10 cuentas activas después de los 2 evaluadores). La oferta es simple: $7,000 de acceso inicial y $18,000 dividido en 3 cuotas cuando veas los resultados ($25,000 USD total). ¿Tienes el Ads Manager listo?"
       ],
 
-      "cuotas_pasarela": [
-        "Existen 3 opciones fraccionadas para la liquidación final a través de la pasarela directa:\n\n1. Pagar 3 cuotas ($3,000 c/u en Hora 48, 72 y 96)\n2. Pagar 2 cuotas ($6,000 en Hora 48 y $3,000 en Hora 72)\n3. Pagar 1 cuota ($9,000 en Hora 48)",
-        "El objetivo de las cuotas es permitirte verificar la tracción de la campaña a medida que SODIE genera resultados en tiempo real.",
-        "Cualquier ajuste de cuotas se selecciona directamente en la sección de pagos dentro de tu vista de cliente."
-      ],
+
 
       "cuanto_cuesta": [
-        "El costo total es de $10,000 USD. Pagas $1,000 mediante pasarela directa para reservar tu cupo de evaluador y activar el despliegue. Los $9,000 restantes los liquidas a partir de la Hora 48 directamente con el retorno de ventas que SODIE te genera."
+        "El costo total es de $25,000 USD. Pagas $7,000 mediante cripto para reservar tu cupo de evaluador y activar el despliegue. Los $18,000 restantes los liquidas a partir de cada 7 días directamente con el retorno de ventas que SODIE te genera."
       ],
 
       "como_funciona": [
@@ -52,18 +48,17 @@ class SOVYXIA2Conversor {
       ],
 
       "cupo_4": [
-        "El Cupo 4 marca el inicio de la lista de espera para los 16 cupos restantes de la V4, que se activará en 14 días.",
+        "El Cupo 4 marca el inicio de la lista de espera para los 10 cupos restantes de la V4, que se activará en 28 días mínimo.",
         "Al elegir el Cupo 4 te unes a la lista de espera donde podrás seguir los resultados y métricas en tiempo real de los evaluadores iniciales antes del lanzamiento global de la V4.",
         "¿Quieres asegurar tu cupo evaluador ahora con SODIE o prefieres quedar en la lista de espera perdiendo tracción publicitaria?"
       ],
 
       "despues_de_pagar": [
-        "Inmediatamente confirmes tus $1,000 de reserva:\n\n1️⃣ Te agregas como evaluador en Facebook y conectas tu cuenta.\n2️⃣ Subes tu lista de compradores previos exportada de Shopify para iniciar la inyección de datos.\n3️⃣ En 24 horas ves los primeros resultados antes de actualizar el borrador de hora 24 a 48. Sin vueltas."
+        "Inmediatamente confirmes tus $7,000 de reserva:\n\n\n1️⃣Subes tu lista de compradores previos exportada de Shopify para iniciar la inyección de datos.2️⃣ Te agregas como evaluador en Facebook y conectas tu cuenta.\n3️⃣ En 24 horas ves los primeros resultados antes de actualizar el borrador de hora 24 a 48. Sin vueltas."
       ],
 
       "metodos_pago": [
-        "Puedes procesar el pago inicial de $1,000 con Tarjeta de Crédito/Débito Internacional, Apple Pay o transferencia directa a través de nuestra pasarela de pagos.",
-        "Para la liquidación de los $9,000 restantes a partir de la Hora 48, se habilita la pasarela fraccionada desde tu panel de cliente."
+        "Hay un solo 1 forma de pago para evaluadores y es mediante cripto. después del periodo de prueba, se podrá usar pasarela",
       ],
 
       "ecommerce": [
@@ -74,18 +69,18 @@ class SOVYXIA2Conversor {
       ],
 
       "objecion": [
-        "Si $1,000 te parecen un obstáculo para escalar una oferta con un motor probado de clonación de audiencia, esta infraestructura no es para ti.",
-        "SODIE es exclusivo para negocios que manejan presupuesto real. Por rendimiento del algoritmo, solo operamos con un máximo de 20 cuentas activas."
+        "Si $7,000 te parecen un obstáculo para escalar una oferta con un motor probado de clonación de audiencia, esta infraestructura no es para ti.",
+        "SODIE es exclusivo para negocios que manejan presupuesto real. Por rendimiento del algoritmo, solo operamos con un máximo de 10 cuentas activas."
       ],
 
       "acceder": [
-        "Perfecto. Voy a habilitar tu checkout de reserva de $1,000.",
-        "En cuanto el pago sea procesado, el contador global restará el cupo disponible y desbloqueará el cargador de Shopify. ¿Listo para el enlace? 🚀"
+        "Perfecto. Voy a habilitar tu checkout de reserva de $7,000.",
+        "En cuanto el pago sea procesado, el contador global restará el cupo disponible y desbloqueará el cargador de Shopify. ¿Listo para el enlace?"
       ],
 
       "default": [
         "SODIE no es una herramienta de $30 dólares para publicaciones; es infraestructura de conversión que evita perder miles en campañas fallidas.",
-        "Solo operamos con un máximo de 20 cuentas activas. ¿Vas a reservar tu slot con los $1,000 iniciales o dejas pasar la capacidad de cómputo? 👺"
+        "Solo operamos con un máximo de 20 cuentas activas. ¿Vas a reservar tu slot con los $1,000 iniciales o dejas pasar la capacidad de cómputo?"
       ]
     };
 
@@ -128,28 +123,28 @@ class SOVYXIA2Conversor {
     let quickReplies = [...this.defaultQuickReplies];
     if (intencion === 'acceder') {
       quickReplies = [
-        { label: "Checkout Reserva ($1,000)", payload: "checkout_link" },
+        { label: "Checkout Reserva ($7,000)", payload: "checkout_link" },
         { label: "¿Qué hago después de pagar?", payload: "despues_de_pagar" }
       ];
     } else if (intencion === 'cuotas_pasarela') {
       quickReplies = [
         { label: "¿Cómo funciona?", payload: "como_funciona" },
-        { label: "Reservar slot ($1,000)", payload: "acceder" }
+        { label: "Reservar slot ($7,000)", payload: "acceder" }
       ];
     } else if (intencion === 'ecommerce') {
       quickReplies = [
-        { label: "Reservar Slot ($1,000)", payload: "acceder" },
+        { label: "Reservar Slot ($7,000)", payload: "acceder" },
         { label: "¿Qué hago después de pagar?", payload: "despues_de_pagar" }
       ];
     } else if (intencion === 'cupo_4') {
       quickReplies = [
         { label: "Unirme a Lista de Espera (V4)", payload: "cupo_4" },
-        { label: "Reservar Slot ($1,000)", payload: "acceder" }
+        { label: "Reservar Slot ($7,000)", payload: "acceder" }
       ];
     } else if (intencion === 'comparacion' || intencion === 'diferencia_herramientas') {
       quickReplies = [
         { label: "¿Cómo funciona?", payload: "como_funciona" },
-        { label: "Reservar Slot ($1,000)", payload: "acceder" }
+        { label: "Reservar Slot ($7,000)", payload: "acceder" }
       ];
     }
 
