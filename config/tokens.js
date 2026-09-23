@@ -19,11 +19,4 @@ module.exports = {
     accessToken: process.env.META_ACCESS_TOKEN || process.env.META_ACCES_TOKEN || '',
     pixelId: process.env.META_PIXEL_ID || ''
   },
-
-  sodie: { // 👈 AQUÍ ESTABA EL ERROR: Tenías 'sodie=' en lugar de 'sodie:'
-    totalSlots: 3,
-    priceInitial: 7000,
-    priceweek: 6000,
-    priceMonthly: 5000
-  }
 };
