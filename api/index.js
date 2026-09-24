@@ -8,9 +8,6 @@ const helmet = require('helmet'); // <--- AGREGA ESTA LÍNEA
 const app = express();
 app.use(helmet());
 
-
-const app = express();
-
 // Configuración & Logging Centralizado
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
