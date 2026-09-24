@@ -1,7 +1,7 @@
 // services/capiService.js
 const axios = require('axios');
 
-async function enviarEventoCompraCAPI({ email, monto = 10000, currency = 'USD', eventName = 'Purchase' }) {
+async function enviarEventoCompraCAPI({ email, monto = 70000, currency = 'USD', eventName = 'Purchase' }) {
   const pixelId = process.env.META_PIXEL_ID;
   const accessToken = process.env.META_ACCESS_TOKEN;
 
@@ -33,7 +33,7 @@ async function enviarEventoCompraCAPI({ email, monto = 10000, currency = 'USD', 
 
   try {
     const response = await axios.post(
-      `https://graph.facebook.com/v25.0/${pixelId}/events?access_token=${accessToken}`,
+      `https://graph.facebook.com/v26.0/${pixelId}/events?access_token=${accessToken}`,
       payload
     );
     console.log('🟢 [CAPI] Evento enviado a Meta con éxito:', response.data);
