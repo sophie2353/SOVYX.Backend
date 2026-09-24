@@ -119,7 +119,7 @@ app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/u
 const fbConnectHandler = async (req, res) => {
   const appId = config.meta?.appId || process.env.APP_ID || '';
   const redirectUri = process.env.META_REDIRECT_URI || 'http://localhost:3000/api/facebook/auth/callback';
-  const redirectUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${req.body.sessionId || ''}&scope=ads_management,ads_read`;
+  const redirectUrl = `https://www.facebook.com/v26.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${req.body.sessionId || ''}&scope=ads_management,ads_read`;
   return res.json({ success: true, status: 'REDIRECT_REQUIRED', redirectUrl });
 };
 app.post(['/api/facebook/connect', '/api/v1/facebook/connect'], fbConnectHandler);
