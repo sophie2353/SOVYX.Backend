@@ -98,7 +98,7 @@ app.get(['/api/v1/metrics/live', '/api/ia3/live'], (req, res) => {
   });
 });
 
-app.get('/api/facebook/metrics' => {
+app.get('/api/facebook/metrics', (req, res) => {
   res.json({
     success: true,
     metrics: { reach: 18500, impressions: 42000, clicks: 1250, ctr: '2.98%', spend: 350.50 }
