@@ -3,7 +3,6 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
-const cron24h = require('../jobs/cron24h');
 
 const app = express();
 
@@ -73,7 +72,7 @@ app.get('/api/config', (req, res) => res.json({ API_URL }));
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
   if (!password) return res.status(400).json({ success: false, message: 'Contraseña requerida' });
-  if (password === ADMIN_KEY || password === (config.SOVYX_ADMIN_KEY || 'admin23555')) {
+  if (password === ADMIN_KEY || password === (config.SOVYX_ADMIN_KEY || ' ')) {
     return res.json({ success: true, message: 'Acceso autorizado' });
   }
   return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
@@ -99,7 +98,7 @@ app.get(['/api/v1/metrics/live', '/api/ia3/live'], (req, res) => {
   });
 });
 
-app.get('/api/facebook/metrics', (req, res) => {
+app.get('/api/facebook/metrics' => {
   res.json({
     success: true,
     metrics: { reach: 18500, impressions: 42000, clicks: 1250, ctr: '2.98%', spend: 350.50 }
@@ -119,19 +118,6 @@ app.post(['/api/v1/chat/message', '/api/chat', '/api/ia2/conversar'], chatFallba
 // --- MEDIA & UPLOADS ---
 app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/upload-contract'], (req, res) => {
   res.json({ success: true, message: 'Archivo procesado correctamente', url: '/uploads/demo.mp4' });
-});
-
-app.get('/api/v1/media/contract', (req, res) => {
-  res.json({ success: true, url: '/uploads/contrato_sodie.pdf' });
-});
-
-app.post(['/api/evaluator/contract', '/api/v1/evaluator/contract'], (req, res) => {
-  res.json({ success: true, status: 'PENDING_ADMIN_REVIEW', message: 'Contrato recibido en panel admin.' });
-});
-
-// --- PAGOS & FACEBOOK ---
-app.post(['/api/v1/payments/checkout', '/api/pago/checkout'], (req, res) => {
-  res.json({ success: true, status: 'COMPLETED', transactionId: 'TX-' + Date.now() });
 });
 
 const fbConnectHandler = async (req, res) => {
