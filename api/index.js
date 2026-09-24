@@ -3,7 +3,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
-const cron24h = require(path.join(__dirname, '../jobs/cron24h.js'));
+const cron24h = require('../jobs/cron24h');
 
 const app = express();
 
