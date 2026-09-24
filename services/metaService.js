@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { sendSSEUpdate } = require('../routes/campaignRoutes');
 
-const GRAPH_VERSION = 'v25.0';
+const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 /**
@@ -47,7 +47,7 @@ const metaService = {
       body: JSON.stringify({
         name: name,
         subtype: 'CUSTOM',
-        description: 'Semilla inyectada desde IA1 SOVYX (Value-Based)',
+        description: 'Semilla inyectada desde IA1 SODIE (Value-Based)',
         customer_file_source: 'USER_PROVIDED_ONLY',
         is_value_based: true, // 👈 Activa Value-Based Audience
         access_token: token
@@ -108,7 +108,7 @@ const metaService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: `LAL 1% ${countryCode.toUpperCase()} - SOVYX Value-Based`,
+        name: `LAL 1% ${countryCode.toUpperCase()} - SODIE Value-Based`,
         subtype: 'LOOKALIKE',
         origin_audience_id: seedAudienceId,
         lookalike_spec: JSON.stringify({
@@ -142,12 +142,12 @@ const metaService = {
     const seedAudienceId = await this.crearAudienciaSemillaConValor(
       adAccountId, 
       token, 
-      `SOVYX_Seed_Value_${Date.now()}`
+      `SODIE_Seed_Value_${Date.now()}`
     );
 
     await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, token);
 
-    console.log(`🎯 Generando Públicos Similares (LAL 1% Value-Driven) para: ${countriesFound.join(', ')}...`);
+    console.log(`Generando Públicos Similares (LAL 1% Value-Driven) para: ${countriesFound.join(', ')}...`);
     const lookalikeIds = [];
     
     for (const country of countriesFound) {
@@ -155,7 +155,7 @@ const metaService = {
         const lalId = await this.crearLookalike1PorCiento(adAccountId, seedAudienceId, country, token);
         lookalikeIds.push(lalId);
       } catch (err) {
-        console.error(`❌ Error creando Lookalike para país ${country}:`, err.message);
+        console.error(`Error creando Lookalike para país ${country}:`, err.message);
       }
     }
 
@@ -178,7 +178,7 @@ const metaService = {
     const campaignUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns`;
     const campaignParams = new URLSearchParams({
       name,
-      objective: 'OUTCOME_SALES', // 🎯 Objetivos de Ventas Directas
+      objective: 'OUTCOME_SALES', // Objetivos de Ventas Directas
       status,
       special_ad_categories: '[]',
       access_token: token
@@ -219,7 +219,7 @@ const metaService = {
     if (pixelId) {
       adSetBody.promoted_object = { 
         pixel_id: pixelId, 
-        custom_event_type: 'PURCHASE' // 🛒 Evento de compra en sitio web
+        custom_event_type: 'PURCHASE' //Evento de compra en sitio web
       };
     }
 
