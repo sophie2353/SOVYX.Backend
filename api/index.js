@@ -3,6 +3,11 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
+const helmet = require('helmet'); // <--- AGREGA ESTA LÍNEA
+
+const app = express();
+app.use(helmet());
+
 
 const app = express();
 
@@ -17,12 +22,6 @@ const ADMIN_KEY = process.env.ADMIN_KEY || '';
 // ============================================
 // 1. MIDDLEWARES PRINCIPALES
 // ============================================
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" }
-  })
-);
 
 app.use(cors({
   origin: '*',
