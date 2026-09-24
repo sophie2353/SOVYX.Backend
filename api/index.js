@@ -216,7 +216,6 @@ app.get('/api/health', (req, res) => res.json({ status: '🟢 SODIE OPERATIONAL'
 
 // Carga dinámica opcional de sub-routers si existen los archivos
 try { app.use('/api/media', require('./routes/mediaRoutes')); } catch(e){}
-try { app.use('/api/pago', require('./routes/pago')); } catch(e){}
 try { app.use('/api/facebook', require('./routes/facebookRoutes')); } catch(e){}
 
 // 1. Importar el módulo IA3 Analyzer
