@@ -53,7 +53,7 @@ async function resolveClientId(providedClientId, req) {
 
   try {
     const protocol = req.protocol || 'http';
-    const host = req.get('host') || 'localhost:3000';
+    const host = req.get('host') || 'localhost:1000';
     const res = await axios.get(`${protocol}://${host}/api/v1/clients/next-id`);
     if (res.data && res.data.clientId) {
       return parseClientIdentifiers(res.data.clientId).formattedId;
