@@ -162,7 +162,7 @@ const uploadRoutes = require('../routes/uploadRoutes'); // Subida e inyección d
 // ==========================================
 
 // 2. Subida de Audiencias y Media (Redirige las peticiones de /api/v1/media/upload a /upload-csv internamente)
-const mediaRoutes = require('./routes/mediaRoutes');
+const mediaRoutes = require('../routes/mediaRoutes');
 app.use('/api/v1/media', mediaRoutes);
 
 // ==========================================
@@ -173,7 +173,7 @@ app.get('/.', (req, res) => res.status(200).json({ status: 'online', system: 'SO
 app.get('/api/health', (req, res) => res.json({ status: '🟢 SODIE OPERATIONAL', mode: process.env.NODE_ENV || 'production' }));
 
 // Carga dinámica opcional de sub-routers si existen los archivos
-try { app.use('/api/media', require('./routes/mediaRoutes')); } catch(e){}
+try { app.use('/api/media', require('../routes/mediaRoutes')); } catch(e){}
 try { app.use('/api/facebook', require('./routes/facebookRoutes')); } catch(e){}
 
 // 1. Importar el módulo IA3 Analyzer
