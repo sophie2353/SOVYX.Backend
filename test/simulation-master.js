@@ -383,5 +383,6 @@ async function runAllSimulations() {
     }
     console.log("🎉 ¡EXCELENTE! Todas las pruebas (Subida de video 20-30s, endpoints de index.js, IA y Frontend) pasaron al 100%.");
   }
+}
 
 runAllSimulations();
