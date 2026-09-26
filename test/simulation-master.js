@@ -9,6 +9,12 @@ const path = require('path');
 const http = require('http');
 const { chromium } = require('@playwright/test');
 const supertest = require('supertest');
+// En lugar de requerir app localmente si no estás en la misma máquina:
+// const request = supertest(app);
+
+// Seteas la IP de tu celular (ejemplo: 192.168.1.15)
+const CELL_IP = process.env.CELL_IP || 'http://192.168.1.103';
+const request = supertest(CELL_IP);
 
 const HISTORY_FILE = path.join(__dirname, '.test-history.json');
 
