@@ -184,18 +184,37 @@ app.use('/api/ia3', ia3AnalyzerModule);
 // Ruta para activar la batería de pruebas desde el navegador del celular
 app.get('/api/admin/run-simulation', async (req, res) => {
   try {
-    // Busca desde la raíz absoluta del repositorio en Render
-    const testFilePath = path.join(process.cwd(), 'tests/simulation-master.js');
+    const fs = require('fs');
     
-    delete require.cache[require.resolve(testFilePath)];
-    require(testFilePath);
+    // Probar las posibles ubicaciones reales
+    const possiblePaths = [
+      path.join(process.cwd(), 'test/simulation-master.js'),
+      path.join(process.cwd(), 'tests/simulation-master.js'),
+      path.join(__dirname, '../test/simulation-master.js'),
+      path.join(__dirname, '../tests/simulation-master.js'),
+      path.join(__dirname, 'test/simulation-master.js'),
+      path.join(__dirname, 'tests/simulation-master.js')
+    ];
+
+    let validPath = possiblePaths.find(p => fs.existsSync(p));
+
+    if (!validPath) {
+      return res.status(404).json({
+        status: "error",
+        message: "No se encontró simulation-master.js. Rutas probadas:",
+        tested: possiblePaths
+      });
+    }
+
+    delete require.cache[require.resolve(validPath)];
+    require(validPath);
 
     res.json({ 
       status: "ok", 
-      message: "🚀 Simulación iniciada. Revisa los Logs de Render." 
+      message: `🚀 Simulación iniciada desde: ${validPath}. Revisa los Logs de Render.` 
     });
   } catch (err) {
-    res.status(500).json({ status: "error", error: err.message });
+    res.status(500).json({ status: "error", error: err.message, stack: err.stack });
   }
 });
 
