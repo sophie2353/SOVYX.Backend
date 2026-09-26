@@ -181,18 +181,6 @@ const ia3AnalyzerModule = require('../modules/ia3-analyzer');
 // 2. Montar el módulo en la ruta /api/ia3
 app.use('/api/ia3', ia3AnalyzerModule);
 
-// ============================================
-// 4. CONTROL DE ERRORES Y ACTIVACIÓN
-// ============================================
-app.use((req, res) => res.status(404).json({ error: `Ruta ${req.url} no encontrada` }));
-
-app.use((err, req, res, next) => {
-  console.error('💥 Error no controlado:', err);
-  res.status(500).json({ error: 'Falla interna en el motor de SODIE.' });
-});
-
-// Simulación
-
 // Ruta para activar la batería de pruebas desde el navegador del celular
 app.get('/api/admin/run-simulation', async (req, res) => {
   try {
@@ -209,6 +197,16 @@ app.get('/api/admin/run-simulation', async (req, res) => {
   } catch (err) {
     res.status(500).json({ status: "error", error: err.message });
   }
+});
+
+// ============================================
+// 4. CONTROL DE ERRORES Y ACTIVACIÓN
+// ============================================
+app.use((req, res) => res.status(404).json({ error: `Ruta ${req.url} no encontrada` }));
+
+app.use((err, req, res, next) => {
+  console.error('💥 Error no controlado:', err);
+  res.status(500).json({ error: 'Falla interna en el motor de SODIE.' });
 });
 
 // ============================================
