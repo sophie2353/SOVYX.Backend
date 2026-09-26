@@ -162,7 +162,8 @@ const uploadRoutes = require('../routes/uploadRoutes'); // Subida e inyección d
 // ==========================================
 
 // 2. Subida de Audiencias y Media (Redirige las peticiones de /api/v1/media/upload a /upload-csv internamente)
-app.use('/api/v1/media/upload', uploadRoutes);
+const mediaRoutes = require('./routes/mediaRoutes');
+app.use('/api/v1/media', mediaRoutes);
 
 // ==========================================
 // FIN SECCIÓN RUTAS CLIENT ID & UPLOAD
