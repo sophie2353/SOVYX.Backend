@@ -32,8 +32,6 @@ try {
   }
 }
 
-const request = supertest(app);
-
 const REPORT = {
   passed: [],
   failed: []
