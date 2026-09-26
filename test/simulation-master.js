@@ -23,9 +23,6 @@ let app;
 try {
   app = require('../index.js');
 } catch (e) {
-  try {
-    app = require('../server.js');
-  } catch (err) {
     console.error("🔥 [CRÍTICO] No se pudo cargar el Backend principal (index.js / server.js).");
     console.error("Detalle del error:", err);
     process.exit(1);
