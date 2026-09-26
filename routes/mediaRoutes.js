@@ -37,14 +37,6 @@ router.get('/active-video', (req, res) => {
   });
 });
 
-// Obtener el contrato activo
-router.get('/contract', (req, res) => {
-  return res.json({
-    success: true,
-    contractUrl: '/contrato.pdf'
-  });
-});
-
 // --- ENDPOINTS ADMINISTRATIVOS (SUBIDA DESDE ADMIN.JS) ---
 
 // Subir o actualizar el Video Demo
@@ -57,22 +49,6 @@ router.post('/upload-video', upload.single('video'), (req, res) => {
       success: true,
       message: 'Video demo actualizado correctamente.',
       videoUrl: '/video_demo.mp4'
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Subir o actualizar el Contrato PDF
-router.post('/upload-contract', upload.single('contract'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No se envió ningún archivo PDF.' });
-    }
-    return res.json({
-      success: true,
-      message: 'Contrato PDF actualizado correctamente.',
-      contractUrl: '/contrato.pdf'
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
