@@ -82,25 +82,6 @@ app.post('/api/v1/auth/biometrics/register', (req, res) => {
   res.json({ success: true, message: 'Biometría registrada correctamente' });
 });
 
-// --- MÉTRICAS, SSE & CHAT ---
-app.get(['/api/v1/metrics/live', '/api/ia3/live'], (req, res) => {
-  res.json({
-    status: 'ACTIVE',
-    reach: 15420 + Math.floor(Math.random() * 150),
-    visitors: 1504 + Math.floor(Math.random() * 25),
-    leads: 75,
-    conversionRate: '4.8%',
-    liveViewers: 18 + Math.floor(Math.random() * 6)
-  });
-});
-
-app.get('/api/facebook/metrics', (req, res) => {
-  res.json({
-    success: true,
-    metrics: { reach: 18500, impressions: 42000, clicks: 1250, ctr: '2.98%', spend: 350.50 }
-  });
-});
-
 const chatFallback = (req, res) => {
   res.json({
     success: true,
@@ -116,24 +97,18 @@ app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/u
   res.json({ success: true, message: 'Archivo procesado correctamente', url: '/uploads/demo.mp4' });
 });
 
-const fbConnectHandler = async (req, res) => {
-  const appId = config.meta?.appId || process.env.APP_ID || '';
-  const redirectUri = process.env.META_REDIRECT_URI || 'http://localhost:3000/api/facebook/auth/callback';
-  const redirectUrl = `https://www.facebook.com/v26.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${req.body.sessionId || ''}&scope=ads_management,ads_read`;
-  return res.json({ success: true, status: 'REDIRECT_REQUIRED', redirectUrl });
-};
-app.post(['/api/facebook/connect', '/api/v1/facebook/connect'], fbConnectHandler);
+const facebookRoutes = require('../routes/facebookRoutes');
+// Monta las rutas de Facebook bajo ambos prefijos para compatibilidad total
+app.use('/api/facebook', facebookRoutes);
+app.use('/api/v1', facebookRoutes);
 
-app.post(['/api/facebook/activar-campana', '/api/v1/campaigns/activate'], (req, res) => {
-  res.json({ success: true, status: 'CAMPAIGN_ACTIVATED', message: 'Campaña activada en Meta Ads' });
-});
 
 // --- WAITLIST / V4 ---
 global.fallbackWaitlistDB = global.fallbackWaitlistDB || [];
 
 app.post(['/api/v1/waitlist', '/api/lista-espera'], (req, res) => {
   const { nombre, compania, email } = req.body;
-  const nuevoRegistro = { id: `V4-${Date.now()}`, nombre: nombre || 'Usuario V4', email: email || 'espera@sodie.app' };
+  const nuevoRegistro = { id: `V4-${Date.now()}`, nombre: nombre || 'Usuario V4', email: email || '5@sodie.app' };
   global.fallbackWaitlistDB.push(nuevoRegistro);
   res.json({ success: true, message: 'Registrado en lista de espera SODIE V4', usuario: nuevoRegistro });
 });
