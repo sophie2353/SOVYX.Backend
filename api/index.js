@@ -196,11 +196,11 @@ app.use((err, req, res, next) => {
 // Ruta para activar la batería de pruebas desde el navegador del celular
 app.get('/api/admin/run-simulation', async (req, res) => {
   try {
-    const testPath = require.resolve('./tests/simulation-master.js');
+    const testPath = require.resolve('../tests/simulation-master.js');
     delete require.cache[testPath]; // Limpia la caché para poder correrlo múltiples veces
     
     // Al requerirlo, ejecutará automáticamente runAllSimulations()
-    require('./tests/simulation-master.js');
+    require('../tests/simulation-master.js');
 
     res.json({ 
       status: "ok", 
