@@ -99,7 +99,7 @@ async function runAllSimulations() {
   }
 
   /* ==========================================================================
-     2. SUBIDA DE VIDEO (public/video)
+     2. SUBIDA Y OBTENCIÓN DE VIDEO DEMO (routes/mediaRoutes)
      ========================================================================== */
   const K_VIDEO_UPLOAD = "ADMIN_VIDEO_UPLOAD";
   if (shouldRunTest(K_VIDEO_UPLOAD)) {
@@ -108,31 +108,40 @@ async function runAllSimulations() {
       const tempVideoPath = path.join(__dirname, 'temp_render_25s.mp4');
       fs.writeFileSync(tempVideoPath, videoBuffer);
 
-      // Apunta a la ruta asociada al directorio public/video
-      const res = await request
-        .post('/public/video/upload') 
-        .field('clientId', 'CLIENT-#01')
-        .field('durationSeconds', '25')
-        .attach('videoFile', tempVideoPath, 'render_25s.mp4');
+      // A. Subida del video desde admin.js usando el campo 'video'
+      const resUpload = await request
+        .post('/api/media/upload-video') 
+        .attach('video', tempVideoPath, 'test_25s.mp4');
 
-      if (res.status === 200 || res.status === 201) {
-        logPass(K_VIDEO_UPLOAD, "Public Video Upload", "Video almacenado en public/video correctamente.");
+      // B. Verificación de lectura del video activo (consumido por app.js y client.js)
+      const resActive = await request.get('/api/media/active-video');
+
+      if (
+        (resUpload.status === 200 || resUpload.status === 201) &&
+        resUpload.body.success === true &&
+        resActive.status === 200 &&
+        resActive.body.videoUrl === '/video_demo.mp4'
+      ) {
+        logPass(
+          K_VIDEO_UPLOAD, 
+          "Media Routes: Subida y Obtención de Video Demo", 
+          "Video 'video_demo.mp4' subido a /public y endpoint activo respondiendo OK."
+        );
       } else {
         logFail(
           K_VIDEO_UPLOAD,
-          "Public Video Upload",
-          `HTTP ${res.status} - ${JSON.stringify(res.body || res.text)}`,
-          "index.js / public/video",
-          "Asegúrate de tener mapeada la ruta '/public/video/upload' en index.js."
+          "Media Routes: Subida de Video",
+          `Upload Status: ${resUpload.status} | Active Status: ${resActive.status} | Res: ${JSON.stringify(resUpload.body)}`,
+          "routes/mediaRoutes.js",
+          "Verifica si en index.js tienes app.use('/api/media', mediaRoutes) o si el prefijo de la ruta cambia."
         );
       }
 
       if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
     } catch (err) {
-      logFail(K_VIDEO_UPLOAD, "Public Video Upload", err.message, "index.js", "Error durante la transmisión del video.");
+      logFail(K_VIDEO_UPLOAD, "Media Routes: Subida de Video", err.message, "routes/mediaRoutes.js", "Error en el pipeline de Multer o sistema de archivos.");
     }
   }
-
   /* ==========================================================================
      3. MÓDULOS DE INTELIGENCIA ARTIFICIAL (IA2 Y IA3)
      ========================================================================== */
