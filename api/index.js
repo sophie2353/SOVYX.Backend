@@ -182,8 +182,6 @@ const ia3AnalyzerModule = require('../modules/ia3-analyzer');
 app.use('/api/ia3', ia3AnalyzerModule);
 
 // Ruta para activar la batería de pruebas desde el navegador del celular
-const path = require('path');
-
 app.get('/api/admin/run-simulation', async (req, res) => {
   try {
     // Apunta dinámicamente a la carpeta tests en la raíz
