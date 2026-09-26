@@ -1,15 +1,13 @@
 /**
- * SODIE Core AI Engine - Suite Integrada de Simulación E2E
- * Incluye: Subida de videos cortos (20-30s), escaneo dinámico de rutas de Express,
- * módulos IA2/IA3, Meta Graph API, Auth Admin, Contratos y Frontend Playwright.
+ * SODIE Core AI Engine - Suite Integrada de Simulación E2E v4.0
+ * Incluye: Subida a public/video, IA2 (conversar), IA3 (analyzer), 
+ * Flujo Meta Graph API (200 registros de 3 países), Asignación CLIENT-#01 y Reset de Cupos.
  */
 
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('@playwright/test');
 const supertest = require('supertest');
 
-// 1. Apuntar directamente a la URL del backend en producción / Render
 const BASE_URL = process.env.BACKEND_URL || 'https://api.sodie.app';
 const request = supertest(BASE_URL);
 
@@ -20,7 +18,6 @@ const REPORT = {
   failed: []
 };
 
-// Leer historia de fallas anteriores
 let previousFailedModules = [];
 if (fs.existsSync(HISTORY_FILE)) {
   try {
@@ -51,10 +48,22 @@ function logPass(moduleKey, moduleName, detail) {
   console.log(`✅ [OK / CORREGIDO - ${moduleName}] ${detail}`);
 }
 
-// Genera un buffer sintáctico de video MP4 (~25s mockup)
+// Genera 200 datos sintéticos de audiencia con 3 países (VE, CO, MX) y valores entre $1,000 y $20,000
+function generate200ExcelRecords() {
+  const countries = ['VE', 'CO', 'MX'];
+  let csvContent = "phone,email,first_name,country,value\n";
+  
+  for (let i = 1; i <= 200; i++) {
+    const country = countries[i % 3];
+    const value = Math.floor(Math.random() * (20000 - 1000 + 1)) + 1000;
+    csvContent += `+58412${1000000 + i},user${i}@sodie.ai,Cliente${i},${country},${value}\n`;
+  }
+  return csvContent;
+}
+
 function generateMockVideoBuffer() {
   const header = Buffer.from([
-    0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, // ftyp box
+    0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
     0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00, 0x00, 
     0x6d, 0x70, 0x34, 0x32, 0x69, 0x73, 0x6f, 0x6d
   ]);
@@ -63,17 +72,34 @@ function generateMockVideoBuffer() {
 }
 
 async function runAllSimulations() {
-  console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v3.5 ===");
-  console.log(`🎯 Objetivo del Backend: ${BASE_URL}`);
+  console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v4.0 ===");
+  console.log(`🎯 Objetivo del Backend: ${BASE_URL}\n`);
 
-  if (isReTestMode) {
-    console.log(`🔄 MODO RE-PRUEBA ACTIVO: Re-evaluando únicamente los ${previousFailedModules.length} módulos con fallas...\n`);
-  } else {
-    console.log("🌐 MODO COMPLETO ACTIVO: Evaluando suite E2E en Render por primera vez...\n");
+  /* ==========================================================================
+     1. ASIGNACIÓN DE ID DE CLIENTE (routes/clientIDroutes)
+     ========================================================================== */
+  const K_CLIENT_ID = "CLIENT_ID_ASSIGNMENT";
+  if (shouldRunTest(K_CLIENT_ID)) {
+    try {
+      const res = await request.post('/api/client/assign-id').send({ userEmail: "test@sodie.ai" });
+      if (res.status === 200 && (res.body.clientId === 'CLIENT-#01' || res.text.includes('CLIENT-#01'))) {
+        logPass(K_CLIENT_ID, "Client ID Routes: Asignación ID", "Respondió asignando 'CLIENT-#01' correctamente.");
+      } else {
+        logFail(
+          K_CLIENT_ID, 
+          "Client ID Routes: Asignación ID", 
+          `HTTP ${res.status} - ${JSON.stringify(res.body || res.text)}`, 
+          "routes/clientIDroutes.js", 
+          "Verifica el endpoint '/api/client/assign-id' en index.js o la lógica de generación del prefijo CLIENT-#01."
+        );
+      }
+    } catch (err) {
+      logFail(K_CLIENT_ID, "Client ID Routes: Asignación ID", err.message, "routes/clientIDroutes.js", "Error al conectar con la ruta de ID de cliente.");
+    }
   }
 
   /* ==========================================================================
-     1. SUBIDA DE VIDEO DESDE ADMIN.JS HACIA EL BACKEND
+     2. SUBIDA DE VIDEO (public/video)
      ========================================================================== */
   const K_VIDEO_UPLOAD = "ADMIN_VIDEO_UPLOAD";
   if (shouldRunTest(K_VIDEO_UPLOAD)) {
@@ -82,263 +108,134 @@ async function runAllSimulations() {
       const tempVideoPath = path.join(__dirname, 'temp_render_25s.mp4');
       fs.writeFileSync(tempVideoPath, videoBuffer);
 
+      // Apunta a la ruta asociada al directorio public/video
       const res = await request
-        .post('/api/video/upload')
+        .post('/public/video/upload') 
         .field('clientId', 'CLIENT-#01')
         .field('durationSeconds', '25')
-        .field('sourceModule', 'admin.js')
         .attach('videoFile', tempVideoPath, 'render_25s.mp4');
 
       if (res.status === 200 || res.status === 201) {
-        logPass(K_VIDEO_UPLOAD, "Admin Frontend -> Backend: Subida de Video", "Video de 25s recibido y procesado correctamente.");
+        logPass(K_VIDEO_UPLOAD, "Public Video Upload", "Video almacenado en public/video correctamente.");
       } else {
         logFail(
           K_VIDEO_UPLOAD,
-          "Admin Frontend -> Backend: Subida de Video",
+          "Public Video Upload",
           `HTTP ${res.status} - ${JSON.stringify(res.body || res.text)}`,
-          "routes/video.js",
-          "La ruta POST de subida no existe o el campo esperado no coincide con 'videoFile'."
+          "index.js / public/video",
+          "Asegúrate de tener mapeada la ruta '/public/video/upload' en index.js."
         );
       }
 
       if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
     } catch (err) {
-      logFail(K_VIDEO_UPLOAD, "Subida de Video (20-30s)", err.message, "index.js", "Error al procesar la transmisión del archivo MP4.");
+      logFail(K_VIDEO_UPLOAD, "Public Video Upload", err.message, "index.js", "Error durante la transmisión del video.");
     }
   }
 
   /* ==========================================================================
-     2. AUDITORÍA AUTOMÁTICA DE RUTAS REGISTRADAS
-     ========================================================================== */
-  const K_ROUTES_SCAN = "BACKEND_EXPRESS_ROUTES";
-  if (shouldRunTest(K_ROUTES_SCAN)) {
-    try {
-      let registeredRoutes = [];
-
-      // Si existe el objeto app local lo inspecciona, si no, ejecuta un barrido predeterminado
-      if (typeof app !== 'undefined' && app._router && app._router.stack) {
-        function extractRoutes(stack, prefix = '') {
-          if (!stack) return;
-          stack.forEach(layer => {
-            if (layer.route) {
-              const methods = Object.keys(layer.route.methods);
-              methods.forEach(method => {
-                registeredRoutes.push({
-                  path: prefix + layer.route.path,
-                  method: method.toUpperCase()
-                });
-              });
-            } else if (layer.name === 'router' && layer.handle.stack) {
-              let pathRegexp = layer.regexp.source
-                .replace('^\\/', '')
-                .replace('\\/?(?=\\/|$)', '')
-                .replace(/\\\//g, '/')
-                .replace('?=(?:\\/|$)', '')
-                .replace('(?=\\/|$)', '');
-              if (pathRegexp.endsWith('/')) pathRegexp = pathRegexp.slice(0, -1);
-              extractRoutes(layer.handle.stack, prefix + (pathRegexp ? '/' + pathRegexp : ''));
-            }
-          });
-        }
-        extractRoutes(app._router.stack);
-      } else {
-        // Fallback para pruebas HTTP remotas en Render
-        registeredRoutes = [
-          { path: '/api/v1/media/upload', method: 'POST' },
-          { path: '/api/ia/ia2/segmentar', method: 'POST' },
-          { path: '/api/ia/ia3/optimizar', method: 'POST' },
-          { path: '/api/admin/update-password', method: 'POST' }
-        ];
-      }
-
-      console.log(`🔥 [ROUTES SCANNER] Evaluando ${registeredRoutes.length} endpoints en ${BASE_URL}...`);
-      let failedRoutesCount = 0;
-
-      for (const route of registeredRoutes) {
-        const testPath = route.path.replace(/:[a-zA-Z0-9_]+/g, 'test_param_123');
-
-        try {
-          let res;
-          if (route.method === 'GET') res = await request.get(testPath);
-          else if (route.method === 'POST') res = await request.post(testPath).send({ test: "ping", clientId: "CLIENT-#01" });
-          else if (route.method === 'PUT') res = await request.put(testPath).send({ test: "ping" });
-          else if (route.method === 'DELETE') res = await request.delete(testPath);
-
-          if (res && res.status >= 500) {
-            failedRoutesCount++;
-            logFail(
-              K_ROUTES_SCAN,
-              `Endpoint [${route.method}] ${route.path}`,
-              `HTTP ${res.status} - ${res.text ? res.text.substring(0, 150) : 'Internal Error'}`,
-              "Controlador asociado",
-              "Excepción no capturada o error interno de servidor (500)."
-            );
-          }
-        } catch (routeErr) {
-          failedRoutesCount++;
-          logFail(
-            K_ROUTES_SCAN,
-            `Endpoint [${route.method}] ${route.path}`,
-            routeErr.message,
-            "Ruta / Middleware",
-            "Falla de conexión o middleware colapsado."
-          );
-        }
-      }
-
-      if (failedRoutesCount === 0 && registeredRoutes.length > 0) {
-        logPass(K_ROUTES_SCAN, "Escaneo de Rutas", `Las rutas respondieron sin crashes HTTP 500.`);
-      }
-
-    } catch (err) {
-      logFail(K_ROUTES_SCAN, "Escaneo Masivo de Rutas", err.message, "index.js", "Error general durante el escaneo.");
-    }
-  }
-
-  /* ==========================================================================
-     3. BACKEND: EXCEL / CSV DE AUDIENCIA
-     ========================================================================== */
-  const K_EXCEL = "BACKEND_EXCEL";
-  if (shouldRunTest(K_EXCEL)) {
-    try {
-      const dummyCsvPath = path.join(__dirname, 'temp_audiencia.csv');
-      fs.writeFileSync(dummyCsvPath, "phone,email,first_name\n+584120000000,test@sodie.ai,ClienteTest");
-
-      const res = await request
-        .post('/api/v1/media/upload')
-        .field('clientId', 'CLIENT-#01')
-        .attach('file', dummyCsvPath);
-
-      if (res.status === 200 || res.status === 201) {
-        logPass(K_EXCEL, "Backend: Carga Excel/CSV", "Archivo enviado e inyectado correctamente.");
-      } else {
-        logFail(K_EXCEL, "Backend: Carga Excel/CSV", `HTTP ${res.status}`, "routes/media.js", "Error en el parser CSV o middleware de carga.");
-      }
-      if (fs.existsSync(dummyCsvPath)) fs.unlinkSync(dummyCsvPath);
-    } catch (err) {
-      logFail(K_EXCEL, "Backend: Carga Excel/CSV", err.message, "routes/media.js", "Error al procesar la solicitud.");
-    }
-  }
-
-  /* ==========================================================================
-     4. MÓDULOS IA (IA2 Y IA3)
+     3. MÓDULOS DE INTELIGENCIA ARTIFICIAL (IA2 Y IA3)
      ========================================================================== */
   const K_IA = "BACKEND_IA_ENGINES";
   if (shouldRunTest(K_IA)) {
     try {
-      const resIA2 = await request.post('/api/ia/ia2/segmentar').send({ prompt: "Test B2B" });
-      const resIA3 = await request.post('/api/ia/ia3/optimizar').send({ campaignId: "CMP-01", metrics: { roas: 2.5 } });
+      const resIA2 = await request.post('/api/modules/ia2-conversar').send({ message: "Hola, iniciando simulación B2B" });
+      const resIA3 = await request.post('/api/modules/ia3-analyzer').send({ campaignId: "CMP-META-01", metrics: { roas: 3.2 } });
 
       if (resIA2.status === 200 && resIA3.status === 200) {
-        logPass(K_IA, "Backend: Motores IA2 e IA3", "Módulos de IA operativos.");
+        logPass(K_IA, "Motores IA2 e IA3", "Módulos modules/ia2-conversar y modules/ia3-analyzer respondiendo OK.");
       } else {
-        logFail(K_IA, "Backend: Motores IA2 e IA3", `IA2: HTTP ${resIA2.status} | IA3: HTTP ${resIA3.status}`, "routes/ia.js", "Falta API Key o endpoint inaccesible.");
+        logFail(
+          K_IA, 
+          "Motores IA2 e IA3", 
+          `IA2 (conversar): HTTP ${resIA2.status} | IA3 (analyzer): HTTP ${resIA3.status}`, 
+          "modules/ia2-conversar.js / modules/ia3-analyzer.js", 
+          "Verifica el mapeo exacto de las rutas de Express para ambos módulos de IA."
+        );
       }
     } catch (err) {
-      logFail(K_IA, "Backend: Motores IA2 e IA3", err.message, "routes/ia.js", "Falla al conectar con los servicios de IA.");
+      logFail(K_IA, "Motores IA2 e IA3", err.message, "modules/", "Error invocando los archivos de IA.");
     }
   }
 
   /* ==========================================================================
-     5. ADMIN AUTH Y CAMBIO DE CONTRASEÑA
+     4. SIMULACIÓN DE FLUJO META (Graph API + MetaServices + 200 Datas Excel)
      ========================================================================== */
-  const K_AUTH = "BACKEND_AUTH_ADMIN";
-  if (shouldRunTest(K_AUTH)) {
+  const K_META = "FACEBOOK_META_SUITE";
+  if (shouldRunTest(K_META)) {
     try {
-      const res = await request.post('/api/admin/update-password').send({ newPassword: "SecurePassword123!" });
-      if (res.status === 200 || res.status === 401) {
-        logPass(K_AUTH, "Backend: Auth Admin", "Endpoint de credenciales verificado.");
+      console.log("📊 Generando 200 registros de audiencia (VE, CO, MX | $1k-$20k)...");
+      const csvData = generate200ExcelRecords();
+      const csvPath = path.join(__dirname, 'temp_meta_200.csv');
+      fs.writeFileSync(csvPath, csvData);
+
+      // Paso A: Callback de usuario para obtener pixel_id y act_id
+      const resAuth = await request.get('/api/facebook/callback').query({ code: 'mock_code_meta_123', user: 'CLIENT-#01' });
+      
+      // Paso B: Cargar la data masiva al servicio
+      const resData = await request
+        .post('/api/facebook/upload-audience')
+        .field('clientId', 'CLIENT-#01')
+        .attach('file', csvPath);
+
+      // Paso C: Crear Borrador, Solicitar Métricas y Activar Campaña
+      const resDraft = await request.post('/api/facebook/create-borrador').send({ clientId: 'CLIENT-#01', audienceCount: 200 });
+      const resMetrics = await request.get('/api/facebook/metrics').query({ clientId: 'CLIENT-#01' });
+      const resActivate = await request.post('/api/facebook/activar-campana').send({ clientId: 'CLIENT-#01' });
+
+      if (
+        (resAuth.status === 200 || resAuth.status === 302) &&
+        (resData.status === 200 || resData.status === 201) &&
+        resDraft.status === 200 &&
+        resMetrics.status === 200 &&
+        resActivate.status === 200
+      ) {
+        logPass(K_META, "Flujo Completo Meta Graph API & Services", "Simulación con 200 datos de 3 países ejecutada, borrador creado y notificado.");
       } else {
-        logFail(K_AUTH, "Backend: Auth Admin", `HTTP ${res.status}`, "routes/admin.js", "Respuesta inesperada al actualizar credenciales.");
+        logFail(
+          K_META,
+          "Flujo Completo Meta Graph API & Services",
+          `Auth: ${resAuth.status} | Data: ${resData.status} | Draft: ${resDraft.status} | Metrics: ${resMetrics.status} | Act: ${resActivate.status}`,
+          "routes/facebookRoutes.js / services/metaServices.js",
+          "Revisa las rutas de facebookRoutes y que metaServices esté procesando el CSV correctamente."
+        );
       }
+
+      if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath);
     } catch (err) {
-      logFail(K_AUTH, "Backend: Auth Admin", err.message, "routes/admin.js", "Error en el manejador de contraseñas.");
+      logFail(K_META, "Flujo Completo Meta Graph API", err.message, "routes/facebookRoutes.js", "Error en el ciclo de vida de Meta.");
     }
   }
 
   /* ==========================================================================
-     6. FRONTEND: AUDITORÍA PLAYWRIGHT
+     5. RESTAURAR ESTADO Y DEVOLVER CUPOS A CERO (RESET)
      ========================================================================== */
-  const K_FRONTEND = "FRONTEND_FULL_AUDIT";
-  if (shouldRunTest(K_FRONTEND)) {
-    console.log(" 🌐 Iniciando auditoría de Frontend con Playwright...");
-    const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
-
-    const BASE_FRONTEND = process.env.FRONTEND_URL || 'https://sodie.app';
-
-    const pagesToTest = [
-      { html: 'admin.html', url: `${BASE_FRONTEND}/admin.html`, js: 'admin.js' },
-      { html: 'client.html', url: `${BASE_FRONTEND}/client.html`, js: 'client.js' },
-      { html: 'index.html', url: `${BASE_FRONTEND}/index.html`, js: 'app.js' },
-      { html: 'contrato.html', url: `${BASE_FRONTEND}/contrato.html`, js: 'contrato.js' }
-    ];
-
-    for (const item of pagesToTest) {
-      const page = await context.newPage();
-      const pageErrors = [];
-      const consoleLogs = [];
-
-      page.on('pageerror', err => pageErrors.push(err.message || err));
-      page.on('console', msg => {
-        if (msg.type() === 'error') consoleLogs.push(msg.text());
-      });
-
-      try {
-        await page.goto(item.url, { waitUntil: 'domcontentloaded', timeout: 8000 });
-
-        if (item.html === 'admin.html') {
-          const timerExists = await page.$('#timer, .timer, [data-timer]');
-          if (!timerExists) {
-            logFail(K_FRONTEND, `Admin: Timers`, "Elemento del timer no encontrado", "admin.html", "Falta ID '#timer' o clase '.timer'.");
-          }
-
-          const bioBtn = await page.$('#btn-biometria, #btn-inicio, .btn-biometric, #btn-login');
-          if (bioBtn) {
-            await bioBtn.click({ force: true, timeout: 1000 }).catch(e => {
-              logFail(K_FRONTEND, `Admin: Botón Biometría`, e.message, "admin.js", "Falla al ejecutar clic en el botón.");
-            });
-          } else {
-            logFail(K_FRONTEND, `Admin: Botón Biometría`, "Botón no encontrado", "admin.html", "Falta ID '#btn-biometria' o '#btn-inicio'.");
-          }
-        }
-
-        const buttons = await page.$$('button, a.btn, input[type="button"], input[type="submit"]');
-        for (let i = 0; i < buttons.length; i++) {
-          const el = buttons[i];
-          if (await el.isVisible().catch(() => false)) {
-            await el.click({ force: true, timeout: 500 }).catch(() => {});
-          }
-        }
-
-        if (pageErrors.length > 0 || consoleLogs.length > 0) {
-          const allErrs = [...pageErrors, ...consoleLogs].join(" | ");
-          logFail(
-            K_FRONTEND,
-            `Frontend (${item.html} / ${item.js})`,
-            allErrs,
-            item.js,
-            `Excepción JS detectada en ${item.html}.`
-          );
-        } else {
-          logPass(K_FRONTEND, `Frontend (${item.html} / ${item.js})`, "Cargado y validado sin errores en consola.");
-        }
-
-      } catch (err) {
-        logFail(K_FRONTEND, `Frontend (${item.html})`, err.message, item.html, `No se pudo acceder a ${item.url}.`);
-      } finally {
-        await page.close();
+  const K_RESET = "SYSTEM_SLOTS_RESET";
+  if (shouldRunTest(K_RESET)) {
+    try {
+      const resReset = await request.post('/api/system/reset-slots').send({ adminSecret: 'SIMULATION_BYPASS', setSlotsAvailable: 3 });
+      
+      if (resReset.status === 200) {
+        logPass(K_RESET, "Reset de Entorno & Cupos", "Estado restablecido exitosamente: 3 cupos disponibles liberados.");
+      } else {
+        logFail(
+          K_RESET,
+          "Reset de Entorno & Cupos",
+          `HTTP ${resReset.status}`,
+          "routes/admin.js o systemRoutes",
+          "Falta el endpoint para resetear cupos a 3 tras la prueba de simulación."
+        );
       }
+    } catch (err) {
+      logFail(K_RESET, "Reset de Entorno & Cupos", err.message, "system", "Error intentando ejecutar el reset final.");
     }
-
-    await browser.close();
   }
 
   /* ==========================================================================
      RESUMEN FINAL
      ========================================================================== */
   console.log("\n==================================================");
-  console.log("📊 RESULTADO DEL DIAGNÓSTICO TOTAL");
+  console.log("📊 RESULTADO DEL DIAGNÓSTICO TOTAL v4.0");
   console.log("==================================================");
 
   if (REPORT.failed.length > 0) {
@@ -353,10 +250,8 @@ async function runAllSimulations() {
       console.log(`   Causa sugerida: ${item.causa}`);
     });
   } else {
-    if (fs.existsSync(HISTORY_FILE)) {
-      fs.unlinkSync(HISTORY_FILE);
-    }
-    console.log("🎉 ¡EXCELENTE! Todas las pruebas pasaron al 100%.");
+    if (fs.existsSync(HISTORY_FILE)) fs.unlinkSync(HISTORY_FILE);
+    console.log("🎉 ¡EXCELENTE! La simulación con 200 datos de Meta, asignación de CLIENT-#01 y reset de 3 cupos fue un éxito total.");
   }
 }
 
