@@ -182,17 +182,20 @@ const ia3AnalyzerModule = require('../modules/ia3-analyzer');
 app.use('/api/ia3', ia3AnalyzerModule);
 
 // Ruta para activar la batería de pruebas desde el navegador del celular
+const path = require('path');
+
 app.get('/api/admin/run-simulation', async (req, res) => {
   try {
-    const testPath = require.resolve('../tests/simulation-master.js');
-    delete require.cache[testPath]; // Limpia la caché para poder correrlo múltiples veces
+    // Apunta dinámicamente a la carpeta tests en la raíz
+    const testFilePath = path.join(__dirname, '../tests/simulation-master.js');
     
-    // Al requerirlo, ejecutará automáticamente runAllSimulations()
-    require('../tests/simulation-master.js');
+    // Limpia la caché y ejecuta
+    delete require.cache[require.resolve(testFilePath)];
+    require(testFilePath);
 
     res.json({ 
       status: "ok", 
-      message: "🚀 Simulación iniciada con éxito. Revisa la pestaña 'Logs' en Render para ver los resultados en vivo." 
+      message: "🚀 Simulación iniciada. Revisa los Logs de Render." 
     });
   } catch (err) {
     res.status(500).json({ status: "error", error: err.message });
