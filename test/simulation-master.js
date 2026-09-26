@@ -279,45 +279,23 @@ async function runAllSimulations() {
     }
   }
 
-  /* ==========================================================================
-     6. FRONTEND: PRUEBAS EN VIVO CON PLAYWRIGHT (admin.html & client.html)
-     ========================================================================== */
-  /* ==========================================================================
-     6. FRONTEND AVANZADO: PLAYWRIGHT (admin, client, index, contrato & BIOMETRÍA)
+    /* ==========================================================================
+     6. FRONTEND AVANZADO EN LA NUBE: PLAYWRIGHT (admin, client, index, contrato)
      ========================================================================== */
   const K_FRONTEND = "FRONTEND_FULL_AUDIT";
   if (shouldRunTest(K_FRONTEND)) {
-    console.log("🌐 Iniciando auditoría profunda de Frontend (admin, client, index, contrato)...");
+    console.log(" Iniciando auditoría de Frontend en Render con Playwright...");
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
 
-    // Servidor estático local para montar todos los archivos del frontend
-    const PORT = 3055;
-    const server = http.createServer((req, res) => {
-      let reqUrl = req.url === '/' ? '/index.html' : req.url;
-      let filePath = path.join(__dirname, '../public', reqUrl);
-      if (!fs.existsSync(filePath)) filePath = path.join(__dirname, '..', reqUrl);
+    // URL base de tu frontend desplegado en Render (o usa la variable de entorno)
+    const BASE_FRONTEND = process.env.FRONTEND_URL || 'https://sodie.app';
 
-      fs.readFile(filePath, (err, data) => {
-        if (err) {
-          res.writeHead(404);
-          res.end("Not Found");
-        } else {
-          // Asignar Content-Type adecuado para que JS ejecute bien
-          if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'text/javascript');
-          if (filePath.endsWith('.html')) res.setHeader('Content-Type', 'text/html');
-          res.writeHead(200);
-          res.end(data);
-        }
-      });
-    }).listen(PORT);
-
-    // Páginas HTML a auditar con sus JS asociados
     const pagesToTest = [
-      { html: 'admin.html', js: 'admin.js' },
-      { html: 'client.html', js: 'client.js' },
-      { html: 'index.html', js: 'app.js' },
-      { html: 'contrato.html', js: 'contrato.js' }
+      { html: 'admin.html', url: `${BASE_FRONTEND}/admin.html`, js: 'admin.js' },
+      { html: 'client.html', url: `${BASE_FRONTEND}/client.html`, js: 'client.js' },
+      { html: 'index.html', url: `${BASE_FRONTEND}/index.html`, js: 'app.js' },
+      { html: 'contrato.html', url: `${BASE_FRONTEND}/contrato.html`, js: 'contrato.js' }
     ];
 
     for (const item of pagesToTest) {
@@ -325,41 +303,32 @@ async function runAllSimulations() {
       const pageErrors = [];
       const consoleLogs = [];
 
-      // Interceptar errores no capturados en consola de la página
       page.on('pageerror', err => pageErrors.push(err.message || err));
       page.on('console', msg => {
         if (msg.type() === 'error') consoleLogs.push(msg.text());
       });
 
       try {
-        await page.goto(`http://localhost:${PORT}/${item.html}`, { waitUntil: 'domcontentloaded', timeout: 5000 });
+        await page.goto(item.url, { waitUntil: 'domcontentloaded', timeout: 8000 });
 
         /* --- DIAGNÓSTICO ESPECÍFICO DE ADMIN: TIMERS Y BIOMETRÍA --- */
         if (item.html === 'admin.html') {
-          // 1. Verificar si existen los elementos del Timer
           const timerExists = await page.$('#timer, .timer, [data-timer]');
           if (!timerExists) {
-            logFail(K_FRONTEND, `Admin: Timers`, "Elemento del timer no encontrado en el DOM", "admin.html", "No existe un elemento con ID/clase '#timer' o '.timer' para renderizar el contador.");
+            logFail(K_FRONTEND, `Admin: Timers`, "Elemento del timer no encontrado", "admin.html", "No existe '#timer' o '.timer' para renderizar el contador.");
           }
 
-          // 2. Diagnóstico de Biometría (WebAuthn)
-          const hasWebAuthn = await page.evaluate(() => !!(navigator.credentials && navigator.credentials.get));
-          if (!hasWebAuthn) {
-            console.log("   ⚠️ [AVISO BIOMETRÍA]: Entorno Headless sin autenticador físico simulado.");
-          }
-
-          // Intentar clic en el botón de inicio / biometría
           const bioBtn = await page.$('#btn-biometria, #btn-inicio, .btn-biometric, #btn-login');
           if (bioBtn) {
             await bioBtn.click({ force: true, timeout: 1000 }).catch(e => {
-              logFail(K_FRONTEND, `Admin: Botón Inicio/Biometría`, e.message, "admin.js", "El botón de inicio/biometría falló al recibir el evento click.");
+              logFail(K_FRONTEND, `Admin: Botón Inicio/Biometría`, e.message, "admin.js", "El botón de inicio falló al recibir el evento click.");
             });
           } else {
-            logFail(K_FRONTEND, `Admin: Botón Inicio/Biometría`, "Botón no encontrado", "admin.html", "Falta el ID '#btn-biometria' o '#btn-inicio' en el botón principal.");
+            logFail(K_FRONTEND, `Admin: Botón Inicio/Biometría`, "Botón no encontrado", "admin.html", "Falta el ID '#btn-biometria' o '#btn-inicio'.");
           }
         }
 
-        /* --- SIMULACIÓN GENERAL DE BOTONES EN CADA PÁGINA --- */
+        /* --- SIMULACIÓN DE CLICS EN BOTONES --- */
         const buttons = await page.$$('button, a.btn, input[type="button"], input[type="submit"]');
         for (let i = 0; i < buttons.length; i++) {
           const el = buttons[i];
@@ -368,7 +337,6 @@ async function runAllSimulations() {
           }
         }
 
-        // Reportar errores JS detectados en esa página específica
         if (pageErrors.length > 0 || consoleLogs.length > 0) {
           const allErrs = [...pageErrors, ...consoleLogs].join(" | ");
           logFail(
@@ -376,21 +344,20 @@ async function runAllSimulations() {
             `Frontend (${item.html} / ${item.js})`,
             allErrs,
             item.js,
-            `Error de ejecución JS detectado al cargar o hacer clic en ${item.html}. Revisa sintaxis o funciones no declaradas.`
+            `Error JS al cargar o hacer clic en ${item.html}.`
           );
         } else {
-          logPass(K_FRONTEND, `Frontend (${item.html} / ${item.js})`, "Renderizado y eventos ejecutados sin errores en consola.");
+          logPass(K_FRONTEND, `Frontend (${item.html} / ${item.js})`, "Página cargada y probada sin errores en consola.");
         }
 
       } catch (err) {
-        logFail(K_FRONTEND, `Frontend (${item.html})`, err.message, item.html, `No se pudo abrir la página http://localhost:${PORT}/${item.html}. Verifica que el archivo exista en public/.`);
+        logFail(K_FRONTEND, `Frontend (${item.html})`, err.message, item.html, `No se pudo abrir ${item.url}. Revisa el despliegue en Render.`);
       } finally {
         await page.close();
       }
     }
 
     await browser.close();
-    server.close();
   }
 
   /* ==========================================================================
