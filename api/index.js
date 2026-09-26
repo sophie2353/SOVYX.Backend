@@ -181,41 +181,50 @@ const ia3AnalyzerModule = require('../modules/ia3-analyzer');
 // 2. Montar el módulo en la ruta /api/ia3
 app.use('/api/ia3', ia3AnalyzerModule);
 
-// Ruta para activar la batería de pruebas desde el navegador del celular
-app.get('/api/admin/run-simulation', async (req, res) => {
-  try {
-    const fs = require('fs');
-    
-    // Probar las posibles ubicaciones reales
-    const possiblePaths = [
-      path.join(process.cwd(), 'test/simulation-master.js'),
-      path.join(process.cwd(), 'tests/simulation-master.js'),
-      path.join(__dirname, '../test/simulation-master.js'),
-      path.join(__dirname, '../tests/simulation-master.js'),
-      path.join(__dirname, 'test/simulation-master.js'),
-      path.join(__dirname, 'tests/simulation-master.js')
-    ];
+// SIMULACIÓN 
 
-    let validPath = possiblePaths.find(p => fs.existsSync(p));
+app.get('/api/admin/run-simulation', (req, res) => {
+  const fs = require('fs');
 
-    if (!validPath) {
-      return res.status(404).json({
-        status: "error",
-        message: "No se encontró simulation-master.js. Rutas probadas:",
-        tested: possiblePaths
-      });
-    }
+  // 1. Ubicar la ruta válida del script
+  const possiblePaths = [
+    path.join(process.cwd(), 'test/simulation-master.js'),
+    path.join(process.cwd(), 'tests/simulation-master.js'),
+    path.join(__dirname, '../test/simulation-master.js'),
+    path.join(__dirname, '../tests/simulation-master.js'),
+    path.join(__dirname, 'test/simulation-master.js'),
+    path.join(__dirname, 'tests/simulation-master.js')
+  ];
 
-    delete require.cache[require.resolve(validPath)];
-    require(validPath);
+  let validPath = possiblePaths.find(p => fs.existsSync(p));
 
-    res.json({ 
-      status: "ok", 
-      message: `🚀 Simulación iniciada desde: ${validPath}. Revisa los Logs de Render.` 
+  if (!validPath) {
+    return res.status(404).json({
+      status: "error",
+      message: "No se encontró simulation-master.js. Rutas probadas:",
+      tested: possiblePaths
     });
-  } catch (err) {
-    res.status(500).json({ status: "error", error: err.message, stack: err.stack });
   }
+
+  // 2. Responder INMEDIATAMENTE al navegador (evita el 503 de Render)
+  res.json({ 
+    status: "ok", 
+    message: `🚀 Simulación iniciada en segundo plano desde: ${validPath}. Revisa la pestaña Logs en Render.` 
+  });
+
+  // 3. Ejecutar la simulación asíncronamente
+  setImmediate(() => {
+    try {
+      console.log(`\n========================================`);
+      console.log(`🔥 INICIANDO SIMULACIÓN DESDE HTTP`);
+      console.log(`========================================\n`);
+
+      delete require.cache[require.resolve(validPath)];
+      require(validPath);
+    } catch (err) {
+      console.error("❌ Error durante la ejecución de la simulación:", err);
+    }
+  });
 });
 
 // ============================================
