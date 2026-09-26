@@ -184,10 +184,9 @@ app.use('/api/ia3', ia3AnalyzerModule);
 // Ruta para activar la batería de pruebas desde el navegador del celular
 app.get('/api/admin/run-simulation', async (req, res) => {
   try {
-    // Apunta dinámicamente a la carpeta tests en la raíz
-    const testFilePath = path.join(__dirname, '../tests/simulation-master.js');
+    // Busca desde la raíz absoluta del repositorio en Render
+    const testFilePath = path.join(process.cwd(), 'tests/simulation-master.js');
     
-    // Limpia la caché y ejecuta
     delete require.cache[require.resolve(testFilePath)];
     require(testFilePath);
 
