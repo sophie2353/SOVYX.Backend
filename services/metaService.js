@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-const { sendSSEUpdate } = require('../routes/campaignRoutes');
 
 const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
