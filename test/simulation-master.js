@@ -183,7 +183,7 @@ async function runAllSimulations() {
       
       // Paso B: Cargar la data masiva al servicio
       const resData = await request
-        .post('/api/facebook/upload-audience')
+        .post('/api/facebook/connect')
         .field('clientId', 'CLIENT-#01')
         .attach('file', csvPath);
 
