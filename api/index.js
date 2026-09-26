@@ -190,6 +190,27 @@ app.use((err, req, res, next) => {
   console.error('💥 Error no controlado:', err);
   res.status(500).json({ error: 'Falla interna en el motor de SODIE.' });
 });
+
+// Simulación
+
+// Ruta para activar la batería de pruebas desde el navegador del celular
+app.get('/api/admin/run-simulation', async (req, res) => {
+  try {
+    const testPath = require.resolve('./tests/simulation-master.js');
+    delete require.cache[testPath]; // Limpia la caché para poder correrlo múltiples veces
+    
+    // Al requerirlo, ejecutará automáticamente runAllSimulations()
+    require('./tests/simulation-master.js');
+
+    res.json({ 
+      status: "ok", 
+      message: "🚀 Simulación iniciada con éxito. Revisa la pestaña 'Logs' en Render para ver los resultados en vivo." 
+    });
+  } catch (err) {
+    res.status(500).json({ status: "error", error: err.message });
+  }
+});
+
 // ============================================
 // 5. ACTIVACIÓN DEL SERVIDOR
 // ============================================
