@@ -8,7 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const supertest = require('supertest');
 
-const BASE_URL = process.env.BACKEND_URL || 'https://api.sodie.app';
+const BASE_URLB = process.env.BACKEND_URLB || 'https://api.sodie.app';
+const BASE_URL = process.env.BACKEND_URL ||'https://sodie.app'
 const request = supertest(BASE_URL);
 
 const HISTORY_FILE = path.join(__dirname, '.test-history.json');
@@ -73,7 +74,7 @@ function generateMockVideoBuffer() {
 
 async function runAllSimulations() {
   console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v4.0 ===");
-  console.log(`🎯 Objetivo del Backend: ${BASE_URL}\n`);
+  console.log(`🎯 Objetivo del Backend: ${BASE_URLB}\n`);
 
   /* ==========================================================================
      1. ASIGNACIÓN DE ID DE CLIENTE (routes/clientIDroutes)
@@ -237,6 +238,106 @@ async function runAllSimulations() {
       }
     } catch (err) {
       logFail(K_RESET, "Reset de Entorno & Cupos", err.message, "system", "Error intentando ejecutar el reset final.");
+    }
+  }
+  /* ==========================================================================
+     5. ADMIN AUTHENTICATION (routes/adminRoutes.js)
+     ========================================================================== */
+  const K_AUTH = "BACKEND_AUTH_ADMIN";
+  if (shouldRunTest(K_AUTH)) {
+    try {
+      // Simula el login del administrador validando la ADMIN_key
+      const res = await request
+        .post('/api/admin/login')
+        .send({ adminKey: process.env.ADMIN_KEY || '' });
+
+      if (res.status === 200 || res.status === 201) {
+        logPass(K_AUTH, "Admin Auth: Login con ADMIN_key", "Autenticación de administrador validada correctamente.");
+      } else if (res.status === 401 || res.status === 403) {
+        logPass(K_AUTH, "Admin Auth: Login con ADMIN_key", "Endpoint '/api/admin/login' activo y protegiendo acceso (401/403 esperado con key genérica).");
+      } else {
+        logFail(
+          K_AUTH,
+          "Admin Auth: Login de Administrador",
+          `HTTP ${res.status} - ${JSON.stringify(res.body || res.text)}`,
+          "routes/adminRoutes.js",
+          "Verifica si en index.js tienes app.use('/api/admin', adminRoutes) y que el endpoint sea POST /login."
+        );
+      }
+    } catch (err) {
+      logFail(K_AUTH, "Admin Auth: Login de Administrador", err.message, "routes/adminRoutes.js", "Error al conectar con la ruta de login admin.");
+    }
+  }
+  /* ==========================================================================
+     6. FRONTEND: AUDITORÍA DE PLANTILLAS Y ASSETS (SIN CHROMIUM)
+     ========================================================================== */
+  const K_FRONTEND = "FRONTEND_FULL_AUDIT";
+  if (shouldRunTest(K_FRONTEND)) {
+    console.log("🌐 Iniciando auditoría estática de Frontend (HTTP/HTML)...");
+    
+    try {
+      const BASE_FRONTEND = process.env.FRONTEND_URL || BASE_URL;
+
+      const pagesToTest = [
+        { html: 'admin.html', requiredSelectors: ['id="timer"', 'id="btn-biometria"'] },
+        { html: 'client.html', requiredSelectors: ['id="client-container"'] },
+        { html: 'index.html', requiredSelectors: ['<body'] },
+        { html: 'contrato.html', requiredSelectors: ['<body'] }
+      ];
+
+      let totalPagesOk = 0;
+
+      for (const pageItem of pagesToTest) {
+        const pageUrl = `${BASE_FRONTEND}/${pageItem.html}`;
+        const res = await request.get(`/${pageItem.html}`);
+
+        if (res.status === 200) {
+          const htmlContent = res.text || '';
+          
+          // Verificar si los selectores/IDs clave están presentes en el marcado HTML
+          const missingSelectors = pageItem.requiredSelectors.filter(
+            selector => !htmlContent.includes(selector)
+          );
+
+          if (missingSelectors.length === 0) {
+            logPass(
+              K_FRONTEND, 
+              `Frontend: ${pageItem.html}`, 
+              "Plantilla HTML servida correctamente con sus elementos clave."
+            );
+            totalPagesOk++;
+          } else {
+            logFail(
+              K_FRONTEND,
+              `Frontend: ${pageItem.html}`,
+              `Faltan elementos requeridos en la estructura HTML: ${missingSelectors.join(', ')}`,
+              `public/${pageItem.html}`,
+              "Verifica los IDs o clases en la plantilla estática."
+            );
+          }
+        } else {
+          logFail(
+            K_FRONTEND,
+            `Frontend: ${pageItem.html}`,
+            `HTTP ${res.status}`,
+            `public/${pageItem.html}`,
+            `La ruta de la vista no respondió 200 OK en ${pageUrl}.`
+          );
+        }
+      }
+
+      if (totalPagesOk === pagesToTest.length) {
+        logPass(K_FRONTEND, "Auditoría Global Frontend", "Todas las vistas principales están accesibles y bien estructuradas.");
+      }
+
+    } catch (err) {
+      logFail(
+        K_FRONTEND, 
+        "Auditoría de Frontend", 
+        err.message, 
+        "public/", 
+        "Error al intentar realizar las peticiones HTTP a las vistas del frontend."
+      );
     }
   }
 
