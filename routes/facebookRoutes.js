@@ -1,6 +1,6 @@
 /**
  * SODIE - Meta Facebook Routes (routes/facebookRoutes.js)
- * Architecture: OAuth Hora 0 (Persistent Act_id_C{ID}) -> Drafts / Activation / Metrics / Webhook
+ * Architecture: OAuth Hora 0 (Persistent Act_id_C{ID}) -> Drafts & Lifecycle / Deep-Link Activation / Metrics / Webhook
  */
 
 const express = require('express');
@@ -9,19 +9,19 @@ const axios = require('axios');
 const Client = require('../models/clients');
 const tokens = require('../config/tokens');
 
-// Carga opcional de metaService / metaServices
-let metaService = null;
+// Carga del servicio centralizado de Meta
+let metaServices = null;
 try {
-  metaService = require('../services/metaService');
+  metaServices = require('../services/metaServices');
 } catch (e) {
   try {
-    metaService = require('../services/metaServices');
+    metaServices = require('../services/metaService');
   } catch (err) {
-    console.warn('⚠️ [FB ROUTES] metaService no encontrado, se usarán llamadas directas Graph API / fallbacks.');
+    console.warn('⚠️ [FB ROUTES] metaServices no encontrado. Asegúrate de incluir el servicio.');
   }
 }
 
-// Configuración de Meta desde tokens / variables de entorno (Dev / Admin Fallback)
+// Configuración de Meta desde variables de entorno / tokens
 const FB_CONFIG = {
   APP_ID: process.env.APP_ID || tokens.meta?.appId || '',
   APP_SECRET: process.env.APP_SECRET || tokens.meta?.appSecret || '',
@@ -46,7 +46,7 @@ function parseClientIdentifiers(rawId) {
 }
 
 /**
- * Helper para resolver el clientId activo localmente o vía API
+ * Resolver el clientId activo localmente o vía API
  */
 async function resolveClientId(providedClientId, req) {
   if (providedClientId) return parseClientIdentifiers(providedClientId).formattedId;
@@ -59,16 +59,14 @@ async function resolveClientId(providedClientId, req) {
       return parseClientIdentifiers(res.data.clientId).formattedId;
     }
   } catch (e) {
-    // Silent fallback
+    // Fallback silencioso
   }
 
   return 'CLIENT-#01';
 }
 
 /**
- * Resuelve el contexto publicitario del cliente.
- * Reutiliza el act_id y pixel_id ya guardados en Hora 0 sin volver a consultar Graph API.
- * Si es el Dev/Admin, aplica fallback a config/tokens.js.
+ * Resuelve el contexto publicitario del cliente (reutiliza act_id y pixel_id guardados en Hora 0)
  */
 async function getUserMetaContext(userId, sessionId, clientId, req) {
   const activeClientId = await resolveClientId(clientId, req);
@@ -96,20 +94,13 @@ async function getUserMetaContext(userId, sessionId, clientId, req) {
   };
 }
 
-// Carga segura del método helper si existe en metaService
-const agregarTesterAutomatico = metaService?.agregarTesterAutomatico;
-
 /* ==========================================================================
-   1. CAPI & ROLES AUTOMÁTICOS CON CLIENT_ID
+   1. CAPI & ROLES
    ========================================================================== */
 router.post('/capi', async (req, res) => {
   try {
-    const { sessionId, fbUserId, clientId } = req.body;
+    const { sessionId, clientId } = req.body;
     const activeClientId = await resolveClientId(clientId, req);
-
-    if (fbUserId && typeof agregarTesterAutomatico === 'function') {
-      await agregarTesterAutomatico(fbUserId);
-    }
 
     return res.json({
       success: true,
@@ -153,7 +144,7 @@ router.post(['/connect', '/auth/login'], async (req, res) => {
 });
 
 /* ==========================================================================
-   3. HORA 0: CALLBACK (EXTRAE Y PERSISTE ACT_ID Y PIXEL_ID UNA SOLA VEZ)
+   3. HORA 0: CALLBACK (PERSISTENCIA DE CUENTA Y TOKENS)
    ========================================================================== */
 router.get('/auth/callback', async (req, res) => {
   try {
@@ -177,7 +168,6 @@ router.get('/auth/callback', async (req, res) => {
     const activeClientId = await resolveClientId(clientId, req);
     const { aliasActId } = parseClientIdentifiers(activeClientId);
 
-    // Obtener User Access Token
     let userToken = FB_CONFIG.MY_ACCESS_TOKEN;
     if (FB_CONFIG.APP_ID && FB_CONFIG.APP_SECRET) {
       try {
@@ -195,7 +185,6 @@ router.get('/auth/callback', async (req, res) => {
       }
     }
 
-    // Extracción única de Ad Account y Pixel en Hora 0
     let fetchedActId = FB_CONFIG.MY_ACT_ID;
     let fetchedPixelId = FB_CONFIG.DEFAULT_PIXEL_ID;
 
@@ -216,7 +205,6 @@ router.get('/auth/callback', async (req, res) => {
       console.warn('⚠️ Error al consultar adaccounts en Hora 0:', e.message);
     }
 
-    // Persistir en MongoDB bajo el alias Act_id_C{ID}
     const query = clientId ? { clientId: activeClientId } : (userId ? { userId } : { sessionId });
     await Client.findOneAndUpdate(
       query,
@@ -243,37 +231,36 @@ router.get('/auth/callback', async (req, res) => {
 });
 
 /* ==========================================================================
-   4. CREAR BORRADOR DE CAMPAÑA
+   4. NOTIFICAR Y EJECUTAR CICLO DE REEMPLAZO EN METASERVICES
    ========================================================================== */
 router.post(['/crear-borrador', '/draft'], async (req, res) => {
   try {
-    const { userId, sessionId, clientId, usersPayload, countriesFound, dataSegmentacion } = req.body;
+    const { userId, sessionId, clientId, usersPayload, dailyBudget } = req.body;
     const metaCtx = await getUserMetaContext(userId, sessionId, clientId, req);
 
-    let borradorResult = null;
-
-    if (metaService && typeof metaService.crearCampanaVentas === 'function') {
-      borradorResult = await metaService.crearCampanaVentas({
-        clientId: metaCtx.clientId,
-        aliasActId: metaCtx.aliasActId,
-        actId: metaCtx.act_id,
-        token: metaCtx.fb_token,
-        pixelId: metaCtx.pixel_id,
-        name: `Sodie Campaign - ${metaCtx.clientId}`,
-        status: 'PAUSED',
-        targeting: dataSegmentacion,
-        usersPayload: usersPayload || metaCtx.clientDoc?.uploadedData || [],
-        countriesFound
+    if (!metaServices || typeof metaServices.procesarCicloHora24 !== 'function') {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'metaServices.procesarCicloHora24 no está disponible.' 
       });
-    } else {
-      borradorResult = { campaignId: 'draft_' + metaCtx.clientId + '_' + Date.now() };
     }
 
-    const campaignId = borradorResult?.campaignId || borradorResult?.id || ('draft_' + Date.now());
+    // Notifica los datos de campaña y ejecuta el ciclo de reemplazo puro en Meta
+    const borradorResult = await metaServices.procesarCicloHora24({
+      clientId: metaCtx.clientId,
+      token: metaCtx.fb_token,
+      adAccountId: metaCtx.act_id,
+      pixelId: metaCtx.pixel_id,
+      usersPayload: usersPayload || [],
+      dailyBudget: dailyBudget || 1000
+    });
 
+    const campaignId = borradorResult.campaignId;
+
+    // Actualiza el puntero de la última campaña generada en la BD
     await Client.findOneAndUpdate(
       { clientId: metaCtx.clientId },
-      { $set: { clientId: metaCtx.clientId, 'meta.lastCampaignId': campaignId, 'meta.status': 'PAUSED' } },
+      { $set: { 'meta.lastCampaignId': campaignId, 'meta.status': 'PAUSED' } },
       { upsert: true }
     );
 
@@ -281,18 +268,19 @@ router.post(['/crear-borrador', '/draft'], async (req, res) => {
       success: true,
       clientId: metaCtx.clientId,
       aliasActId: metaCtx.aliasActId,
-      campaignId: campaignId,
+      campaignId,
+      status: 'PAUSED',
       redirectUrl: `/confirmacion.html?step=activar_campana&clientId=${encodeURIComponent(metaCtx.clientId)}&campaignId=${campaignId}&actId=${metaCtx.act_id}`
     });
 
   } catch (err) {
-    console.error('💥 Error al crear borrador:', err);
+    console.error('💥 Error al procesar ciclo en Meta:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
 /* ==========================================================================
-   5. HORA 24, 48 & 72: ACTIVAR CAMPAÑA / GENERAR ENLACE DIRECTO
+   5. GENERAR ENLACE DIRECTO A ADS MANAGER (DEEP-LINK ACTIVACIÓN)
    ========================================================================== */
 router.post(['/activar-campana', '/campaigns/activate'], async (req, res) => {
   try {
@@ -301,7 +289,6 @@ router.post(['/activar-campana', '/campaigns/activate'], async (req, res) => {
 
     const targetCampaignId = campaignId || metaCtx.lastCampaignId;
 
-    // Construcción dinámica de la URL directa a Ads Manager usando el act_id persistido
     let metaAdsUrl = 'https://adsmanager.facebook.com/adsmanager/manage/campaigns';
     if (metaCtx.act_id) {
       metaAdsUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${metaCtx.act_id}`;
@@ -310,30 +297,20 @@ router.post(['/activar-campana', '/campaigns/activate'], async (req, res) => {
       }
     }
 
-    if (metaService && typeof metaService.verificarEstadoCampana === 'function') {
-      await metaService.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
-    }
-
-    await Client.findOneAndUpdate(
-      { clientId: metaCtx.clientId },
-      { $set: { clientId: metaCtx.clientId, 'meta.status': 'ACTIVE', 'meta.activatedAt': new Date() } },
-      { upsert: true }
-    );
-
     return res.json({
       success: true,
-      status: 'ACTIVE',
+      status: 'PENDING_USER_ACTIVATION',
       clientId: metaCtx.clientId,
       aliasActId: metaCtx.aliasActId,
       campaignId: targetCampaignId,
       actId: metaCtx.act_id,
       pixelId: metaCtx.pixel_id,
-      metaAdsUrl: metaAdsUrl,
-      redirectUrl: `/confirmacion.html?step=confirmar_pago&status=success&clientId=${encodeURIComponent(metaCtx.clientId)}&campaignId=${targetCampaignId || ''}`
+      metaAdsUrl,
+      redirectUrl: `/confirmacion.html?step=confirmar_pago&status=pending&clientId=${encodeURIComponent(metaCtx.clientId)}&campaignId=${targetCampaignId || ''}`
     });
 
   } catch (err) {
-    console.error('💥 Error al activar campaña:', err);
+    console.error('💥 Error al generar enlace de activación:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -349,18 +326,8 @@ router.get('/verificar-estado', async (req, res) => {
 
     let isNowActive = false;
 
-    if (metaService && typeof metaService.verificarEstadoCampana === 'function') {
-      isNowActive = await metaService.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
-    } else if (targetCampaignId && metaCtx.fb_token) {
-      try {
-        const campResp = await axios.get(`https://graph.facebook.com/v26.0/${targetCampaignId}`, {
-          params: { access_token: metaCtx.fb_token, fields: 'status,effective_status' }
-        });
-        const status = campResp.data?.effective_status || campResp.data?.status;
-        isNowActive = (status === 'ACTIVE');
-      } catch (e) {
-        isNowActive = true;
-      }
+    if (metaServices && typeof metaServices.verificarEstadoCampana === 'function') {
+      isNowActive = await metaServices.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
     }
 
     if (isNowActive) {
@@ -387,7 +354,7 @@ router.get('/verificar-estado', async (req, res) => {
 });
 
 /* ==========================================================================
-   7. MÉTRICAS POR CLIENT ID
+   7. SOLICITAR MÉTRICAS A METASERVICES
    ========================================================================== */
 router.get('/metrics', async (req, res) => {
   try {
@@ -397,15 +364,12 @@ router.get('/metrics', async (req, res) => {
 
     if (targetCampaignId && metaCtx.fb_token) {
       try {
-        const insightsResp = await axios.get(`https://graph.facebook.com/v26.0/${targetCampaignId}/insights`, {
-          params: {
-            access_token: metaCtx.fb_token,
-            fields: 'impressions,reach,clicks,spend,ctr,cpc'
-          }
-        });
+        let stats = null;
+        if (metaServices && typeof metaServices.obtenerMetricas === 'function') {
+          stats = await metaServices.obtenerMetricas(metaCtx.fb_token, targetCampaignId);
+        }
 
-        if (insightsResp.data?.data && insightsResp.data.data.length > 0) {
-          const stats = insightsResp.data.data[0];
+        if (stats && Object.keys(stats).length > 0) {
           return res.json({
             success: true,
             clientId: metaCtx.clientId,
@@ -423,10 +387,11 @@ router.get('/metrics', async (req, res) => {
           });
         }
       } catch (e) {
-        console.warn('⚠️ Graph API Metrics error, entregando fallback dinámico:', e.message);
+        console.warn('⚠️ Error al consultar métricas en Meta, aplicando fallback:', e.message);
       }
     }
 
+    // Fallback dinámico si aún no hay métricas disponibles en la Graph API
     return res.json({
       success: true,
       clientId: metaCtx.clientId,
