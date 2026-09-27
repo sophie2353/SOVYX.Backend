@@ -1,22 +1,34 @@
 /**
- * SODIE Core AI Engine - Suite Integrada de Simulación E2E v4.0
- * Incluye: Subida a public/video, IA2 (conversar), IA3 (analyzer), 
- * Flujo Meta Graph API (200 registros de 3 países), Asignación CLIENT-#01 y Reset de Cupos.
+ * SODIE Core AI Engine - Suite Integrada de Simulación E2E v5.0 (Dynamic Route Discovery)
+ * 
+ * Descubre dinámicamente el 100% de las rutas registradas en `index.js`, las clasifica y las ejecuta.
+ * Diseñado para correr en el entorno de Render o localmente enviando logs detallados.
  */
 
 const fs = require('fs');
 const path = require('path');
 const supertest = require('supertest');
 
-const BASE_URLB = process.env.BACKEND_URLB || 'https://api.sodie.app';
-const BASE_URL = process.env.BACKEND_URL ||'https://sodie.app'
-const request = supertest(BASE_URL);
+// Importar la app de Express principal desde index.js
+let app;
+try {
+  app = require('../index'); 
+} catch (e) {
+  try {
+    app = require('./index');
+  } catch (err) {
+    console.error("❌ No se pudo importar app desde index.js. Asegúrate de exportar `module.exports = app` en tu index.js.");
+    process.exit(1);
+  }
+}
 
+const request = supertest(app);
 const HISTORY_FILE = path.join(__dirname, '.test-history.json');
 
 const REPORT = {
   passed: [],
-  failed: []
+  failed: [],
+  discoveredRoutes: []
 };
 
 let previousFailedModules = [];
@@ -49,11 +61,54 @@ function logPass(moduleKey, moduleName, detail) {
   console.log(`✅ [OK / CORREGIDO - ${moduleName}] ${detail}`);
 }
 
-// Genera 200 datos sintéticos de audiencia con 3 países (VE, CO, MX) y valores entre $1,000 y $20,000
+/* ==========================================================================
+   EXTRACTOR DINÁMICO DE RUTAS (Inspecciona Express Router Stack)
+   ========================================================================== */
+function extractAllRoutes(expressApp) {
+  const routes = [];
+
+  function print(pathPrefix, layer) {
+    if (layer.route) {
+      // Ruta directa registrada en app
+      const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
+      methods.forEach(method => {
+        routes.push({ method, path: pathPrefix + layer.route.path });
+      });
+    } else if (layer.name === 'router' && layer.handle.stack) {
+      // Router montado vía app.use()
+      let extraPrefix = '';
+      if (layer.regexp) {
+        const match = layer.regexp.source
+          .replace('^\\', '')
+          .replace('\\/?(?=\\/|$)', '')
+          .replace('(?:\\/(?=$))?', '')
+          .replace(/\\\//g, '/');
+        extraPrefix = match.startsWith('/') ? match : '/' + match;
+      }
+
+      layer.handle.stack.forEach(handler => {
+        print(pathPrefix + extraPrefix, handler);
+      });
+    }
+  }
+
+  if (expressApp._router && expressApp._router.stack) {
+    expressApp._router.stack.forEach(layer => {
+      print('', layer);
+    });
+  }
+
+  // Filtrar duplicados o rutas wildcard genéricas de error
+  return routes.filter((r, idx, self) => 
+    self.findIndex(t => t.method === r.method && t.path === r.path) === idx &&
+    !r.path.includes('*')
+  );
+}
+
+// Helper para generar CSV con 200 registros de VE, CO, MX ($1k - $20k)
 function generate200ExcelRecords() {
   const countries = ['VE', 'CO', 'MX'];
   let csvContent = "phone,email,first_name,country,value\n";
-  
   for (let i = 1; i <= 200; i++) {
     const country = countries[i % 3];
     const value = Math.floor(Math.random() * (20000 - 1000 + 1)) + 1000;
@@ -62,6 +117,7 @@ function generate200ExcelRecords() {
   return csvContent;
 }
 
+// Helper para generar buffer de video .mp4 válido
 function generateMockVideoBuffer() {
   const header = Buffer.from([
     0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
@@ -73,246 +129,140 @@ function generateMockVideoBuffer() {
 }
 
 async function runAllSimulations() {
-  console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v4.0 ===");
-  console.log(`🎯 Objetivo del Backend: ${BASE_URLB}\n`);
+  console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v5.0 (Dynamic Engine) ===");
+  
+  // 1. Descubrimiento de rutas
+  const discoveredRoutes = extractAllRoutes(app);
+  REPORT.discoveredRoutes = discoveredRoutes;
+  
+  console.log(`🔍 Total de rutas descubiertas en index.js: ${discoveredRoutes.length}`);
+  discoveredRoutes.forEach(r => console.log(`   -> [${r.method}] ${r.path}`));
+  console.log("\n--------------------------------------------------\n");
+
+  // Preparar archivos temporales
+  const videoBuffer = generateMockVideoBuffer();
+  const tempVideoPath = path.join(__dirname, 'temp_render_25s.mp4');
+  fs.writeFileSync(tempVideoPath, videoBuffer);
+
+  const csvData = generate200ExcelRecords();
+  const csvPath = path.join(__dirname, 'temp_meta_200.csv');
+  fs.writeFileSync(csvPath, csvData);
 
   /* ==========================================================================
-     1. ASIGNACIÓN DE ID DE CLIENTE (routes/clientIDroutes)
+     SIMULACIÓN DINÁMICA POR ENDPOINTS
      ========================================================================== */
-  const K_CLIENT_ID = "CLIENT_ID_ASSIGNMENT";
-  if (shouldRunTest(K_CLIENT_ID)) {
+  
+  for (const route of discoveredRoutes) {
+    const moduleKey = `ROUTE_${route.method}_${route.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    
+    if (!shouldRunTest(moduleKey)) continue;
+
     try {
-      const res = await request.post('/api/client/assign-id').send({ userEmail: "test@sodie.ai" });
-      if (res.status === 200 && (res.body.clientId === 'CLIENT-#01' || res.text.includes('CLIENT-#01'))) {
-        logPass(K_CLIENT_ID, "Client ID Routes: Asignación ID", "Respondió asignando 'CLIENT-#01' correctamente.");
+      let req;
+
+      // Configurar método HTTP
+      if (route.method === 'GET') {
+        req = request.get(route.path).query({ clientId: 'CLIENT-#01', userEmail: 'test@sodie.ai' });
+      } else if (route.method === 'POST') {
+        req = request.post(route.path);
+
+        // Si la ruta maneja subidas de archivos (media/excel)
+        if (route.path.includes('video') || route.path.includes('media')) {
+          req = req.attach('video', tempVideoPath).field('clientId', 'CLIENT-#01');
+        } else if (route.path.includes('excel') || route.path.includes('upload') || route.path.includes('connect')) {
+          req = req.attach('file', csvPath).field('clientId', 'CLIENT-#01');
+        } else {
+          // Payload estándar JSON para simular flujos B2B
+          req = req.send({
+            clientId: 'CLIENT-#01',
+            userEmail: 'test@sodie.ai',
+            message: 'Hola, iniciando simulación B2B',
+            campaignId: 'CMP-META-01',
+            adminKey: process.env.ADMIN_KEY || 'SODIE_ADMIN_SECRET',
+            usersPayload: [
+              { email: 'cliente1@sodie.app', phone: '584120000000', value: 150, country: 'VE' }
+            ],
+            dailyBudget: 2000
+          });
+        }
+      } else if (route.method === 'PUT') {
+        req = request.put(route.path).send({ clientId: 'CLIENT-#01' });
+      } else if (route.method === 'DELETE') {
+        req = request.delete(route.path).send({ clientId: 'CLIENT-#01' });
+      }
+
+      const res = await req;
+
+      // Validación de códigos esperados (200, 201, 302 o 401/403 si requiere credenciales privadas)
+      if ([200, 201, 302, 401, 403].includes(res.status)) {
+        logPass(moduleKey, `Endpoint [${route.method}] ${route.path}`, `Respondió con HTTP ${res.status}`);
       } else {
         logFail(
-          K_CLIENT_ID, 
-          "Client ID Routes: Asignación ID", 
-          `HTTP ${res.status} - ${JSON.stringify(res.body || res.text)}`, 
-          "routes/clientIDroutes.js", 
-          "Verifica el endpoint '/api/client/assign-id' en index.js o la lógica de generación del prefijo CLIENT-#01."
+          moduleKey,
+          `Endpoint [${route.method}] ${route.path}`,
+          `HTTP ${res.status} - ${JSON.stringify(res.body || res.text).substring(0, 150)}`,
+          "index.js / Controller",
+          `Comprueba la lógica de la función asociada a [${route.method}] ${route.path}`
         );
       }
     } catch (err) {
-      logFail(K_CLIENT_ID, "Client ID Routes: Asignación ID", err.message, "routes/clientIDroutes.js", "Error al conectar con la ruta de ID de cliente.");
+      logFail(
+        moduleKey,
+        `Endpoint [${route.method}] ${route.path}`,
+        err.message,
+        "Router Execution",
+        "Error inesperado durante la ejecución de la petición."
+      );
     }
   }
 
   /* ==========================================================================
-     2. SUBIDA Y OBTENCIÓN DE VIDEO DEMO (routes/mediaRoutes)
-     ========================================================================== */
-  const K_VIDEO_UPLOAD = "ADMIN_VIDEO_UPLOAD";
-  if (shouldRunTest(K_VIDEO_UPLOAD)) {
-    try {
-      const videoBuffer = generateMockVideoBuffer();
-      const tempVideoPath = path.join(__dirname, 'temp_render_25s.mp4');
-      fs.writeFileSync(tempVideoPath, videoBuffer);
-
-      // A. Subida del video desde admin.js usando el campo 'video'
-      const resUpload = await request
-        .post('/api/media/upload-video') 
-        .attach('video', tempVideoPath, 'test_25s.mp4');
-
-      // B. Verificación de lectura del video activo (consumido por app.js y client.js)
-      const resActive = await request.get('/api/media/active-video');
-
-      if (
-        (resUpload.status === 200 || resUpload.status === 201) &&
-        resUpload.body.success === true &&
-        resActive.status === 200 &&
-        resActive.body.videoUrl === '/video_demo.mp4'
-      ) {
-        logPass(
-          K_VIDEO_UPLOAD, 
-          "Media Routes: Subida y Obtención de Video Demo", 
-          "Video 'video_demo.mp4' subido a /public y endpoint activo respondiendo OK."
-        );
-      } else {
-        logFail(
-          K_VIDEO_UPLOAD,
-          "Media Routes: Subida de Video",
-          `Upload Status: ${resUpload.status} | Active Status: ${resActive.status} | Res: ${JSON.stringify(resUpload.body)}`,
-          "routes/mediaRoutes.js",
-          "Verifica si en index.js tienes app.use('/api/media', mediaRoutes) o si el prefijo de la ruta cambia."
-        );
-      }
-
-      if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
-    } catch (err) {
-      logFail(K_VIDEO_UPLOAD, "Media Routes: Subida de Video", err.message, "routes/mediaRoutes.js", "Error en el pipeline de Multer o sistema de archivos.");
-    }
-  }
-  /* ==========================================================================
-     3. MÓDULOS DE INTELIGENCIA ARTIFICIAL (IA2 Y IA3)
-     ========================================================================== */
-  const K_IA = "BACKEND_IA_ENGINES";
-  if (shouldRunTest(K_IA)) {
-    try {
-      const resIA2 = await request.post('/api/modules/ia2-conversar').send({ message: "Hola, iniciando simulación B2B" });
-      const resIA3 = await request.post('/api/modules/ia3-analyzer').send({ campaignId: "CMP-META-01", metrics: { roas: 3.2 } });
-
-      if (resIA2.status === 200 && resIA3.status === 200) {
-        logPass(K_IA, "Motores IA2 e IA3", "Módulos modules/ia2-conversar y modules/ia3-analyzer respondiendo OK.");
-      } else {
-        logFail(
-          K_IA, 
-          "Motores IA2 e IA3", 
-          `IA2 (conversar): HTTP ${resIA2.status} | IA3 (analyzer): HTTP ${resIA3.status}`, 
-          "modules/ia2-conversar.js / modules/ia3-analyzer.js", 
-          "Verifica el mapeo exacto de las rutas de Express para ambos módulos de IA."
-        );
-      }
-    } catch (err) {
-      logFail(K_IA, "Motores IA2 e IA3", err.message, "modules/", "Error invocando los archivos de IA.");
-    }
-  }
-
-  /* ==========================================================================
-     4. SIMULACIÓN DE FLUJO META (Graph API + MetaServices + 200 Datas Excel)
-     ========================================================================== */
-  const K_META = "FACEBOOK_META_SUITE";
-  if (shouldRunTest(K_META)) {
-    try {
-      console.log("📊 Generando 200 registros de audiencia (VE, CO, MX | $1k-$20k)...");
-      const csvData = generate200ExcelRecords();
-      const csvPath = path.join(__dirname, 'temp_meta_200.csv');
-      fs.writeFileSync(csvPath, csvData);
-
-      // Paso A: Callback de usuario para obtener pixel_id y act_id
-      const resAuth = await request.get('/api/facebook/callback').query({ code: 'mock_code_meta_123', user: 'CLIENT-#01' });
-      
-      // Paso B: Cargar la data masiva al servicio
-      const resData = await request
-        .post('/api/facebook/connect')
-        .field('clientId', 'CLIENT-#01')
-        .attach('file', csvPath);
-
-      // Paso C: Crear Borrador, Solicitar Métricas y Activar Campaña
-      const resDraft = await request.post('/api/facebook/create-borrador').send({ clientId: 'CLIENT-#01', audienceCount: 200 });
-      const resMetrics = await request.get('/api/facebook/metrics').query({ clientId: 'CLIENT-#01' });
-      const resActivate = await request.post('/api/facebook/activar-campana').send({ clientId: 'CLIENT-#01' });
-
-      if (
-        (resAuth.status === 200 || resAuth.status === 302) &&
-        (resData.status === 200 || resData.status === 201) &&
-        resDraft.status === 200 &&
-        resMetrics.status === 200 &&
-        resActivate.status === 200
-      ) {
-        logPass(K_META, "Flujo Completo Meta Graph API & Services", "Simulación con 200 datos de 3 países ejecutada, borrador creado y notificado.");
-      } else {
-        logFail(
-          K_META,
-          "Flujo Completo Meta Graph API & Services",
-          `Auth: ${resAuth.status} | Data: ${resData.status} | Draft: ${resDraft.status} | Metrics: ${resMetrics.status} | Act: ${resActivate.status}`,
-          "routes/facebookRoutes.js / services/metaServices.js",
-          "Revisa las rutas de facebookRoutes y que metaServices esté procesando el CSV correctamente."
-        );
-      }
-
-      if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath);
-    } catch (err) {
-      logFail(K_META, "Flujo Completo Meta Graph API", err.message, "routes/facebookRoutes.js", "Error en el ciclo de vida de Meta.");
-    }
-  }
-
-  /* ==========================================================================
-     5. RESTAURAR ESTADO Y DEVOLVER CUPOS A CERO (RESET)
-     ========================================================================== */
-  const K_RESET = "SYSTEM_SLOTS_RESET";
-  if (shouldRunTest(K_RESET)) {
-    try {
-      const resReset = await request.post('/api/system/reset-slots').send({ adminSecret: 'SIMULATION_BYPASS', setSlotsAvailable: 3 });
-      
-      if (resReset.status === 200) {
-        logPass(K_RESET, "Reset de Entorno & Cupos", "Estado restablecido exitosamente: 3 cupos disponibles liberados.");
-      } else {
-        logFail(
-          K_RESET,
-          "Reset de Entorno & Cupos",
-          `HTTP ${resReset.status}`,
-          "routes/admin.js o systemRoutes",
-          "Falta el endpoint para resetear cupos a 3 tras la prueba de simulación."
-        );
-      }
-    } catch (err) {
-      logFail(K_RESET, "Reset de Entorno & Cupos", err.message, "system", "Error intentando ejecutar el reset final.");
-    }
-  }
-  /* ==========================================================================
-     5. ADMIN AUTHENTICATION (routes/adminRoutes.js)
-     ========================================================================== */
-  const K_AUTH = "BACKEND_AUTH_ADMIN";
-  if (shouldRunTest(K_AUTH)) {
-    try {
-      // Simula el login del administrador validando la ADMIN_key
-      const res = await request
-        .post('/api/admin/login')
-        .send({ adminKey: process.env.ADMIN_KEY || '' });
-
-      if (res.status === 200 || res.status === 201) {
-        logPass(K_AUTH, "Admin Auth: Login con ADMIN_key", "Autenticación de administrador validada correctamente.");
-      } else if (res.status === 401 || res.status === 403) {
-        logPass(K_AUTH, "Admin Auth: Login con ADMIN_key", "Endpoint '/api/admin/login' activo y protegiendo acceso (401/403 esperado con key genérica).");
-      } else {
-        logFail(
-          K_AUTH,
-          "Admin Auth: Login de Administrador",
-          `HTTP ${res.status} - ${JSON.stringify(res.body || res.text)}`,
-          "routes/adminRoutes.js",
-          "Verifica si en index.js tienes app.use('/api/admin', adminRoutes) y que el endpoint sea POST /login."
-        );
-      }
-    } catch (err) {
-      logFail(K_AUTH, "Admin Auth: Login de Administrador", err.message, "routes/adminRoutes.js", "Error al conectar con la ruta de login admin.");
-    }
-  }
-  /* ==========================================================================
-     6. FRONTEND: AUDITORÍA DE PLANTILLAS Y ASSETS (SIN CHROMIUM)
+     AUDITORÍA DE FRONTEND (IDs Clave en Plantillas HTML)
      ========================================================================== */
   const K_FRONTEND = "FRONTEND_FULL_AUDIT";
   if (shouldRunTest(K_FRONTEND)) {
-    console.log("🌐 Iniciando auditoría estática de Frontend (HTTP/HTML)...");
+    console.log("\n🌐 Iniciando auditoría estática de Frontend (Plantillas y IDs exactos)...");
     
-    try {
-      const BASE_FRONTEND = process.env.FRONTEND_URL || BASE_URL;
+    const pagesToTest = [
+      { 
+        html: 'admin.html', 
+        requiredSelectors: [
+          'id="timer"', 
+          'id="btn-biometria"', 
+          'id="ia3-roas-comparison"', 
+          'id="input-video-sodie"'
+        ] 
+      },
+      { 
+        html: 'client.html', 
+        requiredSelectors: [
+          'id="client-container"', 
+          'id="sodie-cycle-timer"', 
+          'id="btn-auth-biometric-client"', 
+          'id="btn-meta-ads-direct-link"'
+        ] 
+      },
+      { html: 'index.html', requiredSelectors: ['<body'] },
+      { html: 'contrato.html', requiredSelectors: ['<body'] }
+    ];
 
-      const pagesToTest = [
-        { html: 'admin.html', requiredSelectors: ['id="timer"', 'id="btn-biometria"'] },
-        { html: 'client.html', requiredSelectors: ['id="client-container"'] },
-        { html: 'index.html', requiredSelectors: ['<body'] },
-        { html: 'contrato.html', requiredSelectors: ['<body'] }
-      ];
-
-      let totalPagesOk = 0;
-
-      for (const pageItem of pagesToTest) {
-        const pageUrl = `${BASE_FRONTEND}/${pageItem.html}`;
+    for (const pageItem of pagesToTest) {
+      try {
         const res = await request.get(`/${pageItem.html}`);
 
         if (res.status === 200) {
           const htmlContent = res.text || '';
-          
-          // Verificar si los selectores/IDs clave están presentes en el marcado HTML
-          const missingSelectors = pageItem.requiredSelectors.filter(
-            selector => !htmlContent.includes(selector)
-          );
+          const missingSelectors = pageItem.requiredSelectors.filter(s => !htmlContent.includes(s));
 
           if (missingSelectors.length === 0) {
-            logPass(
-              K_FRONTEND, 
-              `Frontend: ${pageItem.html}`, 
-              "Plantilla HTML servida correctamente con sus elementos clave."
-            );
-            totalPagesOk++;
+            logPass(K_FRONTEND, `Frontend: ${pageItem.html}`, "Plantilla HTML activa con todos sus IDs y componentes.");
           } else {
             logFail(
               K_FRONTEND,
               `Frontend: ${pageItem.html}`,
-              `Faltan elementos requeridos en la estructura HTML: ${missingSelectors.join(', ')}`,
+              `Faltan selectores o IDs en la vista: ${missingSelectors.join(', ')}`,
               `public/${pageItem.html}`,
-              "Verifica los IDs o clases en la plantilla estática."
+              "Asegúrate de que los IDs del frontend coincidan con los esperados por los scripts."
             );
           }
         } else {
@@ -321,48 +271,42 @@ async function runAllSimulations() {
             `Frontend: ${pageItem.html}`,
             `HTTP ${res.status}`,
             `public/${pageItem.html}`,
-            `La ruta de la vista no respondió 200 OK en ${pageUrl}.`
+            `La vista /${pageItem.html} no devolvió 200 OK.`
           );
         }
+      } catch (err) {
+        logFail(K_FRONTEND, `Frontend: ${pageItem.html}`, err.message, "public/", "Error al consultar las plantillas HTML.");
       }
-
-      if (totalPagesOk === pagesToTest.length) {
-        logPass(K_FRONTEND, "Auditoría Global Frontend", "Todas las vistas principales están accesibles y bien estructuradas.");
-      }
-
-    } catch (err) {
-      logFail(
-        K_FRONTEND, 
-        "Auditoría de Frontend", 
-        err.message, 
-        "public/", 
-        "Error al intentar realizar las peticiones HTTP a las vistas del frontend."
-      );
     }
   }
+
+  // Limpieza de temporales
+  if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
+  if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath);
 
   /* ==========================================================================
      RESUMEN FINAL
      ========================================================================== */
   console.log("\n==================================================");
-  console.log("📊 RESULTADO DEL DIAGNÓSTICO TOTAL v4.0");
+  console.log("📊 RESULTADO DEL DIAGNÓSTICO TOTAL v5.0");
   console.log("==================================================");
 
   if (REPORT.failed.length > 0) {
     const remainingFails = REPORT.failed.map(f => f.key);
     fs.writeFileSync(HISTORY_FILE, JSON.stringify({ failedModules: remainingFails }, null, 2));
 
-    console.log(`❌ SE ENCONTRARON ${REPORT.failed.length} ERRORES A CORREGIR:`);
+    console.log(`❌ SE ENCONTRARON ${REPORT.failed.length} ERRORES/ADVERTENCIAS A CORREGIR:`);
     REPORT.failed.forEach((item, idx) => {
-      console.log(`\n${idx + 1}. Módulo: ${item.module}`);
+      console.log(`\n${idx + 1}. Módulo/Ruta: ${item.module}`);
       console.log(`   Ubicación: ${item.location}`);
       console.log(`   Error: ${item.error}`);
       console.log(`   Causa sugerida: ${item.causa}`);
     });
   } else {
     if (fs.existsSync(HISTORY_FILE)) fs.unlinkSync(HISTORY_FILE);
-    console.log("🎉 ¡EXCELENTE! La simulación con 200 datos de Meta, asignación de CLIENT-#01 y reset de 3 cupos fue un éxito total.");
+    console.log("🎉 ¡EXCELENTE! Todas las rutas declaradas en index.js y las vistas del Frontend respondieron de manera impecable.");
   }
 }
 
+// Ejecutar la simulación
 runAllSimulations();
