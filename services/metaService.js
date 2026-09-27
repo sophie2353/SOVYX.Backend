@@ -4,7 +4,7 @@ const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 /**
- * Helper para aplicar cifrado SHA-256 (Requisito obligatorio de Meta Graph API)
+ * Cifrado obligatorio SHA-256 para Meta Graph API
  */
 function hashData(value) {
   if (!value || typeof value !== 'string') return null;
@@ -13,29 +13,35 @@ function hashData(value) {
   return crypto.createHash('sha256').update(clean).digest('hex');
 }
 
+/**
+ * Nombre estandarizado de campaña: PRUEBA - SODIE - {CLIENT_ID}
+ */
+function buildCampaignName(clientId = 'ADMIN') {
+  const cleanId = String(clientId).trim().toUpperCase();
+  return `PRUEBA - SODIE - ${cleanId}`;
+}
+
 const metaService = {
   // =========================================================================
-  // BÚSQUEDA Y LECTURA
+  // 1. BÚSQUEDA DE CAMPAÑAS PREVIAS
   // =========================================================================
 
-  // Buscar borrador/campaña por nombre exacto ("Prueba Hora 24")
-  async buscarBorrador(adAccountId, token, nombreBorrador = "Prueba Hora 24") {
+  async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
+    const targetName = buildCampaignName(clientId);
     const cleanAccountId = adAccountId.replace(/^act_/, '');
     const url = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns?fields=id,name,status&access_token=${token}`;
+    
     const res = await fetch(url);
     const data = await res.json();
     if (data.error) throw new Error(`Meta API Error: ${data.error.message}`);
     
-    return data.data?.find(c => c.name.trim().toLowerCase() === nombreBorrador.trim().toLowerCase());
+    return data.data?.find(c => c.name.trim().toUpperCase() === targetName.toUpperCase());
   },
 
   // =========================================================================
-  // CREACIÓN Y GESTIÓN DE AUDIENCIAS (VALUE-BASED & LOOKALIKES)
+  // 2. SEGMENTACIÓN DE ALTO VALOR (AUDIENCIAS VALUE-BASED & LAL 1%)
   // =========================================================================
 
-  /**
-   * Crear Audiencia Personalizada con soporte de Valor de Cliente (Customer Lifetime Value)
-   */
   async crearAudienciaSemillaConValor(adAccountId, token, name) {
     const cleanAccountId = adAccountId.replace(/^act_/, '');
     const url = `${GRAPH_BASE_URL}/act_${cleanAccountId}/customaudiences`;
@@ -46,9 +52,9 @@ const metaService = {
       body: JSON.stringify({
         name: name,
         subtype: 'CUSTOM',
-        description: 'Semilla inyectada desde IA1 SODIE (Value-Based)',
+        description: 'Semilla inyectada desde IA1 SODIE (Value-Based pura)',
         customer_file_source: 'USER_PROVIDED_ONLY',
-        is_value_based: true, // 👈 Activa Value-Based Audience
+        is_value_based: true,
         access_token: token
       })
     });
@@ -58,25 +64,22 @@ const metaService = {
     return data.id;
   },
 
-  /**
-   * Inyectar usuarios cifrados (SHA-256) + Campo VALUE (numérico sin hash)
-   */
   async inyectarUsuariosSemilla(audienceId, usersPayload, token) {
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
     const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY', 'VALUE'];
 
+    // Cifrar datos personales y conservar el VALUE numérico plano
     const formattedData = usersPayload.map(u => [
       hashData(u.email),
       hashData(u.phone),
-      hashData(u.firstName),
-      hashData(u.lastName),
+      hashData(u.firstName || u.first_name),
+      hashData(u.lastName || u.last_name),
       hashData(u.country),
-      typeof u.value === 'number' ? u.value : parseFloat(u.value || 0) // VALUE numérico plano
-    ]).filter(row => row[0] || row[1]); // Debe poseer al menos email o teléfono
+      typeof u.value === 'number' ? u.value : parseFloat(u.value || 0)
+    ]).filter(row => row[0] || row[1]);
 
     if (!formattedData.length) {
-      console.warn('⚠️ No se encontraron registros válidos para inyectar a la audiencia.');
-      return null;
+      throw new Error('⚠️ No se encontraron registros válidos con email o teléfono en el Excel subido.');
     }
 
     const res = await fetch(url, {
@@ -96,9 +99,6 @@ const metaService = {
     return data;
   },
 
-  /**
-   * Generar Lookalike del 1% (ratio: 0.01) para un país específico priorizando valor
-   */
   async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token) {
     const cleanAccountId = adAccountId.replace(/^act_/, '');
     const url = `${GRAPH_BASE_URL}/act_${cleanAccountId}/customaudiences`;
@@ -111,8 +111,8 @@ const metaService = {
         subtype: 'LOOKALIKE',
         origin_audience_id: seedAudienceId,
         lookalike_spec: JSON.stringify({
-          type: 'value_driven', // Prioriza usuarios de mayor valor
-          ratio: 0.01,         // Precision 1%
+          type: 'value_driven', // Prioriza personas con alto poder adquisitivo
+          ratio: 0.01,         // Alcance del 1% de máxima precisión en Meta
           location_spec: {
             geo_locations: {
               countries: [countryCode.toUpperCase()]
@@ -129,33 +129,47 @@ const metaService = {
   },
 
   /**
-   * Generar proceso completo de cifrado e inyección LAL por valor
+   * Genera segmentación 100% basada en valor extrayendo los países reales del Excel
    */
-  async procesarEInyectarLookalikes({ adAccountId, token, usersPayload, countriesFound = ['US'] }) {
+  async procesarEInyectarLookalikes({ adAccountId, token, usersPayload }) {
     if (!usersPayload || !usersPayload.length) {
-      console.log('⚠️ No hay usersPayload disponible. Se omitirá creación de LAL.');
-      return null;
+      throw new Error('⚠️ No hay registros en el Excel para procesar segmentación.');
     }
 
-    console.log(`🚀 Cifrando datos e inyectando Semilla de Valor con ${usersPayload.length} registros...`);
+    // Extraer dinámicamente los países únicos presentes en el archivo subido
+    const countriesFound = [...new Set(
+      usersPayload
+        .map(u => (u.country || '').trim().toUpperCase())
+        .filter(c => c.length === 2)
+    )];
+
+    if (!countriesFound.length) {
+      throw new Error('⚠️ No se detectaron códigos de país válidos (ej. VE, CO, MX) en la columna country.');
+    }
+
+    // 1. Crear Semilla con Valor
     const seedAudienceId = await this.crearAudienciaSemillaConValor(
       adAccountId, 
       token, 
       `SODIE_Seed_Value_${Date.now()}`
     );
 
+    // 2. Inyectar Registros Cifrados
     await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, token);
 
-    console.log(`Generando Públicos Similares (LAL 1% Value-Driven) para: ${countriesFound.join(', ')}...`);
+    // 3. Generar Lookalikes 1% por cada país detectado
     const lookalikeIds = [];
-    
     for (const country of countriesFound) {
       try {
         const lalId = await this.crearLookalike1PorCiento(adAccountId, seedAudienceId, country, token);
         lookalikeIds.push(lalId);
       } catch (err) {
-        console.error(`Error creando Lookalike para país ${country}:`, err.message);
+        console.error(`Error creando Lookalike 1% para país ${country}:`, err.message);
       }
+    }
+
+    if (!lookalikeIds.length) {
+      throw new Error('No se pudo generar ningún Lookalike 1% en Meta Ads.');
     }
 
     return {
@@ -164,21 +178,26 @@ const metaService = {
   },
 
   // =========================================================================
-  // CREACIÓN DE CAMPAÑA DE VENTAS EN SITIO WEB (DESDE CERO)
+  // 3. CREACIÓN DE BORRADOR (PURCHASE / VENTAS)
   // =========================================================================
 
-  /**
-   * Crea una campaña enfocada en Ventas (OUTCOME_SALES / Value Optimization)
-   */
-  async crearCampanaVentas({ actId, token, pixelId, name = "Prueba Hora 24", status = "PAUSED", dailyBudget = 1000, targeting, usersPayload, countriesFound }) {
+  async crearCampanaVentas({ 
+    actId, 
+    token, 
+    pixelId, 
+    clientId = 'ADMIN', 
+    dailyBudget = 1000, 
+    usersPayload 
+  }) {
     const cleanAccountId = actId.replace(/^act_/, '');
+    const campaignName = buildCampaignName(clientId);
 
-    // 1. Crear Campaña con objetivo OUTCOME_SALES (Ventas en sitio web)
+    // A. Crear la Campaña en PAUSED
     const campaignUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns`;
     const campaignParams = new URLSearchParams({
-      name,
-      objective: 'OUTCOME_SALES', // Objetivos de Ventas Directas
-      status,
+      name: campaignName,
+      objective: 'OUTCOME_SALES',
+      status: 'PAUSED',
       special_ad_categories: '[]',
       access_token: token
     });
@@ -188,37 +207,32 @@ const metaService = {
     if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
     const campaignId = campaignData.id;
 
-    // 2. Procesar Audiencias Lookalike por Valor
-    let targetingConfig = targeting || { geo_locations: { countries: countriesFound || ['US'] } };
-    if (usersPayload && usersPayload.length > 0) {
-      const lalTargeting = await this.procesarEInyectarLookalikes({
-        adAccountId: cleanAccountId,
-        token,
-        usersPayload,
-        countriesFound
-      });
-      if (lalTargeting) {
-        targetingConfig = { ...targetingConfig, custom_audiences: lalTargeting.custom_audiences };
-      }
-    }
+    // B. Procesar Audiencias Value-Driven Lookalike 1%
+    const lalTargeting = await this.procesarEInyectarLookalikes({
+      adAccountId: cleanAccountId,
+      token,
+      usersPayload
+    });
 
-    // 3. Crear AdSet Optimizado para Conversión/Valor en Sitio Web
+    // C. Crear el AdSet Optimizado ÚNICAMENTE para Clics de Compra (PURCHASE)
     const adSetUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/adsets`;
     const adSetBody = {
-      name: `${name} - AdSet Value Sales`,
+      name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
       campaign_id: campaignId,
       daily_budget: dailyBudget,
       billing_event: 'IMPRESSIONS',
-      optimization_goal: 'VALUE', // 👈 Optimización orientada a maximizar el valor de conversiones
-      targeting: targetingConfig,
-      status,
+      optimization_goal: 'VALUE',
+      targeting: {
+        custom_audiences: lalTargeting.custom_audiences
+      },
+      status: 'PAUSED',
       access_token: token
     };
 
     if (pixelId) {
       adSetBody.promoted_object = { 
         pixel_id: pixelId, 
-        custom_event_type: 'PURCHASE' //Evento de compra en sitio web
+        custom_event_type: 'PURCHASE'
       };
     }
 
@@ -229,21 +243,17 @@ const metaService = {
     });
     
     const adSetData = await adSetRes.json();
-    if (adSetData.error) {
-      // Fallback a OFFSITE_CONVERSIONS si el ad account no tiene habilitado optimización por VALUE directa
-      if (adSetData.error.message.includes('VALUE')) {
-        adSetBody.optimization_goal = 'OFFSITE_CONVERSIONS';
-        const fallbackRes = await fetch(adSetUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(adSetBody)
-        });
-        const fallbackData = await fallbackRes.json();
-        if (fallbackData.error) console.warn("Advertencia al crear AdSet (Fallback):", fallbackData.error.message);
-        adSetData.id = fallbackData.id;
-      } else {
-        console.warn("Advertencia al crear AdSet:", adSetData.error.message);
-      }
+    
+    // Fallback de optimización si la cuenta no tiene habilitada la meta VALUE directa
+    if (adSetData.error && adSetData.error.message.includes('VALUE')) {
+      adSetBody.optimization_goal = 'OFFSITE_CONVERSIONS';
+      const fallbackRes = await fetch(adSetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adSetBody)
+      });
+      const fallbackData = await fallbackRes.json();
+      adSetData.id = fallbackData.id;
     }
 
     return {
@@ -251,58 +261,14 @@ const metaService = {
       act_id: cleanAccountId,
       campaignId,
       adSetId: adSetData.id || null,
-      status
+      status: 'PAUSED',
+      campaignName
     };
   },
 
   // =========================================================================
-  // ACTIVACIÓN, PAUSA Y CICLO DE 24 HORAS
+  // 4. CICLO DE 24 HORAS & DESACTIVACIÓN
   // =========================================================================
-
-  async inyectarSegmentacionYActivar(token, campaignId, dataSegmentacion, adAccountId, usersPayload, countriesFound) {
-    const adSetUrl = `${GRAPH_BASE_URL}/${campaignId}/adsets?access_token=${token}`;
-    const resSet = await fetch(adSetUrl);
-    const dataSet = await resSet.json();
-    const adSetId = dataSet.data?.[0]?.id;
-
-    if (adSetId) {
-      let targetingConfig = dataSegmentacion || {};
-
-      if (usersPayload && usersPayload.length > 0 && adAccountId) {
-        const lalTargeting = await this.procesarEInyectarLookalikes({
-          adAccountId,
-          token,
-          usersPayload,
-          countriesFound
-        });
-
-        if (lalTargeting) {
-          targetingConfig = {
-            ...targetingConfig,
-            custom_audiences: lalTargeting.custom_audiences
-          };
-        }
-      }
-
-      await fetch(`${GRAPH_BASE_URL}/${adSetId}?access_token=${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          targeting: targetingConfig,
-          access_token: token 
-        })
-      });
-    }
-
-    await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${token}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        status: 'ACTIVE',
-        access_token: token 
-      })
-    });
-  },
 
   async pausarCampana(token, campaignId) {
     const res = await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${token}`, {
@@ -323,81 +289,47 @@ const metaService = {
     return data.data?.[0] || {};
   },
 
-  /**
-   * Ciclo de 24 Horas: Pausa la campaña previa "Prueba Hora 24" o crea/activa la nueva desde cero
-   */
   async procesarCicloHora24({ 
-    sessionId, 
+    clientId = 'CLIENT-#01', 
     token, 
     adAccountId, 
     pixelId,
-    nombreBorrador = 'Prueba Hora 24', 
-    dataSegmentacion,
     usersPayload,
-    countriesFound,
-    dailyBudget
+    dailyBudget = 1000
   }) {
     try {
       const cleanAccountId = adAccountId.replace(/^act_/, '');
-      const borradorExistente = await this.buscarBorrador(cleanAccountId, token, nombreBorrador);
-
-      let campaignId;
-
+      
+      // 1. Desactivar campaña/borrador anterior si existía
+      const borradorExistente = await this.buscarBorrador(cleanAccountId, token, clientId);
       if (borradorExistente) {
-        // Pausar si estaba activa para refrescar el ciclo
         await this.pausarCampana(token, borradorExistente.id);
-        campaignId = borradorExistente.id;
-        
-        await this.inyectarSegmentacionYActivar(
-          token, 
-          campaignId, 
-          dataSegmentacion, 
-          cleanAccountId, 
-          usersPayload, 
-          countriesFound
-        );
-      } else {
-        // Crear de 0 con objetivo Ventas + Lookalike por valor
-        const nuevaCampana = await this.crearCampanaVentas({
-          actId: cleanAccountId,
-          token,
-          pixelId,
-          name: nombreBorrador,
-          status: 'ACTIVE',
-          dailyBudget,
-          targeting: dataSegmentacion,
-          usersPayload,
-          countriesFound
-        });
-        campaignId = nuevaCampana.campaignId;
       }
 
-      const rawMetrics = await this.obtenerMetricas(token, campaignId);
-      
-      const formattedMetrics = {
-        visitors: parseInt(rawMetrics.clicks || 0),
-        reach: parseInt(rawMetrics.reach || rawMetrics.impressions || 0),
-        spend: `$${parseFloat(rawMetrics.spend || 0).toFixed(2)}`,
-        conversions: rawMetrics.actions?.find(a => a.action_type === 'purchase')?.value || 0
-      };
-
-      if (typeof sendSSEUpdate === 'function') sendSSEUpdate(sessionId, formattedMetrics);
+      // 2. Crear nuevo borrador en PAUSED con los datos frescos del Excel
+      const nuevaCampana = await this.crearCampanaVentas({
+        actId: cleanAccountId,
+        token,
+        pixelId,
+        clientId,
+        dailyBudget,
+        usersPayload
+      });
 
       return { 
         success: true, 
         act_id: cleanAccountId,
-        campaignId, 
-        status: 'ACTIVE', 
-        metrics: formattedMetrics 
+        campaignId: nuevaCampana.campaignId, 
+        status: 'PAUSED',
+        campaignName: nuevaCampana.campaignName,
+        message: 'Borrador creado en estado PAUSED. Notificar a facebookRoutes para confirmacion.html.'
       };
     } catch (error) {
-      console.error('Error en procesarCicloHora24:', error);
+      console.error('Error en procesarCicloHora24 (MetaServices):', error);
       throw error;
     }
   },
-    /**
-   * Verificar si la campaña fue activada por el usuario en Meta Ads Manager
-   */
+
   async verificarEstadoCampana(token, campaignId) {
     if (!campaignId) return false;
     const url = `${GRAPH_BASE_URL}/${campaignId}?fields=status,name&access_token=${token}`;
