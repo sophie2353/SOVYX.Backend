@@ -68,7 +68,7 @@ function extractAllRoutes(expressApp) {
       methods.forEach(method => {
         routes.push({ method, path: pathPrefix + layer.route.path });
       });
-    } else if (layer.name === 'router' && layer.handle.stack) {
+    } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
       let extraPrefix = '';
       if (layer.regexp) {
         const match = layer.regexp.source
@@ -302,7 +302,7 @@ function auditFrontendJSFiles() {
    4. FUNCIÓN PRINCIPAL DE SIMULACIÓN
    ========================================================================== */
 async function runAllSimulations(targetApp) {
-  // Determina la app: pasadas desde req.app -> global.expressApp -> require local
+  // Determina la app con fallbacks seguros
   let app = targetApp || global.expressApp;
 
   if (!app) {
@@ -379,14 +379,16 @@ async function runAllSimulations(targetApp) {
       }
 
       const res = await req;
+      const resStatus = res?.status || 500;
 
-      if ([200, 201, 302, 401, 403].includes(res.status)) {
-        logPass(moduleKey, `Endpoint [${route.method}] ${route.path}`, `Respondió con HTTP ${res.status}`);
+      if ([200, 201, 302, 401, 403].includes(resStatus)) {
+        logPass(moduleKey, `Endpoint [${route.method}] ${route.path}`, `Respondió con HTTP ${resStatus}`);
       } else {
+        const bodyPreview = res?.body || res?.text ? JSON.stringify(res.body || res.text).substring(0, 150) : "Sin respuesta de red";
         logFail(
           moduleKey,
           `Endpoint [${route.method}] ${route.path}`,
-          `HTTP ${res.status} - ${JSON.stringify(res.body || res.text).substring(0, 150)}`,
+          `HTTP ${resStatus} - ${bodyPreview}`,
           "index.js / Controller",
           `Comprueba la lógica interna de la función asignada a la ruta [${route.method}] ${route.path}`
         );
@@ -407,8 +409,9 @@ async function runAllSimulations(targetApp) {
 
     try {
       const res = await request.get(`/${pageConfig.html}`);
+      const resStatus = res?.status || 500;
 
-      if (res.status === 200) {
+      if (resStatus === 200 && res?.text) {
         const htmlContent = res.text || '';
         const missingElements = [];
 
@@ -433,7 +436,7 @@ async function runAllSimulations(targetApp) {
         logFail(
           pageKey,
           `Frontend HTML: /${pageConfig.html}`,
-          `HTTP ${res.status}`,
+          `HTTP ${resStatus}`,
           `public/${pageConfig.html}`,
           `La vista /${pageConfig.html} no devolvió un código HTTP 200 OK.`
         );
@@ -485,23 +488,26 @@ if (require.main === module) {
     };
 
     try {
-      // Pasa la instancia req.app de Express para evitar la importación circular
-      await runAllSimulations(req.app);
+      // Extrae req.app o usa global.expressApp como respaldo seguro
+      const appInstance = req?.app || global.expressApp;
+      await runAllSimulations(appInstance);
     } catch (error) {
-      console.error("Error durante la simulación:", error.message);
+      console.error("Error durante la simulación:", error?.message || error);
     } finally {
       console.log = oldLog;
     }
 
-    return res.status(200).json({
-      success: REPORT.failed.length === 0,
-      summary: {
-        passedCount: REPORT.passed.length,
-        failedCount: REPORT.failed.length,
-        discoveredRoutesCount: REPORT.discoveredRoutes.length
-      },
-      report: REPORT,
-      executionLogs: logs
-    });
+    if (res && typeof res.status === 'function') {
+      return res.status(200).json({
+        success: REPORT.failed.length === 0,
+        summary: {
+          passedCount: REPORT.passed.length,
+          failedCount: REPORT.failed.length,
+          discoveredRoutesCount: REPORT.discoveredRoutes.length
+        },
+        report: REPORT,
+        executionLogs: logs
+      });
+    }
   };
 }
