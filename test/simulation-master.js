@@ -22,10 +22,10 @@ const PUBLIC_DIR = path.join(__dirname, '../public');
 // Importar la app de Express principal desde index.js
 let app;
 try {
-  app = require('../index'); 
+  app = require('../api/index'); 
 } catch (e) {
   try {
-    app = require('./index');
+    app = require('../../api/index');
   } catch (err) {
     console.error("❌ No se pudo importar app desde index.js. Asegúrate de exportar `module.exports = app` en tu index.js.");
     process.exit(1);
