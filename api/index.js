@@ -183,13 +183,12 @@ const ia3AnalyzerModule = require('../modules/ia3-analyzer');
 app.use('/api/ia3', ia3AnalyzerModule);
 
 // SIMULACIÓN 
-
 app.get('/api/admin/run-simulation', (req, res) => {
-  
   const fs = require('fs');
-  const app = express();
-  // Guardar referencia global para la suite de pruebas/simulación
-global.expressApp = app;
+  const path = require('path');
+
+  // Guardar la instancia REAL del servidor Express
+  global.expressApp = req.app;
 
   // 1. Ubicar la ruta válida del script
   const possiblePaths = [
@@ -201,7 +200,7 @@ global.expressApp = app;
     path.join(__dirname, 'tests/simulation-master.js')
   ];
 
-  let validPath = possiblePaths.find(p => fs.existsSync(p));
+  const validPath = possiblePaths.find(p => fs.existsSync(p));
 
   if (!validPath) {
     return res.status(404).json({
@@ -211,23 +210,35 @@ global.expressApp = app;
     });
   }
 
-  // 2. Responder INMEDIATAMENTE al navegador (evita el 503 de Render)
+  // 2. Responder INMEDIATAMENTE al cliente
   res.json({ 
     status: "ok", 
-    message: `🚀 Simulación iniciada en segundo plano desde: ${validPath}. Revisa la pestaña Logs en Render.` 
+    message: `🚀 Simulación iniciada en segundo plano desde: ${validPath}. Revisa los logs en Render.` 
   });
 
-  // 3. Ejecutar la simulación asíncronamente
-  setImmediate(() => {
+  // 3. Ejecutar de forma asíncrona y segura
+  setImmediate(async () => {
     try {
       console.log(`\n========================================`);
       console.log(`🔥 INICIANDO SIMULACIÓN DESDE HTTP`);
+      console.log(`📍 Ruta: ${validPath}`);
       console.log(`========================================\n`);
 
       delete require.cache[require.resolve(validPath)];
-      require(validPath);
+      const simulation = require(validPath);
+
+      // Si el archivo exporta una función ejecutable (async o sync)
+      if (typeof simulation === 'function') {
+        await simulation();
+      } else if (typeof simulation.run === 'function') {
+        await simulation.run();
+      }
+
+      console.log(`\n========================================`);
+      console.log(`✅ SIMULACIÓN FINALIZADA CON ÉXITO`);
+      console.log(`========================================\n`);
     } catch (err) {
-      console.error("❌ Error durante la ejecución de la simulación:", err);
+      console.error("❌ Error crítico en la ejecución de la simulación:", err.stack || err);
     }
   });
 });
