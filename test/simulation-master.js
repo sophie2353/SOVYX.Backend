@@ -19,25 +19,17 @@ const BASE_URL_FRONTEND = process.env.FRONTEND_URL || 'https://sodie.app';
 // Ubicación predeterminada de archivos estáticos (HTML y JS) respecto a test/
 const PUBLIC_DIR = path.join(__dirname, '../public');
 
-// Importar la app de Express principal desde index.js
-// ==========================================================================
-// IMPORTACIÓN SEGURA / REUTILIZACIÓN DE INSTANCIA EXPRESS
-// ==========================================================================
-let app;
+// 1. REUTILIZAR LA INSTANCIA YA EXISTENTE DE EXPRESS EN LUGAR DE REQUERIRLA
+let app = global.expressApp;
 
-// Si se ejecuta como módulo/handler HTTP, reutiliza la app en memoria
-if (global.expressApp) {
-  app = global.expressApp;
-} else {
+// Si no está en global (ej. corriendo por terminal con 'node test/simulation-master.js'), hace fallback seguro
+if (!app) {
   try {
     app = require('../api/index');
   } catch (e) {
-    try {
-      app = require('../index');
-    } catch (err) {
-      console.error("❌ No se pudo importar la app de Express:", err.message);
-    }
+    console.error("❌ Fallback de carga:", e.message);
   }
+}
 
 const request = supertest(app);
 const HISTORY_FILE = path.join(__dirname, '.test-history.json');
