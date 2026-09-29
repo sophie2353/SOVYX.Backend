@@ -20,17 +20,24 @@ const BASE_URL_FRONTEND = process.env.FRONTEND_URL || 'https://sodie.app';
 const PUBLIC_DIR = path.join(__dirname, '../public');
 
 // Importar la app de Express principal desde index.js
+// ==========================================================================
+// IMPORTACIÓN SEGURA / REUTILIZACIÓN DE INSTANCIA EXPRESS
+// ==========================================================================
 let app;
-try {
-  app = require('../api/index'); 
-} catch (e) {
+
+// Si se ejecuta como módulo/handler HTTP, reutiliza la app en memoria
+if (global.expressApp) {
+  app = global.expressApp;
+} else {
   try {
-    app = require('../../api/index');
-  } catch (err) {
-    console.error("❌ No se pudo importar app desde index.js. Asegúrate de exportar `module.exports = app` en tu index.js.");
-    process.exit(1);
+    app = require('../api/index');
+  } catch (e) {
+    try {
+      app = require('../index');
+    } catch (err) {
+      console.error("❌ No se pudo importar la app de Express:", err.message);
+    }
   }
-}
 
 const request = supertest(app);
 const HISTORY_FILE = path.join(__dirname, '.test-history.json');
