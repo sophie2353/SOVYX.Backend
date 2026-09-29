@@ -14,24 +14,9 @@ const supertest = require('supertest');
 // ==========================================================================
 // CONFIGURACIÓN DE RUTA Y LINKS DEL FRONTEND
 // ==========================================================================
-// Puedes colocar aquí tu URL o dominio manual si no pruebas en local
 const BASE_URL_FRONTEND = process.env.FRONTEND_URL || 'https://sodie.app';
-// Ubicación predeterminada de archivos estáticos (HTML y JS) respecto a test/
 const PUBLIC_DIR = path.join(__dirname, '../public');
 
-// 1. REUTILIZAR LA INSTANCIA YA EXISTENTE DE EXPRESS EN LUGAR DE REQUERIRLA
-let app = global.expressApp;
-
-// Si no está en global (ej. corriendo por terminal con 'node test/simulation-master.js'), hace fallback seguro
-if (!app) {
-  try {
-    app = require('../api/index');
-  } catch (e) {
-    console.error("❌ Fallback de carga:", e.message);
-  }
-}
-
-const request = supertest(app);
 const HISTORY_FILE = path.join(__dirname, '.test-history.json');
 
 const REPORT = {
@@ -100,7 +85,7 @@ function extractAllRoutes(expressApp) {
     }
   }
 
-  if (expressApp._router && expressApp._router.stack) {
+  if (expressApp && expressApp._router && expressApp._router.stack) {
     expressApp._router.stack.forEach(layer => {
       print('', layer);
     });
@@ -316,7 +301,25 @@ function auditFrontendJSFiles() {
 /* ==========================================================================
    4. FUNCIÓN PRINCIPAL DE SIMULACIÓN
    ========================================================================== */
-async function runAllSimulations() {
+async function runAllSimulations(targetApp) {
+  // Determina la app: pasadas desde req.app -> global.expressApp -> require local
+  let app = targetApp || global.expressApp;
+
+  if (!app) {
+    try {
+      app = require('../api/index');
+    } catch (e) {
+      console.error("❌ Fallback de carga en simulación:", e.message);
+    }
+  }
+
+  if (!app) {
+    console.error("❌ Error crítico: No se encontró la instancia de la app de Express.");
+    return;
+  }
+
+  const request = supertest(app);
+
   console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v7.0 (Full E2E Frontend & Dynamic Route Engine) ===");
   console.log(`URL Frontend de Referencia Configurada: ${BASE_URL_FRONTEND}`);
 
@@ -473,7 +476,7 @@ if (require.main === module) {
   runAllSimulations();
 } else {
   module.exports = async (req, res) => {
-    // Redirigir consola a buffer temporal para devolver el log como JSON en HTTP
+    // Capturar consola hacia un arreglo temporal para enviarla en la respuesta JSON
     const oldLog = console.log;
     let logs = [];
     console.log = (...args) => {
@@ -481,9 +484,14 @@ if (require.main === module) {
       oldLog.apply(console, args);
     };
 
-    await runAllSimulations();
-
-    console.log = oldLog;
+    try {
+      // Pasa la instancia req.app de Express para evitar la importación circular
+      await runAllSimulations(req.app);
+    } catch (error) {
+      console.error("Error durante la simulación:", error.message);
+    } finally {
+      console.log = oldLog;
+    }
 
     return res.status(200).json({
       success: REPORT.failed.length === 0,
