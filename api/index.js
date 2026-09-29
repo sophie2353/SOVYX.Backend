@@ -185,7 +185,9 @@ app.use('/api/ia3', ia3AnalyzerModule);
 // SIMULACIÓN 
 
 app.get('/api/admin/run-simulation', (req, res) => {
+  
   const fs = require('fs');
+  const app = express();
 
   // 1. Ubicar la ruta válida del script
   const possiblePaths = [
@@ -227,6 +229,9 @@ app.get('/api/admin/run-simulation', (req, res) => {
     }
   });
 });
+
+// Guardar referencia global para la suite de pruebas/simulación
+global.expressApp = app;
 
 // ============================================
 // 4. CONTROL DE ERRORES Y ACTIVACIÓN
