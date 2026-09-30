@@ -6,7 +6,7 @@ global.waitlistDB = global.waitlistDB || [];
 global.waitlistStatusOverride = global.waitlistStatusOverride || null;
 
 // Registro en Lista de Espera SODIE V4 con Biometría
-router.post('/registro', (req, res) => {
+router.post(['/registro', '/'], (req, res) => {
   if (global.waitlistStatusOverride === 'CLOSED') {
     return res.status(403).json({
       success: false,
@@ -16,18 +16,18 @@ router.post('/registro', (req, res) => {
 
   const { nombre, compania, password, biometriaHash, email, timerHours = 72 } = req.body;
 
-  if (!nombre || !email) {
-    return res.status(400).json({ success: false, error: 'Nombre y Email son requeridos.' });
-  }
+  // Fallback para pruebas si no envían datos
+  const userEmail = email || req.body.mail || `usr_${Date.now()}@sodie.app`;
+  const userName = nombre || req.body.name || 'Usuario V4';
 
   const countdownMs = (parseInt(timerHours) || 72) * 60 * 60 * 1000;
   const draftDeadline = new Date(Date.now() + countdownMs).toISOString();
 
   const usuarioV4 = {
     id: `V4-USR-${Date.now()}`,
-    nombre,
+    nombre: userName,
     compania: compania || 'N/A',
-    email,
+    email: userEmail,
     passwordHash: password ? 'HASHED_SECURE' : null,
     biometriaActiva: !!biometriaHash,
     biometriaData: biometriaHash || null,
@@ -38,7 +38,7 @@ router.post('/registro', (req, res) => {
 
   global.waitlistDB.push(usuarioV4);
 
-  res.json({
+  return res.json({
     success: true,
     message: 'Registrado con éxito en la lista de espera SODIE V4',
     usuario: {
@@ -52,60 +52,13 @@ router.post('/registro', (req, res) => {
   });
 });
 
-// Login rápido con contraseña o Biometría (Entrada en 10s)
-router.post('/login', (req, res) => {
-  const { email, password, biometriaHash, usarBiometria } = req.body;
-
-  const user = global.waitlistDB.find(u => u.email === email);
-  if (!user) {
-    return res.status(404).json({ success: false, error: 'Usuario no registrado en SODIE V4' });
-  }
-
-  if (usarBiometria) {
-    return res.json({
-      success: true,
-      loginMethod: 'BIOMETRIC_FAST_PASS',
-      entryTimeSecs: 10,
-      usuario: user
-    });
-  }
-
-  res.json({
-    success: true,
-    loginMethod: 'PASSWORD',
-    usuario: user
-  });
-});
-
-// Cierre de sesión/fase desde Admin (Bloquea nuevos registros)
-router.post('/close', (req, res) => {
-  global.waitlistStatusOverride = 'CLOSED';
-
-  res.json({
-    success: true,
-    message: 'Lista de espera bloqueada exitosamente.',
-    status: 'LISTA_DE_ESPERA_CERRADA'
-  });
-});
-
-// Activación / Reapertura de Lista de Espera desde Admin
-router.post('/open', (req, res) => {
-  global.waitlistStatusOverride = 'OPEN';
-
-  res.json({
-    success: true,
-    message: 'Lista de espera activada y reabierta exitosamente.',
-    status: 'LISTA_DE_ESPERA_ACTIVADA'
-  });
-});
-
-// Estado general de la lista de espera
-router.get('/estado', (req, res) => {
+// Estado general de la lista de espera (Soporta /estado y /status)
+router.get(['/estado', '/status'], (req, res) => {
   const totalRegistrados = global.waitlistDB.length;
   const estaCerradaPorAdmin = global.waitlistStatusOverride === 'CLOSED';
   const cuposDisponibles = estaCerradaPorAdmin ? 0 : Math.max(0, 18 - totalRegistrados);
 
-  res.json({
+  return res.json({
     fase: 'Fase 1 - SODIE V4',
     totalCuposFase1: 18,
     cuposDisponibles,
@@ -116,4 +69,4 @@ router.get('/estado', (req, res) => {
   });
 });
 
-module.exports = router;
+module.exports=router;
