@@ -58,19 +58,15 @@ function logPass(moduleKey, moduleName, detail) {
 }
 
 /* ==========================================================================
-   1. EXTRACTOR DINÁMICO DE RUTAS EXPRESS
-   ========================================================================== */
-/* ==========================================================================
-   1. EXTRACTOR DINÁMICO DE RUTAS EXPRESS (CORREGIDO Y BLINDADO)
+   1. EXTRACTOR DINÁMICO DE RUTAS EXPRESS (REVISIÓN DE RUTAS MÚLTIPLES/COMAS)
    ========================================================================== */
 function extractAllRoutes(expressApp) {
   const routes = [];
 
   function cleanPrefix(regexSource) {
     if (!regexSource || regexSource === '^\\/?(?=\\/|$)') return '';
-    
+
     let cleaned = regexSource
-      // Remover anclas y patrones comunes de Regex en Express
       .replace(/^\^\\?\/?/, '/')
       .replace(/\\\/|\//g, '/')
       .replace(/\(\?:\/\(\?=\$|\\\/|\$\)\)\?/g, '')
@@ -78,15 +74,16 @@ function extractAllRoutes(expressApp) {
       .replace(/\?\(\?=\/\|\$\)/g, '')
       .replace(/\$\/?$/g, '');
 
-    // Si la expresión contiene alternancias (|) o grupos complejos, tomar solo la primera opción limpia
+    // Si viene una lista concatenada o con alternancias, tomar la primera opción
+    if (cleaned.includes(',')) {
+      cleaned = cleaned.split(',')[0];
+    }
     if (cleaned.includes('|')) {
       cleaned = cleaned.split('|')[0];
     }
 
-    // Limpiar cualquier carácter de Regex sobrante (^, $, ?, etc.)
     cleaned = cleaned.replace(/[\^\$\?\*\+\(\)]/g, '');
-    
-    // Formatear slashes
+
     if (!cleaned.startsWith('/')) cleaned = '/' + cleaned;
     return cleaned.replace(/\/+/g, '/');
   }
@@ -94,13 +91,24 @@ function extractAllRoutes(expressApp) {
   function print(pathPrefix, layer) {
     if (layer.route) {
       const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
-      methods.forEach(method => {
-        let fullPath = (pathPrefix + layer.route.path).replace(/\/+/g, '/');
-        // Evitar duplicar slash final si no es la raíz
-        if (fullPath.length > 1 && fullPath.endsWith('/')) {
-          fullPath = fullPath.slice(0, -1);
-        }
-        routes.push({ method, path: fullPath });
+      
+      // Si layer.route.path es un arreglo o contiene comas/varias rutas
+      const subPaths = Array.isArray(layer.route.path) 
+        ? layer.route.path 
+        : String(layer.route.path).split(',');
+
+      subPaths.forEach(rawSubPath => {
+        let cleanSub = rawSubPath.trim();
+        if (cleanSub.includes('|')) cleanSub = cleanSub.split('|')[0];
+        cleanSub = cleanSub.replace(/[\^\$\?\*\+\(\)]/g, '');
+
+        methods.forEach(method => {
+          let fullPath = (pathPrefix + cleanSub).replace(/\/+/g, '/');
+          if (fullPath.length > 1 && fullPath.endsWith('/')) {
+            fullPath = fullPath.slice(0, -1);
+          }
+          routes.push({ method, path: fullPath });
+        });
       });
     } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
       let extraPrefix = '';
