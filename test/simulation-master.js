@@ -60,24 +60,52 @@ function logPass(moduleKey, moduleName, detail) {
 /* ==========================================================================
    1. EXTRACTOR DINÁMICO DE RUTAS EXPRESS
    ========================================================================== */
+/* ==========================================================================
+   1. EXTRACTOR DINÁMICO DE RUTAS EXPRESS (CORREGIDO Y BLINDADO)
+   ========================================================================== */
 function extractAllRoutes(expressApp) {
   const routes = [];
+
+  function cleanPrefix(regexSource) {
+    if (!regexSource || regexSource === '^\\/?(?=\\/|$)') return '';
+    
+    let cleaned = regexSource
+      // Remover anclas y patrones comunes de Regex en Express
+      .replace(/^\^\\?\/?/, '/')
+      .replace(/\\\/|\//g, '/')
+      .replace(/\(\?:\/\(\?=\$|\\\/|\$\)\)\?/g, '')
+      .replace(/\/\?\(\?=\/\|\$\)/g, '')
+      .replace(/\?\(\?=\/\|\$\)/g, '')
+      .replace(/\$\/?$/g, '');
+
+    // Si la expresión contiene alternancias (|) o grupos complejos, tomar solo la primera opción limpia
+    if (cleaned.includes('|')) {
+      cleaned = cleaned.split('|')[0];
+    }
+
+    // Limpiar cualquier carácter de Regex sobrante (^, $, ?, etc.)
+    cleaned = cleaned.replace(/[\^\$\?\*\+\(\)]/g, '');
+    
+    // Formatear slashes
+    if (!cleaned.startsWith('/')) cleaned = '/' + cleaned;
+    return cleaned.replace(/\/+/g, '/');
+  }
 
   function print(pathPrefix, layer) {
     if (layer.route) {
       const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
       methods.forEach(method => {
-        routes.push({ method, path: pathPrefix + layer.route.path });
+        let fullPath = (pathPrefix + layer.route.path).replace(/\/+/g, '/');
+        // Evitar duplicar slash final si no es la raíz
+        if (fullPath.length > 1 && fullPath.endsWith('/')) {
+          fullPath = fullPath.slice(0, -1);
+        }
+        routes.push({ method, path: fullPath });
       });
     } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
       let extraPrefix = '';
-      if (layer.regexp) {
-        const match = layer.regexp.source
-          .replace('^\\', '')
-          .replace('\\/?(?=\\/|$)', '')
-          .replace('(?:\\/(?=$))?', '')
-          .replace(/\\\//g, '/');
-        extraPrefix = match.startsWith('/') ? match : '/' + match;
+      if (layer.regexp && layer.regexp.source) {
+        extraPrefix = cleanPrefix(layer.regexp.source);
       }
 
       layer.handle.stack.forEach(handler => {
@@ -94,7 +122,8 @@ function extractAllRoutes(expressApp) {
 
   return routes.filter((r, idx, self) => 
     self.findIndex(t => t.method === r.method && t.path === r.path) === idx &&
-    !r.path.includes('*')
+    !r.path.includes('*') &&
+    r.path !== '/'
   );
 }
 
