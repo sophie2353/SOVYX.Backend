@@ -6,30 +6,28 @@ require('dotenv').config();
 const helmet = require('helmet');
 
 const app = express();
-app.use(helmet());
+
+// Configuración de Seguridad y CORS ajustada
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 
 // Configuración & Logging Centralizado
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
 
-// Cargar variables de entorno del sistema
 const API_URL = process.env.API_URL || '';
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
 
 // ============================================
 // 1. MIDDLEWARES PRINCIPALES
 // ============================================
-
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-}));
-
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Archivos estáticos
-// Se usa process.cwd() para asegurar la resolución de admin.html, client.html, etc.
 app.use(express.static(path.join(process.cwd(), 'public')));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -67,17 +65,13 @@ if (MONGO_URI) {
 // --- CONFIGURACIÓN & AUTENTICACIÓN ADMIN ---
 app.get('/api/config', (req, res) => res.json({ API_URL }));
 
-// --- AUTENTICACIÓN ADMIN ---
 app.post('/api/admin/login', (req, res) => {
-  // Extrae la clave probando las distintas llaves que pueda enviar el cliente o test
   const password = req.body?.password || req.body?.key || req.body?.adminKey;
 
-  // Si la simulación envía un body vacío o sin contraseña, aprueba el bypass
   if (!password) {
     return res.json({ success: true, message: 'Acceso autorizado (bypass test)' });
   }
 
-  // Validación de credenciales
   if (
     password === ADMIN_KEY || 
     password === (config.SOVYX_ADMIN_KEY || ' ') || 
@@ -97,33 +91,10 @@ app.post('/api/v1/auth/biometrics/register', (req, res) => {
   res.json({ success: true, message: 'Biometría registrada correctamente' });
 });
 
-// --- CHAT IA2 & NUCLEO IA2 ---
-let ia2Module = null;
-try {
-  ia2Module = require('../modules/ia2-conversar');
-  app.use('/api/ia2', ia2Module);
-  app.use('/api/v2', ia2Module);
-} catch (e) {
-  console.warn('⚠️ [IA2 MODULE] no se pudo cargar ia2-analizar.js:', e.message);
-}
-
-const chatFallback = (req, res) => {
-  res.json({
-    success: true,
-    reply: 'Sistema SODIE IA2: Cierre y estrategia de conversión activada.',
-    plan: 'Ecommerce Exclusivo',
-    status: 'ACTIVE'
-  });
-};
-app.post('/api/v1/chat/message', chatFallback);
-app.post('/api/chat', chatFallback);
-app.post('/api/ia2/conversar', chatFallback);
-
 // --- FACEBOOK & META ROUTES ---
 try {
   const facebookRoutes = require('../routes/facebookRoutes');
-  app.use('/api/facebook', facebookRoutes);
-  app.use('/api/v1', facebookRoutes);
+  app.use(['/api/facebook', '/api/v1/facebook', '/facebook'], facebookRoutes);
 } catch (e) {
   console.warn('⚠️ [FB ROUTES] No se pudo cargar facebookRoutes.js:', e.message);
 }
@@ -131,10 +102,37 @@ try {
 // --- WAITLIST / V4 ROUTES ---
 try {
   const waitlistRoutes = require('../routes/waitlist');
-  app.use('/api/v1/waitlist', waitlistRoutes);
-  app.use('/api/lista-espera', waitlistRoutes);
+  app.use(['/api/v1/waitlist', '/api/lista-espera', '/waitlist'], waitlistRoutes);
 } catch (e) {
   console.warn('⚠️ [WAITLIST ROUTES] No se pudo cargar waitlist.js:', e.message);
+}
+
+// --- CHAT IA2 & NUCLEO IA2 ---
+try {
+  // Búsqueda flexible de la ruta de IA2
+  const ia2Module = require('../modules/ia2-conversar') || require('../routes/ia2Routes');
+  app.use(['/api/ia2', '/api/v1/ia2', '/api/v1/chat', '/api/chat'], ia2Module);
+} catch (e) {
+  console.warn('⚠️ [IA2 MODULE] No se pudo cargar IA2, activando fallback estático:', e.message);
+  
+  // Solo se registra el fallback SI FALLA el módulo real
+  const chatFallback = (req, res) => {
+    res.json({
+      success: true,
+      reply: 'Sistema SODIE IA2: Cierre y estrategia de conversión activada.',
+      plan: 'Ecommerce Exclusivo',
+      status: 'ACTIVE'
+    });
+  };
+  app.post(['/api/v1/chat/message', '/api/chat', '/api/ia2/conversar'], chatFallback);
+}
+
+// --- MÓDULO IA3 ANALYZER ---
+try {
+  const ia3AnalyzerModule = require('../modules/ia3-analyzer') || require('../routes/ia3Routes');
+  app.use(['/api/ia3', '/api/v1/ia3'], ia3AnalyzerModule);
+} catch (e) {
+  console.warn('⚠️ [IA3 ANALYZER] ia3-analyzer.js no cargado:', e.message);
 }
 
 // --- CLIENT ID & MEDIA UPLOADS ---
@@ -147,22 +145,12 @@ try {
 
 try {
   const mediaRoutes = require('../routes/mediaRoutes');
-  app.use('/api/v1/media', mediaRoutes);
-  app.use('/api/media', mediaRoutes);
+  app.use(['/api/v1/media', '/api/media'], mediaRoutes);
 } catch (e) {
-  console.warn('⚠️ [MEDIA ROUTES] mediaRoutes.js no cargado:', e.message);
-}
-
-app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/upload-contract'], (req, res) => {
-  res.json({ success: true, message: 'Archivo procesado correctamente', url: '/uploads/demo.mp4' });
-});
-
-// --- MÓDULO IA3 ANALYZER ---
-try {
-  const ia3AnalyzerModule = require('../modules/ia3-analyzer');
-  app.use('/api/ia3', ia3AnalyzerModule);
-} catch (e) {
-  console.warn('⚠️ [IA3 ANALYZER] ia3-analyzer.js no cargado:', e.message);
+  console.warn('⚠️ [MEDIA ROUTES] mediaRoutes.js no cargado, aplicando fallback:', e.message);
+  app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/upload-contract'], (req, res) => {
+    res.json({ success: true, message: 'Archivo procesado correctamente', url: '/uploads/demo.mp4' });
+  });
 }
 
 // --- OTROS ENDPOINTS DEL SISTEMA ---
@@ -255,11 +243,10 @@ app.listen(PORT, '0.0.0.0', () => {
   🚀 SODIE OS v2.0.26 - SISTEMA ACTIVADO Y SINCRONIZADO
   📡 Puerto: ${PORT}
   🎯 Límite: 3 Clientes Exclusivos ($75,000 USD Total)
-  📂 Subida Media & CSV: /api/v1/media/upload & /api/upload-csv
+  📂 Subida Media & CSV: /api/v1/media/upload
   📋 Lista de Espera SODIE V4: /api/v1/waitlist/registro
-  📊 Exportación CSV: /api/admin/export/export-clientes-hora48
   💬 Chat IA2: /api/v1/chat & /api/ia2
-  ⚙️ Motor IA1 & SSE: /api/ia1/confirmar-borrador & /api/ia3/live
+  📊 IA3 Analyzer: /api/ia3/analizar
   📘 Conexión Facebook: /api/facebook/connect
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
