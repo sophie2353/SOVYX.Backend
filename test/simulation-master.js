@@ -59,6 +59,9 @@ function logPass(moduleKey, moduleName, detail) {
 
 /* ==========================================================================
    1. EXTRACTOR DINÁMICO DE RUTAS EXPRESS (REVISIÓN DE RUTAS MÚLTIPLES/COMAS)
+
+/* ==========================================================================
+   EXTRACTOR DINÁMICO DE RUTAS EXPRESS (MANEJO DE RUTAS MULTIPLES / COMAS)
    ========================================================================== */
 function extractAllRoutes(expressApp) {
   const routes = [];
@@ -74,13 +77,9 @@ function extractAllRoutes(expressApp) {
       .replace(/\?\(\?=\/\|\$\)/g, '')
       .replace(/\$\/?$/g, '');
 
-    // Si viene una lista concatenada o con alternancias, tomar la primera opción
-    if (cleaned.includes(',')) {
-      cleaned = cleaned.split(',')[0];
-    }
-    if (cleaned.includes('|')) {
-      cleaned = cleaned.split('|')[0];
-    }
+    // Tomar el primer segmento si viene concatenado con comas o tuberías
+    if (cleaned.includes(',')) cleaned = cleaned.split(',')[0];
+    if (cleaned.includes('|')) cleaned = cleaned.split('|')[0];
 
     cleaned = cleaned.replace(/[\^\$\?\*\+\(\)]/g, '');
 
@@ -92,7 +91,7 @@ function extractAllRoutes(expressApp) {
     if (layer.route) {
       const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
       
-      // Si layer.route.path es un arreglo o contiene comas/varias rutas
+      // Separar si layer.route.path es un arreglo o contiene comas
       const subPaths = Array.isArray(layer.route.path) 
         ? layer.route.path 
         : String(layer.route.path).split(',');
