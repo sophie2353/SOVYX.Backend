@@ -20,6 +20,7 @@ function analizarRendimiento({ adSpend, roas, sessionId }) {
 
   if (spend <= 0 || roasActual <= 0) {
     return {
+      success: false,
       sessionId: activeSessionId,
       problemas: "Datos de inversión o ROAS inválidos.",
       solucion: "Ingresa valores numéricos superiores a 0 para generar el diagnóstico.",
@@ -64,6 +65,7 @@ function analizarRendimiento({ adSpend, roas, sessionId }) {
   const ahorro = `$${fugaDineroMensual.toLocaleString()} USD/mes retenidos`;
 
   return {
+    success: true,
     sessionId: activeSessionId,
     problemas,
     solucion,
@@ -83,17 +85,15 @@ function analizarRendimiento({ adSpend, roas, sessionId }) {
   };
 }
 
-// Endpoint POST /api/ia3/analizar
-router.post('/analizar', (req, res) => {
+// Handler flexible para POST/GET
+const manejarAnalisis = (req, res) => {
   try {
-    const { adSpend, roas, sessionId } = req.body;
+    const data = req.method === 'GET' ? req.query : req.body;
 
-    if (!adSpend || !roas) {
-      return res.status(400).json({
-        error: 'Parametros Faltantes',
-        message: 'Se requieren adSpend y roas para realizar el diagnóstico.'
-      });
-    }
+    // Normalización de parámetros (Soporta múltiples variantes)
+    const adSpend = data.adSpend || data.spend || data.inversion || data.inversionDiaria || 100;
+    const roas = data.roas || data.roasActual || data.returnOnAdSpend || 2.0;
+    const sessionId = data.sessionId || data.session_id;
 
     const resultado = analizarRendimiento({ adSpend, roas, sessionId });
     return res.status(200).json(resultado);
@@ -105,6 +105,27 @@ router.post('/analizar', (req, res) => {
       message: 'No se pudo procesar el análisis de la IA3.'
     });
   }
+};
+
+// Endpoints con alias
+router.post(['/analizar', '/', '/analizar-roas', '/fuga-capital'], manejarAnalisis);
+router.get(['/analizar', '/', '/analizar-roas', '/fuga-capital'], manejarAnalisis);
+
+// Endpoint SSE / Live Stream Mock para monitoreo en vivo
+router.get(['/live', '/stream', '/sse'], (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  res.write(`data: ${JSON.stringify({ status: 'ACTIVE', system: 'IA3 ROAS Engine Live', time: new Date().toISOString() })}\n\n`);
+
+  const interval = setInterval(() => {
+    res.write(`data: ${JSON.stringify({ event: 'ping', pulse: Date.now() })}\n\n`);
+  }, 10000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+  });
 });
 
 module.exports = router;
