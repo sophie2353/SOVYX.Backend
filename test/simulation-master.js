@@ -1,10 +1,11 @@
 /**
- * SODIE Core AI Engine - Suite Integrada de Simulación E2E v7.0
- * (Full E2E Frontend HTML & JS Audit + Dynamic Backend Route Engine)
+ * SODIE Core AI Engine - Suite Integrada de Simulación E2E v8.0
+ * (Full E2E Frontend HTML & JS Audit + Dynamic Backend Route Engine + Multi-Repo Support)
  * 
  * - Valida existencia de IDs, selectores, inputs y onclicks en Vistas HTML.
- * - Modulo E2E: Inspecciona los archivos JS del cliente (app.js, admin.js, client.js, contrato.js).
- * - Realiza pruebas de endpoints descubiertos en index.js (subidas de video/CSV, timers y peticiones).
+ * - Módulo E2E: Inspecciona los archivos JS del cliente en public/js/.
+ * - Realiza pruebas de endpoints descubiertos en index.js.
+ * - Procesa y limpia el historial de errores previos (.test-history.json).
  */
 
 const fs = require('fs');
@@ -12,11 +13,10 @@ const path = require('path');
 const supertest = require('supertest');
 
 // ==========================================================================
-// CONFIGURACIÓN DE RUTA Y LINKS DEL FRONTEND
+// CONFIGURACIÓN DE RUTAS Y FRONTEND EXTERNO
 // ==========================================================================
 const BASE_URL_FRONTEND = process.env.FRONTEND_URL || 'https://sodie.app';
-const PUBLIC_DIR = path.join(__dirname, '../public');
-
+const PUBLIC_DIR = path.join(process.cwd(), 'public');
 const HISTORY_FILE = path.join(__dirname, '.test-history.json');
 
 const REPORT = {
@@ -26,6 +26,7 @@ const REPORT = {
   jsAudits: []
 };
 
+// Carga de historial de errores
 let previousFailedModules = [];
 if (fs.existsSync(HISTORY_FILE)) {
   try {
@@ -120,12 +121,12 @@ function generateMockVideoBuffer() {
 }
 
 /* ==========================================================================
-   2. MAPA MAESTRO DE SELECTORES Y CORRESPONDENCIA DE ARCHIVOS CLIENTE (JS)
+   2. MAPA MAESTRO DE SELECTORES Y CORRESPONDENCIA JS (public/js/)
    ========================================================================== */
 const FRONTEND_AUDIT_MAP = [
   {
     html: 'index.html',
-    jsFile: 'app.js',
+    jsFile: 'js/app.js',
     elements: [
       { id: 'card-demo-video', type: 'ID Section', selector: 'id="card-demo-video"' },
       { id: 'sodie-demo-video', type: 'ID Video', selector: 'id="sodie-demo-video"' },
@@ -145,7 +146,7 @@ const FRONTEND_AUDIT_MAP = [
   },
   {
     html: 'admin.html',
-    jsFile: 'admin.js',
+    jsFile: 'js/admin.js',
     elements: [
       { id: 'admin-login-view', type: 'ID Admin Login View', selector: 'id="admin-login-view"' },
       { id: 'step-password', type: 'ID Step Password Input', selector: 'id="step-password"' },
@@ -173,7 +174,7 @@ const FRONTEND_AUDIT_MAP = [
   },
   {
     html: 'client.html',
-    jsFile: 'client.js',
+    jsFile: 'js/client.js',
     elements: [
       { id: 'toast-notification', type: 'ID Toast Notification', selector: 'id="toast-notification"' },
       { id: 'toast-title', type: 'ID Toast Title', selector: 'id="toast-title"' },
@@ -219,7 +220,7 @@ const FRONTEND_AUDIT_MAP = [
   },
   {
     html: 'contrato.html',
-    jsFile: 'contrato.js',
+    jsFile: 'js/contrato.js',
     elements: [
       { id: 'signature-box', type: 'ID Signature Box Audit', selector: 'id="signature-box"' },
       { id: 'contract-form', type: 'ID Contract Form', selector: 'id="contract-form"' },
@@ -232,7 +233,7 @@ const FRONTEND_AUDIT_MAP = [
   },
   {
     html: 'confirmacion.html',
-    jsFile: 'app.js',
+    jsFile: 'js/app.js',
     elements: [
       { id: 'main-card', type: 'ID Main Card Container', selector: 'id="main-card"' },
       { id: 'conf-badge', type: 'ID Conf Badge', selector: 'id="conf-badge"' },
@@ -250,14 +251,14 @@ const FRONTEND_AUDIT_MAP = [
    3. AUDITORÍA DE ARCHIVOS JAVASCRIPT DEL CLIENTE
    ========================================================================== */
 function auditFrontendJSFiles() {
-  console.log("\n📜 Auditando correspondencia entre HTML e integración JavaScript (app.js, admin.js, client.js, contrato.js)...");
+  console.log("\n📜 Auditando correspondencia entre HTML e integración JavaScript (public/js/)...");
 
   FRONTEND_AUDIT_MAP.forEach(pageConfig => {
     if (!pageConfig.jsFile) return;
 
     const jsPath = path.join(PUBLIC_DIR, pageConfig.jsFile);
     if (!fs.existsSync(jsPath)) {
-      logFail(`JS_MISSING_${pageConfig.jsFile}`, `Script Frontend: ${pageConfig.jsFile}`, `No existe en la ruta ${jsPath}`, `public/${pageConfig.jsFile}`, "Crea o ubica el archivo en la carpeta pública de estáticos.");
+      logFail(`JS_MISSING_${pageConfig.jsFile}`, `Script Frontend: ${pageConfig.jsFile}`, `No existe en la ruta ${jsPath}`, `public/${pageConfig.jsFile}`, "Si el frontend está en otro repo, sincroniza las vistas/scripts en public/ o configura FRONTEND_URL.");
       return;
     }
 
@@ -302,12 +303,11 @@ function auditFrontendJSFiles() {
    4. FUNCIÓN PRINCIPAL DE SIMULACIÓN
    ========================================================================== */
 async function runAllSimulations(targetApp) {
-  // Determina la app con fallbacks seguros
   let app = targetApp || global.expressApp;
 
   if (!app) {
     try {
-      app = require('../api/index');
+      app = require('../index');
     } catch (e) {
       console.error("❌ Fallback de carga en simulación:", e.message);
     }
@@ -320,7 +320,10 @@ async function runAllSimulations(targetApp) {
 
   const request = supertest(app);
 
-  console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v7.0 (Full E2E Frontend & Dynamic Route Engine) ===");
+  console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v8.0 ===");
+  if (isReTestMode) {
+    console.log(`⚠️ MODO RE-TEST ACTIVADO: Reevaluando ${previousFailedModules.length} errores registrados previamente en .test-history.json`);
+  }
   console.log(`URL Frontend de Referencia Configurada: ${BASE_URL_FRONTEND}`);
 
   // A. AUDITORÍA DE ARCHIVOS JS
@@ -401,7 +404,7 @@ async function runAllSimulations(targetApp) {
   /* ==========================================================================
      D. AUDITORÍA PROFUNDA DE FRONTEND HTML
      ========================================================================== */
-  console.log("\n🌐 Iniciando auditoría estática y profunda de Frontend HTML (Plantillas, IDs y Onclicks)...");
+  console.log("\n🌐 Iniciando auditoría estática y profunda de Frontend HTML...");
 
   for (const pageConfig of FRONTEND_AUDIT_MAP) {
     const pageKey = `FRONTEND_VIEW_${pageConfig.html.replace('.', '_')}`;
@@ -429,7 +432,7 @@ async function runAllSimulations(targetApp) {
             `Frontend HTML: /${pageConfig.html}`,
             `Faltan los siguientes ${missingElements.length} elementos en el HTML:\n      - ` + missingElements.join('\n      - '),
             `public/${pageConfig.html}`,
-            "Revisa la plantilla HTML y asegúrate de añadir los IDs, clases u onclicks faltantes tal como los requiere el cliente JavaScript."
+            "Revisa la plantilla HTML y asegúrate de añadir los IDs u onclicks faltantes."
           );
         }
       } else {
@@ -438,7 +441,7 @@ async function runAllSimulations(targetApp) {
           `Frontend HTML: /${pageConfig.html}`,
           `HTTP ${resStatus}`,
           `public/${pageConfig.html}`,
-          `La vista /${pageConfig.html} no devolvió un código HTTP 200 OK.`
+          `La vista /${pageConfig.html} no devolvió un código HTTP 200 OK en el servidor Express local.`
         );
       }
     } catch (err) {
@@ -451,10 +454,10 @@ async function runAllSimulations(targetApp) {
   if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath);
 
   /* ==========================================================================
-     E. RESUMEN FINAL Y REPORTE
+     E. RESUMEN FINAL Y GESTIÓN DE TEST HISTORY
      ========================================================================== */
   console.log("\n==================================================");
-  console.log("📊 RESULTADO DEL DIAGNÓSTICO TOTAL v7.0");
+  console.log("📊 RESULTADO DEL DIAGNÓSTICO TOTAL v8.0");
   console.log("==================================================");
 
   if (REPORT.failed.length > 0) {
@@ -470,7 +473,7 @@ async function runAllSimulations(targetApp) {
     });
   } else {
     if (fs.existsSync(HISTORY_FILE)) fs.unlinkSync(HISTORY_FILE);
-    console.log("🎉 🗿🙌🏼 ¡EXCELENTE! Todos los IDs, eventos onclick, selectores, archivos JS cliente y rutas del Backend respondieron de manera impecable.");
+    console.log("🎉 🗿🙌🏼 ¡EXCELENTE! Todos los errores registrados previamente fueron corregidos con éxito. La simulación ha pasado limpia.");
   }
 }
 
@@ -479,7 +482,6 @@ if (require.main === module) {
   runAllSimulations();
 } else {
   module.exports = async (req, res) => {
-    // Capturar consola hacia un arreglo temporal para enviarla en la respuesta JSON
     const oldLog = console.log;
     let logs = [];
     console.log = (...args) => {
@@ -488,7 +490,6 @@ if (require.main === module) {
     };
 
     try {
-      // Extrae req.app o usa global.expressApp como respaldo seguro
       const appInstance = req?.app || global.expressApp;
       await runAllSimulations(appInstance);
     } catch (error) {
