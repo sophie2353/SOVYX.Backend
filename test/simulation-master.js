@@ -1,11 +1,10 @@
 /**
- * SODIE Core AI Engine - Suite Integrada de Simulación E2E v8.0
- * (Full E2E Frontend HTML & JS Audit + Dynamic Backend Route Engine + Multi-Repo Support)
+ * SODIE Core AI Engine - Suite de Auditoría Frontend ↔ Backend v11.0
  * 
- * - Valida existencia de IDs, selectores, inputs y onclicks en Vistas HTML.
- * - Módulo E2E: Inspecciona los archivos JS del cliente en public/js/.
- * - Realiza pruebas de endpoints descubiertos en index.js.
- * - Procesa y limpia el historial de errores previos (.test-history.json).
+ * - 0 Simulaciones de datos/endpoints.
+ * - Registro exclusivo en `.test-history-Frontend.json`.
+ * - Mapeo estático de IDs, onclicks y endpoints entre HTML/JS y Express.
+ * - Diagnóstico detallado sobre por qué fallan o no responden los botones.
  */
 
 const fs = require('fs');
@@ -13,55 +12,34 @@ const path = require('path');
 const supertest = require('supertest');
 
 // ==========================================================================
-// CONFIGURACIÓN DE RUTAS Y FRONTEND EXTERNO
+// CONFIGURACIÓN Y ARCHIVO DE HISTORIAL FRONTEND
 // ==========================================================================
 const BASE_URL_FRONTEND = process.env.FRONTEND_URL || 'https://sodie.app';
 const PUBLIC_DIR = path.join(process.cwd(), 'public');
-const HISTORY_FILE = path.join(__dirname, '.test-history.json');
+const FRONTEND_HISTORY_FILE = path.join(__dirname, '.test-history-Frontend.json');
 
 const REPORT = {
   passed: [],
   failed: [],
   discoveredRoutes: [],
-  jsAudits: []
+  missingRoutesInFrontend: []
 };
-
-// Carga de historial de errores
-let previousFailedModules = [];
-if (fs.existsSync(HISTORY_FILE)) {
-  try {
-    const historyData = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
-    previousFailedModules = historyData.failedModules || [];
-  } catch (e) {
-    previousFailedModules = [];
-  }
-}
-
-const isReTestMode = previousFailedModules.length > 0;
-
-function shouldRunTest(moduleKey) {
-  if (!isReTestMode) return true;
-  return previousFailedModules.includes(moduleKey);
-}
 
 function logFail(moduleKey, moduleName, errorMsg, location, causa) {
   REPORT.failed.push({ key: moduleKey, module: moduleName, error: errorMsg, location, causa });
-  console.log(`❌ [FALLA - ${moduleName}]`);
+  console.log(`❌ [BOTÓN/ELEMENTO CON FALLA - ${moduleName}]`);
   console.log(`   Ubicación: ${location}`);
-  console.log(`   Error: ${errorMsg}`);
-  console.log(`   Causa estimada: ${causa}\n`);
+  console.log(`   Detalle: ${errorMsg}`);
+  console.log(`   💡 Por qué no funciona: ${causa}\n`);
 }
 
 function logPass(moduleKey, moduleName, detail) {
   REPORT.passed.push({ key: moduleKey, module: moduleName, detail });
-  console.log(`✅ [OK / CORREGIDO - ${moduleName}] ${detail}`);
+  console.log(`✅ [OK - ${moduleName}] ${detail}`);
 }
 
 /* ==========================================================================
-   1. EXTRACTOR DINÁMICO DE RUTAS EXPRESS (REVISIÓN DE RUTAS MÚLTIPLES/COMAS)
-
-/* ==========================================================================
-   EXTRACTOR DINÁMICO DE RUTAS EXPRESS (MANEJO DE RUTAS MULTIPLES / COMAS)
+   1. EXTRACTOR DE RUTAS REGISTRADAS EN INDEX.JS (BACKEND)
    ========================================================================== */
 function extractAllRoutes(expressApp) {
   const routes = [];
@@ -72,12 +50,11 @@ function extractAllRoutes(expressApp) {
     let cleaned = regexSource
       .replace(/^\^\\?\/?/, '/')
       .replace(/\\\/|\//g, '/')
-      .replace(/\(\?:\/\(\?=\$|\\\/|\$\)\)\?/g, '')
-      .replace(/\/\?\(\?=\/\|\$\)/g, '')
-      .replace(/\?\(\?=\/\|\$\)/g, '')
+      .replace(/\(\?:\/\(\?=\$\vert{}\\\/\vert{}\$\)\)\?/g, '')
+      .replace(/\/\?\(\?=\/\Vert{}\$\)/g, '')
+      .replace(/\?\(\?=\/\Vert{}\$\)/g, '')
       .replace(/\$\/?$/g, '');
 
-    // Tomar el primer segmento si viene concatenado con comas o tuberías
     if (cleaned.includes(',')) cleaned = cleaned.split(',')[0];
     if (cleaned.includes('|')) cleaned = cleaned.split('|')[0];
 
@@ -90,8 +67,6 @@ function extractAllRoutes(expressApp) {
   function print(pathPrefix, layer) {
     if (layer.route) {
       const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
-      
-      // Separar si layer.route.path es un arreglo o contiene comas
       const subPaths = Array.isArray(layer.route.path) 
         ? layer.route.path 
         : String(layer.route.path).split(',');
@@ -134,30 +109,8 @@ function extractAllRoutes(expressApp) {
   );
 }
 
-// Generadores Auxiliares de Datos
-function generate200ExcelRecords() {
-  const countries = ['VE', 'CO', 'MX'];
-  let csvContent = "phone,email,first_name,country,value\n";
-  for (let i = 1; i <= 200; i++) {
-    const country = countries[i % 3];
-    const value = Math.floor(Math.random() * (20000 - 1000 + 1)) + 1000;
-    csvContent += `+58412${1000000 + i},user${i}@sodie.ai,Cliente${i},${country},${value}\n`;
-  }
-  return csvContent;
-}
-
-function generateMockVideoBuffer() {
-  const header = Buffer.from([
-    0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
-    0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00, 0x00, 
-    0x6d, 0x70, 0x34, 0x32, 0x69, 0x73, 0x6f, 0x6d
-  ]);
-  const dummyPayload = Buffer.alloc(1024 * 50, 0xAA);
-  return Buffer.concat([header, dummyPayload]);
-}
-
 /* ==========================================================================
-   2. MAPA MAESTRO DE SELECTORES Y CORRESPONDENCIA JS (public/js/)
+   2. MAPA DE AUDITORÍA FRONTEND ↔ BACKEND
    ========================================================================== */
 const FRONTEND_AUDIT_MAP = [
   {
@@ -284,17 +237,23 @@ const FRONTEND_AUDIT_MAP = [
 ];
 
 /* ==========================================================================
-   3. AUDITORÍA DE ARCHIVOS JAVASCRIPT DEL CLIENTE
+   3. AUDITORÍA JS Y COMPLEMENTO DE BOTONES
    ========================================================================== */
 function auditFrontendJSFiles() {
-  console.log("\n📜 Auditando correspondencia entre HTML e integración JavaScript (public/js/)...");
+  console.log("\n📜 Auditando vincularidad JS ↔ HTML en public/js/...");
 
   FRONTEND_AUDIT_MAP.forEach(pageConfig => {
     if (!pageConfig.jsFile) return;
 
     const jsPath = path.join(PUBLIC_DIR, pageConfig.jsFile);
     if (!fs.existsSync(jsPath)) {
-      logFail(`JS_MISSING_${pageConfig.jsFile}`, `Script Frontend: ${pageConfig.jsFile}`, `No existe en la ruta ${jsPath}`, `public/${pageConfig.jsFile}`, "Si el frontend está en otro repo, sincroniza las vistas/scripts en public/ o configura FRONTEND_URL.");
+      logFail(
+        `JS_MISSING_${pageConfig.jsFile}`,
+        `Archivo JS faltante: ${pageConfig.jsFile}`,
+        `No existe el archivo de scripts en ${jsPath}`,
+        `public/${pageConfig.jsFile}`,
+        "El botón/vista no funcionará porque el script asociado no existe en el directorio public."
+      );
       return;
     }
 
@@ -306,13 +265,13 @@ function auditFrontendJSFiles() {
         if (!idReferenced) {
           logFail(
             `JS_ID_MISMATCH_${pageConfig.jsFile}_${elem.id}`,
-            `Sincronización JS: ${pageConfig.jsFile} ↔ #${elem.id}`,
-            `El ID '${elem.id}' de ${pageConfig.html} no se referencia en ${pageConfig.jsFile}`,
+            `Selector Inexistente: #${elem.id}`,
+            `El elemento con ID '${elem.id}' de ${pageConfig.html} no se está escuchando en ${pageConfig.jsFile}`,
             `public/${pageConfig.jsFile}`,
-            `Revisa si el script selecciona el elemento con getElementById('${elem.id}') o querySelector('#${elem.id}').`
+            `El botón no reacciona al clic porque ${pageConfig.jsFile} no le hace getElementById('${elem.id}') ni addEventListener.`
           );
         } else {
-          logPass(`JS_ID_OK_${pageConfig.jsFile}_${elem.id}`, `Sincronización JS: ${pageConfig.jsFile} ↔ #${elem.id}`, `ID vinculado correctamente.`);
+          logPass(`JS_ID_OK_${pageConfig.jsFile}_${elem.id}`, `Selector #${elem.id}`, `El JS escucha y manipula el elemento.`);
         }
       }
 
@@ -322,13 +281,13 @@ function auditFrontendJSFiles() {
         if (!fnDefined) {
           logFail(
             `JS_FN_MISSING_${pageConfig.jsFile}_${fnName}`,
-            `Sincronización JS: ${pageConfig.jsFile} ↔ ${fnName}()`,
-            `La función '${fnName}()' declarada en ${pageConfig.html} no se encuentra definida en ${pageConfig.jsFile}`,
+            `Evento Inexistente: ${fnName}()`,
+            `El evento onclick '${fnName}()' del HTML ${pageConfig.html} no está definido en ${pageConfig.jsFile}`,
             `public/${pageConfig.jsFile}`,
-            `Define 'function ${fnName}()' o asigna 'window.${fnName} = ...' en el archivo JS.`
+            `El botón arroja Uncaught ReferenceError: ${fnName} is not defined al hacer clic.`
           );
         } else {
-          logPass(`JS_FN_OK_${pageConfig.jsFile}_${fnName}`, `Sincronización JS: ${pageConfig.jsFile} ↔ ${fnName}()`, `Función declarada.`);
+          logPass(`JS_FN_OK_${pageConfig.jsFile}_${fnName}`, `Evento ${fnName}()`, `La función está declarada correctamente.`);
         }
       }
     });
@@ -336,115 +295,43 @@ function auditFrontendJSFiles() {
 }
 
 /* ==========================================================================
-   4. FUNCIÓN PRINCIPAL DE SIMULACIÓN
+   4. AUDITORÍA Y MAPEO DE VISTAS HTML Y RUTAS EXPRESS
    ========================================================================== */
-async function runAllSimulations(targetApp) {
+async function runFrontendAudit(targetApp) {
   let app = targetApp || global.expressApp;
 
   if (!app) {
     try {
       app = require('../index');
     } catch (e) {
-      console.error("❌ Fallback de carga en simulación:", e.message);
+      console.error("❌ Fallback de carga Express:", e.message);
     }
   }
 
   if (!app) {
-    console.error("❌ Error crítico: No se encontró la instancia de la app de Express.");
+    console.error("❌ Error crítico: No se encontró la app de Express.");
     return;
   }
 
   const request = supertest(app);
 
-  console.log("\n👺💅🏽 === INICIANDO SIMULACIÓN INTEGRAL SODIE v8.0 ===");
-  if (isReTestMode) {
-    console.log(`⚠️ MODO RE-TEST ACTIVADO: Reevaluando ${previousFailedModules.length} errores registrados previamente en .test-history.json`);
-  }
-  console.log(`URL Frontend de Referencia Configurada: ${BASE_URL_FRONTEND}`);
+  console.log("\n🤠👺 === INICIANDO AUDITORÍA INTEGRAL DE FRONTEND ↔ BACKEND ===");
+  console.log(`URL Base: ${BASE_URL_FRONTEND}`);
 
-  // A. AUDITORÍA DE ARCHIVOS JS
+  // A. AUDITORÍA DE ARCHIVOS JS Y SUS ELEMENTOS
   auditFrontendJSFiles();
 
-  // B. DESCUBRIMIENTO DE RUTAS EN EXPRESS
+  // B. OBTENER RUTAS EXPRESS EN INDEX.JS
   const discoveredRoutes = extractAllRoutes(app);
   REPORT.discoveredRoutes = discoveredRoutes;
-  
-  console.log(`\n🔍 Total de rutas registradas en index.js: ${discoveredRoutes.length}`);
+
+  console.log(`\n🔍 Rutas activas encontradas en index.js: ${discoveredRoutes.length}`);
   discoveredRoutes.forEach(r => console.log(`   -> [${r.method}] ${r.path}`));
-  console.log("\n--------------------------------------------------\n");
 
-  // Preparar archivos temporales
-  const videoBuffer = generateMockVideoBuffer();
-  const tempVideoPath = path.join(__dirname, 'temp_render_25s.mp4');
-  fs.writeFileSync(tempVideoPath, videoBuffer);
-
-  const csvData = generate200ExcelRecords();
-  const csvPath = path.join(__dirname, 'temp_meta_200.csv');
-  fs.writeFileSync(csvPath, csvData);
-
-  /* ==========================================================================
-     C. PRUEBAS DE ENDPOINTS DINÁMICOS
-     ========================================================================== */
-  for (const route of discoveredRoutes) {
-    const moduleKey = `ROUTE_${route.method}_${route.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    if (!shouldRunTest(moduleKey)) continue;
-
-    try {
-      let req;
-      if (route.method === 'GET') {
-        req = request.get(route.path).query({ clientId: 'CLIENT-#01', userEmail: 'test@sodie.ai' });
-      } else if (route.method === 'POST') {
-        req = request.post(route.path);
-
-        if (route.path.includes('video') || route.path.includes('media')) {
-          req = req.attach('video', tempVideoPath).field('clientId', 'CLIENT-#01');
-        } else if (route.path.includes('excel') || route.path.includes('upload') || route.path.includes('connect')) {
-          req = req.attach('file', csvPath).field('clientId', 'CLIENT-#01');
-        } else {
-          req = req.send({
-            clientId: 'CLIENT-#01',
-            userEmail: 'test@sodie.ai',
-            message: 'Simulación B2B SODIE',
-            campaignId: 'CMP-META-01',
-            adminKey: process.env.ADMIN_KEY || 'SODIE_ADMIN_SECRET',
-            usersPayload: [{ email: 'cliente1@sodie.app', phone: '584120000000', value: 150, country: 'VE' }],
-            dailyBudget: 2000
-          });
-        }
-      } else if (route.method === 'PUT') {
-        req = request.put(route.path).send({ clientId: 'CLIENT-#01' });
-      } else if (route.method === 'DELETE') {
-        req = request.delete(route.path).send({ clientId: 'CLIENT-#01' });
-      }
-
-      const res = await req;
-      const resStatus = res?.status || 500;
-
-      if ([200, 201, 302, 401, 403].includes(resStatus)) {
-        logPass(moduleKey, `Endpoint [${route.method}] ${route.path}`, `Respondió con HTTP ${resStatus}`);
-      } else {
-        const bodyPreview = res?.body || res?.text ? JSON.stringify(res.body || res.text).substring(0, 150) : "Sin respuesta de red";
-        logFail(
-          moduleKey,
-          `Endpoint [${route.method}] ${route.path}`,
-          `HTTP ${resStatus} - ${bodyPreview}`,
-          "index.js / Controller",
-          `Comprueba la lógica interna de la función asignada a la ruta [${route.method}] ${route.path}`
-        );
-      }
-    } catch (err) {
-      logFail(moduleKey, `Endpoint [${route.method}] ${route.path}`, err.message, "Router Execution", "Error de ejecución.");
-    }
-  }
-
-  /* ==========================================================================
-     D. AUDITORÍA PROFUNDA DE FRONTEND HTML
-     ========================================================================== */
-  console.log("\n🌐 Iniciando auditoría estática y profunda de Frontend HTML...");
-
+  // C. VERIFICACIÓN DE VISTAS Y ESTRUCTURA HTML
+  console.log("\n🌐 Auditando integridad de vistas HTML...");
   for (const pageConfig of FRONTEND_AUDIT_MAP) {
     const pageKey = `FRONTEND_VIEW_${pageConfig.html.replace('.', '_')}`;
-    if (!shouldRunTest(pageKey)) continue;
 
     try {
       const res = await request.get(`/${pageConfig.html}`);
@@ -461,61 +348,105 @@ async function runAllSimulations(targetApp) {
         });
 
         if (missingElements.length === 0) {
-          logPass(pageKey, `Frontend HTML: /${pageConfig.html}`, `Perfecto. Se encontraron los ${pageConfig.elements.length} IDs, Onclicks y selectores declarados.`);
+          logPass(pageKey, `Vista HTML: /${pageConfig.html}`, `Contiene todos sus selectores, IDs e instantes onclick.`);
         } else {
           logFail(
             pageKey,
-            `Frontend HTML: /${pageConfig.html}`,
-            `Faltan los siguientes ${missingElements.length} elementos en el HTML:\n      - ` + missingElements.join('\n      - '),
+            `Vista HTML: /${pageConfig.html}`,
+            `Faltan elementos estructurales:\n      - ` + missingElements.join('\n      - '),
             `public/${pageConfig.html}`,
-            "Revisa la plantilla HTML y asegúrate de añadir los IDs u onclicks faltantes."
+            "El JS intenta engancharse a elementos que no existen en el DOM de esta plantilla HTML."
           );
         }
       } else {
         logFail(
           pageKey,
-          `Frontend HTML: /${pageConfig.html}`,
-          `HTTP ${resStatus}`,
+          `Vista HTML: /${pageConfig.html}`,
+          `Código de respuesta: HTTP ${resStatus}`,
           `public/${pageConfig.html}`,
-          `La vista /${pageConfig.html} no devolvió un código HTTP 200 OK en el servidor Express local.`
+          `El servidor no puede servir el archivo /${pageConfig.html}. Revisa la ruta en express.static().`
         );
       }
     } catch (err) {
-      logFail(pageKey, `Frontend HTML: /${pageConfig.html}`, err.message, `public/${pageConfig.html}`, "No se pudo acceder a la vista HTML.");
+      logFail(pageKey, `Vista HTML: /${pageConfig.html}`, err.message, `public/${pageConfig.html}`, "Error al intentar leer la vista.");
     }
   }
 
-  // Limpieza de temporales
-  if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
-  if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath);
+  // D. MAPEO DE LLAMADAS DESDE EL JS HACIA EL BACKEND (INDEX.JS)
+  console.log("\n🔌 Mapeando llamadas de red en JS contra endpoints de index.js...");
+  const backendPaths = discoveredRoutes.map(r => r.path);
+
+  FRONTEND_AUDIT_MAP.forEach(pageConfig => {
+    const jsPath = path.join(PUBLIC_DIR, pageConfig.jsFile);
+    if (!fs.existsSync(jsPath)) return;
+
+    const jsContent = fs.readFileSync(jsPath, 'utf8');
+    
+    // Buscar URLs/endpoints llamados con fetch, axios o XMLHttpRequest
+    const fetchMatches = jsContent.match(/(?:fetch|axios\.(?:get|post|put|delete))\s*\(\s*['"`]([^'"`]+)['"`]/g) || [];
+
+    fetchMatches.forEach(match => {
+      const extractedPath = match.replace(/^(?:fetch|axios\.(?:get|post|put|delete))\s*\(\s*['"`]/, '');
+      
+      // Filtrar solo rutas internas que inicien con /
+      if (extractedPath.startsWith('/') && !extractedPath.startsWith('//')) {
+        const cleanPath = extractedPath.split('?')[0];
+        const routeExists = backendPaths.some(bp => bp === cleanPath || cleanPath.startsWith(bp));
+
+        if (!routeExists) {
+          logFail(
+            `BROKEN_ENDPOINT_${cleanPath}`,
+            `Llamada Frontend ↔ Backend Rotas: ${cleanPath}`,
+            `El script ${pageConfig.jsFile} intenta hacer fetch a '${cleanPath}', pero no está declarada en index.js`,
+            `public/${pageConfig.jsFile}`,
+            `Al hacer clic en el botón se genera un error 404 Not Found porque la ruta Express no existe.`
+          );
+        } else {
+          logPass(`ENDPOINT_OK_${cleanPath}`, `Conexión de Endpoint '${cleanPath}'`, `Existe y coincide con index.js.`);
+        }
+      }
+    });
+  });
 
   /* ==========================================================================
-     E. RESUMEN FINAL Y GESTIÓN DE TEST HISTORY
+     E. ESCRITURA EXCLUSIVA EN .test-history-Frontend.json
+     ========================================================================== */
+  const historyData = {
+    updatedAt: new Date().toISOString(),
+    summary: {
+      passed: REPORT.passed.length,
+      failed: REPORT.failed.length,
+      routesCount: REPORT.discoveredRoutes.length
+    },
+    failedElements: REPORT.failed
+  };
+
+  fs.writeFileSync(FRONTEND_HISTORY_FILE, JSON.stringify(historyData, null, 2), 'utf8');
+  console.log(`\n💾 Historial guardado en: .test-history-Frontend.json`);
+
+  /* ==========================================================================
+     F. RESUMEN EN CONSOLA
      ========================================================================== */
   console.log("\n==================================================");
-  console.log("📊 RESULTADO DEL DIAGNÓSTICO TOTAL v8.0");
+  console.log("📊 RESUMEN DE LA AUDITORÍA FRONTEND ↔ BACKEND");
   console.log("==================================================");
 
   if (REPORT.failed.length > 0) {
-    const remainingFails = REPORT.failed.map(f => f.key);
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify({ failedModules: remainingFails }, null, 2));
-
-    console.log(`❌ SE ENCONTRARON ${REPORT.failed.length} ERRORES O ELEMENTOS FALTANTES:`);
+    console.log(`❌ SE ENCONTRARON ${REPORT.failed.length} BOTONES/ELEMENTOS CON PROBLEMAS:`);
     REPORT.failed.forEach((item, idx) => {
-      console.log(`\n${idx + 1}. Módulo/Vista: ${item.module}`);
+      console.log(`\n${idx + 1}. Elemento: ${item.module}`);
       console.log(`   Ubicación: ${item.location}`);
-      console.log(`   Detalle del Error:\n   ${item.error}`);
-      console.log(`   Causa / Sugerencia: ${item.causa}`);
+      console.log(`   Detalle: ${item.error}`);
+      console.log(`   💡 Por qué no funciona: ${item.causa}`);
     });
   } else {
-    if (fs.existsSync(HISTORY_FILE)) fs.unlinkSync(HISTORY_FILE);
-    console.log("🎉 🗿🙌🏼 ¡EXCELENTE! Todos los errores registrados previamente fueron corregidos con éxito. La simulación ha pasado limpia.");
+    console.log("🎉 🤠🙌🏼 ¡PERFECTO! Todos los botones, eventos onclick e IDs de las vistas coinciden con los JS y los endpoints de index.js.");
   }
 }
 
-// Exportar controlador para el endpoint en index.js o ejecutar en CLI
+// Exportar para ejecución directa o módulo
 if (require.main === module) {
-  runAllSimulations();
+  runFrontendAudit();
 } else {
   module.exports = async (req, res) => {
     const oldLog = console.log;
@@ -527,9 +458,9 @@ if (require.main === module) {
 
     try {
       const appInstance = req?.app || global.expressApp;
-      await runAllSimulations(appInstance);
+      await runFrontendAudit(appInstance);
     } catch (error) {
-      console.error("Error durante la simulación:", error?.message || error);
+      console.error("Error en auditoría Frontend:", error?.message || error);
     } finally {
       console.log = oldLog;
     }
@@ -537,6 +468,7 @@ if (require.main === module) {
     if (res && typeof res.status === 'function') {
       return res.status(200).json({
         success: REPORT.failed.length === 0,
+        historyFile: '.test-history-Frontend.json',
         summary: {
           passedCount: REPORT.passed.length,
           failedCount: REPORT.failed.length,
