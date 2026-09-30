@@ -89,7 +89,7 @@ app.post('/api/v1/auth/biometrics/register', (req, res) => {
 // --- CHAT IA2 & NUCLEO IA2 ---
 let ia2Module = null;
 try {
-  ia2Module = require('../modules/ia2-analizar');
+  ia2Module = require('../modules/ia2-conversar');
   app.use('/api/ia2', ia2Module);
   app.use('/api/v2', ia2Module);
 } catch (e) {
