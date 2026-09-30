@@ -69,4 +69,4 @@ router.get(['/estado', '/status'], (req, res) => {
   });
 });
 
-module.exports=router;
+module.exports = router;
