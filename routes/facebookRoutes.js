@@ -115,7 +115,7 @@ router.post('/capi', async (req, res) => {
 /* ==========================================================================
    2. HORA 0: CONNECT (OAUTH CON CLIENT_ID & ALIAS)
    ========================================================================== */
-router.post(['/connect', '/auth/login'], async (req, res) => {
+router.post(['/connect', '/auth/login', '/api/v1/connect', '/api/v1/auth/login'], async (req, res) => {
   try {
     const { sessionId, userId, clientId } = req.body;
     const activeClientId = await resolveClientId(clientId, req);
@@ -233,7 +233,7 @@ router.get('/auth/callback', async (req, res) => {
 /* ==========================================================================
    4. NOTIFICAR Y EJECUTAR CICLO DE REEMPLAZO EN METASERVICES
    ========================================================================== */
-router.post(['/crear-borrador', '/draft'], async (req, res) => {
+router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/draft'], async (req, res) => {
   try {
     const { userId, sessionId, clientId, usersPayload, dailyBudget } = req.body;
     const metaCtx = await getUserMetaContext(userId, sessionId, clientId, req);
@@ -282,7 +282,7 @@ router.post(['/crear-borrador', '/draft'], async (req, res) => {
 /* ==========================================================================
    5. GENERAR ENLACE DIRECTO A ADS MANAGER (DEEP-LINK ACTIVACIÓN)
    ========================================================================== */
-router.post(['/activar-campana', '/campaigns/activate'], async (req, res) => {
+router.post(['/activar-campana', '/campaigns/activate', '/api/v1/activar-campana', '/api/v1/campaigns/activate'], async (req, res) => {
   try {
     const { userId, sessionId, clientId, campaignId } = req.body;
     const metaCtx = await getUserMetaContext(userId, sessionId, clientId, req);
