@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SODIE - Panel Administrador</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    /* Estilos de layout para unificar con el Dashboard Principal */
+    .admin-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .admin-header-card {
+      background: rgba(21, 15, 36, 0.85);
+      border: 1px solid rgba(0, 255, 204, 0.25);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(12px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .admin-grid-layout {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .admin-card {
+      background: rgba(21, 15, 36, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      transition: border-color 0.3s ease;
+    }
+
+    .admin-card:hover {
+      border-color: rgba(0, 255, 204, 0.3);
+    }
+
+    .admin-card-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #00FFCC;
+      margin-top: 0;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .admin-card-title.danger {
+      color: #FF007F;
+    }
+
+    .timer-box {
+      background: rgba(13, 8, 24, 0.8);
+      border: 1px solid rgba(0, 255, 204, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      margin: 12px 0;
+    }
+
+    .timer-display {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: #00FFCC;
+      letter-spacing: 2px;
+      text-shadow: 0 0 12px rgba(0, 255, 204, 0.4);
+    }
+
+    .btn-group-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .btn-action {
+      background: rgba(0, 255, 204, 0.15);
+      color: #00FFCC;
+      border: 1px solid #00FFCC;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-action:hover {
+      background: #00FFCC;
+      color: #0B0813;
+      box-shadow: 0 0 12px rgba(0, 255, 204, 0.4);
+    }
+
+    .btn-action.fuchsia {
+      background: rgba(255, 0, 127, 0.15);
+      color: #FF007F;
+      border-color: #FF007F;
+    }
+
+    .btn-action.fuchsia:hover {
+      background: #FF007F;
+      color: #FFFFFF;
+      box-shadow: 0 0 12px rgba(255, 0, 127, 0.4);
+    }
+
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .file-drop-zone {
+      background: rgba(13, 8, 24, 0.6);
+      border: 1px dashed rgba(0, 255, 204, 0.3);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .file-drop-zone input[type="file"] {
+      width: 100%;
+      color: #A098B5;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body class="admin-body" style="background: #0B0813; color: #FFFFFF; margin: 0; font-family: system-ui, -apple-system, sans-serif;">
+
+  <!-- PANTALLA LOGIN -->
+  <main id="admin-login-view" style="display: flex;">
+    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; width: 100%;">
+      <div style="background: #150F24; border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 20px; padding: 32px; width: 100%; max-width: 380px; text-align: center; box-shadow: 0 0 30px rgba(157, 0, 255, 0.15);">
+        <div style="font-size: 3rem; margin-bottom: 10px;">🦁</div>
+        <h2 style="margin: 0 0 8px 0; font-size: 1.3rem;">Acceso Administrativo</h2>
+        <p style="color: #A098B5; font-size: 0.85rem; margin-bottom: 20px;">Panel de control SODIE</p>
+
+        <!-- PASO 1: CONTRASEÑA -->
+        <div id="step-password">
+          <div style="text-align: left; margin-bottom: 16px;">
+            <label for="admin-pass" style="color: #00FFCC; font-size: 0.8rem; display: block; margin-bottom: 6px;">Paso 1: Contraseña</label>
+            <input type="password" id="admin-pass" placeholder="••••••••••••" style="width: 100%; padding: 12px; background: #0D0818; border: 1px solid #2A1C47; border-radius: 10px; color: #00FFCC; box-sizing: border-box; outline: none;" />
+          </div>
+          <button type="button" id="btn-admin-login-pass" onclick="sodieValidarPasswordDirecta()" class="btn-action" style="width: 100%; padding: 12px; background: #00FFCC; color: #0B0813; font-size: 0.95rem;">
+            Continuar a Biometría
+          </button>
+        </div>
+
+        <!-- PASO 2: BIOMETRÍA -->
+        <div id="step-biometric" style="display: none;">
+          <p style="color: #00FFCC; font-size: 0.9rem; margin-bottom: 16px;">Paso 2: Validación Biométrica (WebAuthn)</p>
+          <button type="button" id="btn-admin-biometric" onclick="sodieValidarBiometria()" class="btn-action" style="width: 100%; padding: 14px; background: linear-gradient(90deg, #00FFCC, #9D00FF); color: #FFFFFF; font-size: 0.95rem; border: none;">
+            Verificar Biometría
+          </button>
+        </div>
+
+        <div id="admin-auth-error" style="display: none; margin-top: 14px; font-size: 0.85rem;"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- DASHBOARD PRINCIPAL DE ADMIN -->
+  <main id="admin-dashboard-view" class="admin-container" style="display: none;">
+    
+    <!-- HEADER SUPERIOR -->
+    <header class="admin-header-card">
+      <div>
+        <h2 style="margin: 0; font-size: 1.4rem; color: #FFFFFF;">Panel de Control Admin 👺</h2>
+        <p style="margin: 4px 0 0 0; color: #A098B5; font-size: 0.85rem;">Gestión central de SODIE, archivos y estado del sistema</p>
+      </div>
+      <button type="button" onclick="sodieCerrarSesionAdmin()" class="btn-action fuchsia">
+        Cerrar Sesión
+      </button>
+    </header>
+
+    <!-- GRID DE TARJETAS TIPO DASHBOARD -->
+    <div class="admin-grid-layout">
+
+      <!-- TARJETA 1: NAVEGACIÓN -->
+      <div class="admin-card">
+        <h3 class="admin-card-title">Vista Rápida</h3>
+        <p style="color: #A098B5; font-size: 0.8rem; margin-bottom: 14px;">Accede a las vistas públicas del sistema para verificar cambios.</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <button type="button" onclick="window.location.href='/'" class="btn-action">Ver Principal</button>
+          <button type="button" onclick="window.location.href='/client.html'" class="btn-action">Ver Cliente</button>
+        </div>
+      </div>
+
+      <!-- TARJETA 2: TIMERS Y CRONÓMETROS -->
+      <div class="admin-card">
+        <h3 class="admin-card-title">Timer de Lanzamiento (24h)</h3>
+        <div class="timer-box">
+          <div id="admin-timer-display" class="timer-display">24:00:00</div>
+        </div>
+        <div class="btn-group-3">
+          <button type="button" onclick="sodieIniciarCronometro24h()" class="btn-action">▶️ Iniciar</button>
+          <button type="button" onclick="sodiePausarCronometro()" class="btn-action fuchsia">⏸️ Pausar</button>
+          <button type="button" onclick="sodieReiniciarCronometro()" class="btn-action fuchsia">🔄 Reset</button>
+        </div>
+      </div>
+
+      <!-- TARJETA 3: SUBIDA DE VIDEO -->
+      <div id= "dashboard-video" class="admin-card">
+        <h3 class="admin-card-title">Video Demo Principal</h3>
+        </div>
+        <button type="button" id="btn-upload-video" onclick="sodieSubirVideoDemo()" class="btn-action" style="width: 100%;">
+          Subir Video Demo
+        </button>
+      </div>
+
+      <!-- TARJETA 4: BASE DE DATOS EXCEL -->
+      <div id= "admin-excel-id" class="admin-card">
+        <h3 class="admin-card-title">Audiencia Excel / CSV</h3>
+        <div class="file-drop-zone">
+          <input type="file" id="admin-excel-file" accept=".csv, .xlsx, .xls" />
+        </div>
+        <button type="button" id="btn-upload-excel" onclick="sodieInyectarExcel()" class="btn-action" style="width: 100%;">
+          Inyectar Base de Datos
+        </button>
+      </div>
+
+      <!-- TARJETA 5: ACCIONES CRÍTICAS (ANCHO COMPLETO) -->
+      <div id="admin-activate-close" class="admin-card full-width" style="border-color: rgba(255, 0, 127, 0.3);">
+        <h3 class="admin-card-title danger">Disparadores de Campaña y V4</h3>
+        <p style="color: #A098B5; font-size: 0.85rem; margin-bottom: 16px;">Controles directos para cambiar el estado global de la app.</p>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;">
+          <button type="button" id="btn-admin-activate-campaign" onclick="sodieConfirmarActivacion()" class="btn-action" style="background: linear-gradient(90deg, #00FFCC, #FF007F); color: #FFFFFF; border: none; padding: 14px; font-size: 0.95rem;">
+            Activar Campaña Directa
+          </button>
+          
+          <button type="button" id="btn-close-waitlist" onclick="sodieCerrarListaEspera()" class="btn-action fuchsia" style="padding: 14px; font-size: 0.95rem;">
+            Cerrar Lista y Disparar V4 (14 días)
+          </button>
+        </div>
+      </div>
+
+    </div>
+    
+  </main>
+
+  <script src="config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
