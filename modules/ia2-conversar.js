@@ -23,7 +23,7 @@ class SOVYXIA2Conversor {
 
     this.plantillas = {
       "hola": [
-        "Gracias por confirmar que este software funciona, ¿qué preguntas tienes?\n\nQuedan pocos cupos disponibles para evaluadores (máximo 10 cuentas activas después de los 2 evaluadores). La oferta es simple: $7,000 de acceso inicial y $18,000 dividido en 3 cuotas cuando veas los resultados ($25,000 USD total). ¿Tienes el Ads Manager listo?"
+        "Gracias por confirmar que este software funciona, ¿qué preguntas tienes?\n\nQuedan pocos cupos disponibles para evaluadores (máximo 50 cuentas activas después de los 3 evaluadores). La oferta es simple: $7,000 de acceso inicial y $18,000 dividido en 3 cuotas cuando veas los resultados ($25,000 USD total). ¿Tienes el Ads Manager listo?"
       ],
 
 
@@ -44,11 +44,11 @@ class SOVYXIA2Conversor {
 
       "diferencia_herramientas": [
         "Si estás buscando una herramienta de $30 dólares al mes para generar publicaciones de redes sociales, hay cientos en el mercado. SODIE es exclusivo para negocios que manejan presupuesto publicitario real, entienden el costo de oportunidad de esperar meses por resultados y necesitan eficiencia de capital inmediata.",
-        "Por estabilidad y rendimiento del algoritmo, solo operamos con un máximo de 20 cuentas activas en total."
+        "Por estabilidad y rendimiento del algoritmo, solo operamos con un máximo de 50 cuentas activas en total."
       ],
 
       "cupo_4": [
-        "El Cupo 4 marca el inicio de la lista de espera para los 10 cupos restantes de la V4, que se activará en 28 días mínimo.",
+        "El Cupo 4 marca el inicio de la lista de espera para los 49 cupos restantes de la V4, que se activará en 28 días mínimo.",
         "Al elegir el Cupo 4 te unes a la lista de espera donde podrás seguir los resultados y métricas en tiempo real de los evaluadores iniciales antes del lanzamiento global de la V4.",
         "¿Quieres asegurar tu cupo evaluador ahora con SODIE o prefieres quedar en la lista de espera perdiendo tracción publicitaria?"
       ],
@@ -70,7 +70,7 @@ class SOVYXIA2Conversor {
 
       "objecion": [
         "Si $7,000 te parecen un obstáculo para escalar una oferta con un motor probado de clonación de audiencia, esta infraestructura no es para ti.",
-        "SODIE es exclusivo para negocios que manejan presupuesto real. Por rendimiento del algoritmo, solo operamos con un máximo de 10 cuentas activas."
+        "SODIE es exclusivo para negocios que manejan presupuesto real. Por rendimiento del algoritmo, solo operamos con un máximo de 50 cuentas activas."
       ],
 
       "acceder": [
@@ -80,7 +80,7 @@ class SOVYXIA2Conversor {
 
       "default": [
         "SODIE no es una herramienta de $30 dólares para publicaciones; es infraestructura de conversión que evita perder miles en campañas fallidas.",
-        "Solo operamos con un máximo de 20 cuentas activas. ¿Vas a reservar tu slot con los $1,000 iniciales o dejas pasar la capacidad de cómputo?"
+        "Solo operamos con un máximo de 50 cuentas activas. ¿Vas a reservar tu slot con los $7,000 iniciales o dejas pasar la capacidad de cómputo?"
       ]
     };
 
