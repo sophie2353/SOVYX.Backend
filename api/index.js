@@ -65,22 +65,42 @@ if (MONGO_URI) {
 // --- CONFIGURACIÓN & AUTENTICACIÓN ADMIN ---
 app.get('/api/config', (req, res) => res.json({ API_URL }));
 
+// --- AUTENTICACIÓN ADMIN (PRODUCCIÓN - MÁXIMA SEGURIDAD) ---
 app.post('/api/admin/login', (req, res) => {
-  const password = req.body?.password || req.body?.key || req.body?.adminKey;
+  const { password } = req.body;
 
-  if (!password) {
-    return res.json({ success: true, message: 'Acceso autorizado (bypass test)' });
+  // 1. Requerir obligatoriamente contraseña
+  if (!password || typeof password !== 'string') {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Se requiere una contraseña válida.' 
+    });
   }
 
-  if (
-    password === ADMIN_KEY || 
-    password === (config.SOVYX_ADMIN_KEY || ' ') || 
-    password === 'admin'
-  ) {
-    return res.json({ success: true, message: 'Acceso autorizado' });
+  // 2. Clave configurada en las variables de entorno (.env)
+  const masterKey = process.env.ADMIN_KEY || config.SOVYX_ADMIN_KEY;
+
+  if (!masterKey) {
+    console.error('🔴 [SECURITY WARNING] No hay ADMIN_KEY configurada en el entorno.');
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error de configuración en el servidor.' 
+    });
   }
 
-  return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
+  // 3. Comparación estricta
+  if (password === masterKey) {
+    return res.json({ 
+      success: true, 
+      message: 'Acceso autorizado' 
+    });
+  }
+
+  // Credenciales incorrectas
+  return res.status(401).json({ 
+    success: false, 
+    message: 'Contraseña incorrecta' 
+  });
 });
 
 app.post('/api/v1/auth/biometrics/challenge', (req, res) => {
