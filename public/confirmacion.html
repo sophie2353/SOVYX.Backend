@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirmación de Operación | SODIE</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Hoja de estilos principal del proyecto -->
+  <link rel="stylesheet" href="/styles.css">
+
+  <style>
+    /* Estilos Premium UI para Confirmación */
+    :root {
+      --bg-dark: #090a0f;
+      --card-bg: rgba(18, 20, 29, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --secondary: #10b981;
+      --secondary-hover: #059669;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent-glow: rgba(99, 102, 241, 0.25);
+    }
+
+    body.confirmation-body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(at 20% 20%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+        radial-gradient(at 80% 80%, rgba(16, 185, 129, 0.12) 0px, transparent 50%);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: var(--text-main);
+    }
+
+    .confirmation-container {
+      width: 100%;
+      max-width: 580px;
+    }
+
+    .card.confirmation-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 40px 32px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 0 30px var(--accent-glow);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      background: rgba(99, 102, 241, 0.12);
+      color: #818cf8;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .conf-title {
+      font-size: 1.85rem;
+      font-weight: 800;
+      margin: 0 0 12px 0;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .conf-body {
+      font-size: 1rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin: 0 0 28px 0;
+    }
+
+    /* Lista de Pasos UI */
+    .steps-list {
+      text-align: left;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 20px;
+      margin: 20px 0 28px 0;
+      list-style: none;
+    }
+
+    .steps-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+      color: #e5e7eb;
+    }
+
+    .steps-list li:last-child {
+      margin-bottom: 0;
+    }
+
+    .step-number {
+      background: var(--primary);
+      color: #ffffff;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* Contenedor de Botones de Acción */
+    .action-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 8px;
+    }
+
+    .btn-action {
+      width: 100%;
+      padding: 16px 24px;
+      border-radius: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-decoration: none;
+      box-sizing: border-box;
+    }
+
+    .btn-primary-glow {
+      background: linear-gradient(135deg, var(--primary) 0%, #4338ca 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-primary-glow:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(99, 102, 241, 0.6);
+      background: linear-gradient(135deg, #6366f1 0%, #3730a3 100%);
+    }
+
+    .btn-secondary-glow {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-main);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .btn-secondary-glow:hover {
+      background: rgba(255, 255, 255, 0.12);
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Spinner Animado */
+    .loader-box {
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s infinite linear;
+      margin: 20px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+
+  <!-- Meta Pixel Code -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    
+    fbq('init', '1754371812277932');
+    fbq('track', 'PageView');
+  </script>
+  <noscript>
+    <img height="1" width="1" style="display:none"
+         src="https://www.facebook.com/tr?id=1754371812277932&ev=PageView&noscript=1"/>
+  </noscript>
+</head>
+<body class="confirmation-body">
+
+  <div class="confirmation-container">
+    <div class="card confirmation-card" id="main-card">
+      <div class="status-badge" id="conf-badge">SODIE Workflows</div>
+      <h2 class="conf-title" id="conf-title">Procesando...</h2>
+      <p class="conf-body" id="conf-body">Cargando estado de la operación...</p>
+      
+      <div id="loader-box" class="loader-box"></div>
+      <div id="steps-container"></div>
+      
+      <div class="action-grid">
+        <button id="conf-action-btn" class="btn-action btn-secondary-glow" style="display: none;"></button>
+        <button id="conf-verify-btn" class="btn-action btn-primary-glow" style="display: none;"></button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const step = urlParams.get('step');
+      const campaignId = urlParams.get('campaignId');
+      const actId = urlParams.get('actId');
+      const sessionId = urlParams.get('sessionId');
+      const paymentType = urlParams.get('paymentType'); // 'hora0' | 'recurring'
+      const role = urlParams.get('role'); // 'admin' | null (cliente)
+      let clientIdParam = urlParams.get('clientId');
+      let fbUserParam = urlParams.get('fbUser') || localStorage.getItem('sodie_fb_user');
+
+      // Guardar el fbUser en almacenamiento local para persistencia
+      if (fbUserParam) {
+        localStorage.setItem('sodie_fb_user', fbUserParam);
+      }
+
+      const titleEl = document.getElementById('conf-title');
+      const bodyEl = document.getElementById('conf-body');
+      const badgeEl = document.getElementById('conf-badge');
+      const loaderEl = document.getElementById('loader-box');
+      const stepsContainer = document.getElementById('steps-container');
+      const actionBtn = document.getElementById('conf-action-btn');
+      const verifyBtn = document.getElementById('conf-verify-btn');
+
+      // Helper: Obtiene o asigna el ID del cliente secuencial desde el servidor
+      async function resolveClientId() {
+        if (clientIdParam) {
+          localStorage.setItem('sodie_client_id', clientIdParam);
+          return clientIdParam;
+        }
+
+        const savedId = localStorage.getItem('sodie_client_id');
+        if (savedId) return savedId;
+
+        try {
+          const res = await fetch('/api/v1/clients/next-id');
+          if (res.ok) {
+            const data = await res.json();
+            const newId = data.clientId || 'CLIENT-#01';
+            localStorage.setItem('sodie_client_id', newId);
+            return newId;
+          }
+        } catch (err) {
+          console.warn('Fallback a ID local por defecto');
+        }
+
+        const fallbackId = 'CLIENT-#01';
+        localStorage.setItem('sodie_client_id', fallbackId);
+        return fallbackId;
+      }
+
+      // =========================================================================
+      // PASO 0: ASIGNAR ID Y SALTAR A CONTRATO.HTML
+      // =========================================================================
+      if (step === 'generar_id' || step === 'aceptar_rol' || paymentType === 'hora0') {
+        loaderEl.style.display = 'none';
+        
+        const activeClientId = await resolveClientId();
+        const activeFbUser = fbUserParam || 'Evaluador Meta';
+
+        badgeEl.textContent = `Paso 1 de 3 • Cliente ${activeClientId}`;
+        titleEl.textContent = '¡Pago Registrado con Éxito!';
+        bodyEl.textContent = `Se ha asignado el ID ${activeClientId} para el perfil de Facebook @${activeFbUser}. Acepta la solicitud como evaluador en Meta y firma el contrato digital para continuar.`;
+
+        stepsContainer.innerHTML = `
+          <ul class="steps-list">
+            <li>
+              <span class="step-number">1</span>
+              <div>Acepta la invitación de evaluador enviado al usuario <strong>${activeFbUser}</strong> en Meta.</div>
+            </li>
+            <li>
+              <span class="step-number">2</span>
+              <div>Firma el contrato legal de prestación de servicios para activar tu cupo.</div>
+            </li>
+          </ul>
+        `;
+
+        actionBtn.style.display = 'inline-flex';
+        actionBtn.textContent = '1. Aceptar Evaluador en Meta ↗';
+        actionBtn.onclick = () => {
+          window.open('https://developers.facebook.com/requests/', '_blank');
+        };
+
+        verifyBtn.style.display = 'inline-flex';
+        verifyBtn.textContent = '2. Ir a Firma de Contrato Digital ➔';
+        verifyBtn.onclick = () => {
+          verifyBtn.textContent = 'Redirigiendo a contrato.html...';
+          window.location.href = `contrato.html?clientId=${encodeURIComponent(activeClientId)}&fbUser=${encodeURIComponent(activeFbUser)}`;
+        };
+      }
+
+      // =========================================================================
+      // PASO 1: REGRESO DESDE EL EXCEL -> INICIAR CICLO DE META
+      // =========================================================================
+      else if (step === 'excel_and_fb' || step === 'excel_uploaded') {
+        loaderEl.style.display = 'none';
+        const activeClientId = await resolveClientId();
+        const activeFbUser = fbUserParam || 'Evaluador Meta';
+
+        badgeEl.textContent = `Paso 2 de 3 • Cliente ${activeClientId}`;
+        titleEl.textContent = 'Excel Recibido • Inyectando Audiencias';
+        bodyEl.textContent = `Hemos vinculado la base de datos de compradores para el usuario @${activeFbUser}. Conecta tu cuenta publicitaria para compilar y generar los borradores.`;
+
+        stepsContainer.innerHTML = `
+          <ul class="steps-list">
+            <li>
+              <span class="step-number">1</span>
+              <div>Evaluador asignado: <strong>${activeFbUser}</strong></div>
+            </li>
+            <li>
+              <span class="step-number">2</span>
+              <div>Iniciando compilación de audiencias similares en Meta Ads.</div>
+            </li>
+          </ul>
+        `;
+
+        verifyBtn.style.display = 'inline-flex';
+        verifyBtn.textContent = 'Iniciar Ciclo en Meta Ads 🚀';
+        verifyBtn.onclick = async () => {
+          verifyBtn.textContent = 'Conectando con Meta API...';
+          try {
+            const res = await fetch('/api/facebook/connect', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId, clientId: activeClientId, fbUser: activeFbUser })
+            });
+            const data = await res.json();
+            if (data.redirectUrl) {
+              window.location.href = data.redirectUrl;
+            } else {
+              window.location.href = `index.html?clientId=${encodeURIComponent(activeClientId)}&status=ready_meta#app-dashboard`;
+            }
+          } catch (err) {
+            window.location.href = `index.html?clientId=${encodeURIComponent(activeClientId)}&status=ready_meta#app-dashboard`;
+          }
+        };
+      }
+
+      // =========================================================================
+      // PASO 2: CONEXIÓN OAUTH CON META
+      // =========================================================================
+      else if (step === 'conectar_meta') {
+        loaderEl.style.display = 'none';
+        badgeEl.textContent = 'Paso 2 de 3 • Vinculación Meta';
+        titleEl.textContent = 'Archivos Cargados Exitosamente';
+        bodyEl.textContent = 'Tu segmentación en Excel está lista. Conecta tu cuenta corporativa de Facebook para inyectar los conjuntos de anuncios.';
+
+        verifyBtn.style.display = 'inline-flex';
+        verifyBtn.textContent = 'Conectar con Facebook Ads';
+        verifyBtn.onclick = async () => {
+          verifyBtn.textContent = 'Iniciando conexión con Meta...';
+          try {
+            const res = await fetch('/api/facebook/connect', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId })
+            });
+            const data = await res.json();
+            if (data.redirectUrl) {
+              window.location.href = data.redirectUrl;
+            } else {
+              alert('Error obteniendo la URL de autenticación de Meta.');
+            }
+          } catch (err) {
+            alert('Error de conexión con el servidor.');
+          } finally {
+            verifyBtn.textContent = 'Conectar con Facebook Ads';
+          }
+        };
+      }
+
+      // =========================================================================
+      // PASO 3: ACTIVACIÓN DE CAMPAÑA (CLIENTE VS ADMIN)
+      // =========================================================================
+      else if (step === 'activar_campana' || paymentType === 'recurring') {
+        loaderEl.style.display = 'none';
+
+        if (role === 'admin') {
+          badgeEl.textContent = 'Panel Administrador • Verificación';
+          titleEl.textContent = 'Gestión Admin: Campaña Generada';
+          bodyEl.textContent = 'Se ha inyectado el borrador de la campaña para el cliente. Puedes revisarlo en Meta Ads Manager y confirmar la activación en el panel general.';
+
+          stepsContainer.innerHTML = `
+            <ul class="steps-list">
+              <li>
+                <span class="step-number">1</span>
+                <div>Verifica o edita la campaña generada en Meta Ads Manager.</div>
+              </li>
+              <li>
+                <span class="step-number">2</span>
+                <div>Confirma la verificación para regresar a la gestión en Admin.</div>
+              </li>
+            </ul>
+          `;
+
+          actionBtn.style.display = 'inline-flex';
+          actionBtn.textContent = '1. Revisar en Meta Ads Manager ↗';
+          actionBtn.onclick = () => {
+            const webUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${actId}&selected_campaign_ids=${campaignId}`;
+            window.open(webUrl, '_blank');
+          };
+
+          verifyBtn.style.display = 'inline-flex';
+          verifyBtn.textContent = '2. Confirmar y Volver a Admin.html';
+          verifyBtn.onclick = async () => {
+            verifyBtn.textContent = 'Confirmando cambios...';
+            try {
+              await fetch('/api/facebook/activar-campana', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId, campaignId, role: 'admin' })
+              });
+            } catch (err) {
+              console.warn("Redirigiendo a admin...");
+            }
+            window.location.href = `/admin.html?sessionId=${sessionId || ''}&status=verified_by_admin`;
+          };
+
+        } else {
+          // Flujo Normal para Clientes
+          const activeClientId = await resolveClientId();
+
+          badgeEl.textContent = `Paso Final • ${activeClientId}`;
+          titleEl.textContent = 'Borrador Generado en Meta';
+          bodyEl.textContent = 'El borrador de tu campaña ha sido preparado. Abre Meta Ads Manager para publicar presupuesto/creativos y pasa a tu Dashboard.';
+
+          stepsContainer.innerHTML = `
+            <ul class="steps-list">
+              <li>
+                <span class="step-number">1</span>
+                <div>Abre Meta Ads Manager para publicar el borrador generado.</div>
+              </li>
+              <li>
+                <span class="step-number">2</span>
+                <div>Accede a tu Dashboard. La campaña pasará al estado de verificación.</div>
+              </li>
+            </ul>
+          `;
+
+          actionBtn.style.display = 'inline-flex';
+          actionBtn.textContent = '1. Abrir Meta Ads Manager ↗';
+          actionBtn.onclick = () => {
+            const webUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${actId}&selected_campaign_ids=${campaignId}`;
+            const appUrl = `fb://adsmanager/campaign?act=${actId}&campaign_id=${campaignId}`;
+
+            if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+              const start = Date.now();
+              window.location.href = appUrl;
+              setTimeout(() => {
+                if (Date.now() - start < 3000) window.location.href = webUrl;
+              }, 2500);
+            } else {
+              window.open(webUrl, '_blank');
+            }
+          };
+
+          verifyBtn.style.display = 'inline-flex';
+          verifyBtn.textContent = '2. Ir a mi Dashboard (En Verificación) 📊';
+          verifyBtn.onclick = async () => {
+            verifyBtn.textContent = 'Confirmando en servidor...';
+            try {
+              await fetch('/api/facebook/activar-campana', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId, campaignId, clientId: activeClientId })
+              });
+            } catch (err) {
+              console.warn("Navegando hacia el dashboard...");
+            }
+
+            window.location.href = `/client.html?clientId=${encodeURIComponent(activeClientId)}&sessionId=${sessionId || ''}&campaignId=${campaignId || ''}&status=verifying`;
+          };
+        }
+      }
+
+      // =========================================================================
+      // PASO 4: CONFIRMAR PAGO / EVENTO CAPI
+      // =========================================================================
+      else if (step === 'confirmar_pago') {
+        loaderEl.style.display = 'none';
+        const activeClientId = await resolveClientId();
+
+        localStorage.setItem('sodie_payment_completed', 'true');
+
+        if (typeof fbq === 'function') {
+          fbq('track', 'Purchase', { value: 7000.00, currency: 'USD', content_name: 'Reserva Inicial SODIE' });
+        }
+
+        badgeEl.textContent = `Pago Exitoso • ${activeClientId}`;
+        titleEl.textContent = '¡Pago Registrado!';
+        bodyEl.textContent = 'Registrando evento CAPI y redirigiendo a tu panel...';
+        
+        setTimeout(() => {
+          const targetUrl = role === 'admin' 
+            ? `/admin.html?sessionId=${sessionId || ''}&status=paid_success` 
+            : `/client.html?clientId=${encodeURIComponent(activeClientId)}&sessionId=${sessionId || ''}&status=paid_success`;
+          window.location.href = targetUrl;
+        }, 2000);
+      }
+
+      // =========================================================================
+      // FALLBACK POR DEFECTO
+      // =========================================================================
+      else {
+        loaderEl.style.display = 'none';
+        const activeClientId = await resolveClientId();
+
+        badgeEl.textContent = role === 'admin' ? 'SODIE Admin' : `SODIE Panel • ${activeClientId}`;
+        titleEl.textContent = 'Confirmación SODIE';
+        bodyEl.textContent = 'Redirigiendo a tu panel principal...';
+        verifyBtn.style.display = 'inline-flex';
+        verifyBtn.textContent = role === 'admin' ? 'Ir a Admin Panel' : 'Ir al Dashboard';
+        verifyBtn.onclick = () => {
+          window.location.href = role === 'admin' 
+            ? `/admin.html?sessionId=${sessionId || ''}` 
+            : `/client.html?clientId=${encodeURIComponent(activeClientId)}&sessionId=${sessionId || ''}`;
+        };
+      }
+    });
+  </script>
+
+</body>
+</html>
