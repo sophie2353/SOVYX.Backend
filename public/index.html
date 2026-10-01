@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SODIE</title>
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- SheetJS para lectura/procesamiento de Excel en cliente -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Meta Pixel Code -->
+  <script>
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '1754371812277932');
+  fbq('track', 'PageView');
+  </script>
+  <noscript><img height="1" width="1" class="hidden-pixel"
+  src="https://www.facebook.com/tr?id=1754371812277932&ev=PageView&noscript=1"
+  /></noscript>
+</head>
+<body>
+
+  <!-- TOAST NOTIFICACIÓN -->
+  <div id="toast-notification" class="toast-bubble hidden">
+    <div class="toast-content">
+      <span class="toast-icon"></span>
+      <div class="toast-text">
+        <strong id="toast-title">Notificación SODIE</strong>
+        <p id="toast-body">Cupos Disponibles</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SPLASH SCREEN -->
+  <div id="view-splash" class="full-screen">
+    <div class="splash-content">
+      <div class="logo-wrapper">
+        <h1 class="logo-title logo-no-transform"><span class="brand-s brand-s-fuchsia">S</span>ODIE</h1>
+      </div>
+      <div class="hud-percentage-wrapper">
+        <span id="splash-pct" class="splash-pct-num">0%</span>
+        <div class="hud-pointer-line"></div>
+      </div>
+      <div class="cpu-liquid-box">
+        <div id="capsules-track" class="capsules-track">
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+          <div class="capsule cap-dark"><div class="cap-glint"></div></div>
+        </div>
+      </div>
+      <div class="splash-gauges">
+        <div class="gauge-card">
+          <svg class="gauge-ring" viewBox="0 0 36 36">
+            <circle class="ring-thin-bg" cx="18" cy="18" r="15.9155" />
+            <circle id="gauge-circle-1" class="ring-thin-fill mint-stroke" cx="18" cy="18" r="15.9155" stroke-dasharray="0, 100" />
+          </svg>
+          <div class="gauge-content">
+            <span class="gauge-label">DATOS PROCESADOS</span>
+            <span id="gauge-val-1" class="gauge-val mint-txt">0%</span>
+          </div>
+        </div>
+        <div class="hud-center-node"></div>
+        <div class="gauge-card">
+          <svg class="gauge-ring" viewBox="0 0 36 36">
+            <circle class="ring-thin-bg" cx="18" cy="18" r="15.9155" />
+            <circle id="gauge-circle-2" class="ring-thin-fill fuchsia-stroke" cx="18" cy="18" r="15.9155" stroke-dasharray="0, 100" />
+          </svg>
+          <div class="gauge-content">
+            <span class="gauge-label">ANÁLISIS MERCADO</span>
+            <span id="gauge-val-2" class="gauge-val fuchsia-txt">0%</span>
+          </div>
+        </div>
+      </div>
+      <div class="welcome-sign-glass">
+        <div id="welcome-fill" class="welcome-fill"></div>
+        <span class="welcome-text">BIENVENIDO</span>
+      </div>
+    </div>
+  </div>
+
+  <main id="app-dashboard" class="dashboard-container">
+    <header class="dash-header flex-header">
+      <div class="dash-header-left">
+        <div id="sodie-logo-trigger" onclick="sodieContarToquesAdmin()" class="clickable-node">
+          <h1 class="logo-title header-logo logo-no-transform">
+            <span class="brand-s brand-s-fuchsia">S</span>ODIE
+          </h1>
+        </div>
+      </div>
+      <div class="dash-header-right flex-center-gap">
+        <a href="admin.html" class="admin-btn-link">
+          Admin
+        </a>
+        <button type="button" class="btn-icon btn-admin-trigger" id="btn-sodie-logo-trigger" onclick="sodieContarToquesAdmin()">🦁</button>
+      </div>
+    </header>
+
+    <!-- 1. MÉTRICAS -->
+    <section class="metrics-section">
+      <h3 class="section-title">Métricas en Tiempo Real</h3>
+      <div class="metrics-slider" id="metrics-slider">
+        <article class="glass-card-dash metric-square">
+          <div class="card-head"><span>Inversión</span><span class="dots"></span></div>
+          <div class="card-value" id="metric-spend">$0</div>
+          <div class="card-chart">
+            <svg viewBox="0 0 200 60" preserveAspectRatio="none"><path d="M0,50 L200,50" fill="none" stroke="#00ffcc" stroke-width="2" /></svg>
+          </div>
+          <div class="card-foot"><span>Estado Meta</span><span id="metric-spend-status" class="fuchsia-txt">Esperando Conexión</span></div>
+        </article>
+
+        <article class="glass-card-dash metric-square">
+          <div class="card-head"><span>Alcance</span><span class="dots"></span></div>
+          <div class="card-value" id="metric-reach">0</div>
+          <div class="card-chart">
+            <svg viewBox="0 0 200 60" preserveAspectRatio="none"><path d="M0,50 L200,50" fill="none" stroke="#00ffcc" stroke-width="2" /></svg>
+          </div>
+          <div class="card-foot"><span>Impresiones</span><span id="metric-reach-status" class="mint-txt">0.00</span></div>
+        </article>
+
+        <article class="glass-card-dash metric-square">
+          <div class="card-head"><span>Visitas</span><span class="dots">•••</span></div>
+          <div class="card-value" id="metric-visitors">0</div>
+          <div class="card-chart">
+            <svg viewBox="0 0 200 60" preserveAspectRatio="none"><path d="M0,50 L200,50" fill="none" stroke="#00ffcc" stroke-width="2" /></svg>
+          </div>
+          <div class="card-foot"><span>Tráfico Web</span><span class="mint-txt">Inactivo</span></div>
+        </article>
+
+        <article class="glass-card-dash metric-square">
+          <div class="card-head"><span>Activos</span><span class="dots">•••</span></div>
+          <div class="card-value" id="metric-activos">0</div>
+          <div class="card-chart">
+            <svg viewBox="0 0 200 60" preserveAspectRatio="none"><path d="M0,50 L200,50" fill="none" stroke="#00ffcc" stroke-width="2" /></svg>
+          </div>
+          <div class="card-foot"><span>Campañas</span><span class="fuchsia-txt">0 creadas</span></div>
+        </article>
+
+        <article class="glass-card-dash metric-square">
+          <div class="card-head"><span>Clics "Ir a Pagar"</span><span class="dots"></span></div>
+          <div class="card-value" id="metric-pay-clicks">0</div>
+          <div class="card-chart">
+            <svg viewBox="0 0 200 60" preserveAspectRatio="none"><path d="M0,50 L200,50" fill="none" stroke="#d946ef" stroke-width="2" /></svg>
+          </div>
+        </article>
+
+        <article class="glass-card-dash metric-square">
+          <div class="card-head"><span>Cupos Disponibles</span><span class="dots"></span></div>
+          <div class="card-value fuchsia-txt" id="metric-cupos-val">3</div>
+          <div class="card-chart">
+            <svg viewBox="0 0 200 60" preserveAspectRatio="none"><path d="M0,10 Q50,30 100,20 T200,50" fill="none" stroke="#d946ef" stroke-width="3" /></svg>
+          </div>
+          <div class="card-foot"><span id="metric-cupos-label"></span><span id="metric-cupos-sub" class="fuchsia-txt"></span></div>
+        </article>
+      </div>
+
+      <!-- SUB-SECCIÓN LEVE PARA HINT SLIDER -->
+      <div style="text-align: right; margin-top: 8px;">
+        <span style="display: inline-block; font-size: 0.72rem; padding: 4px 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.15); border-radius: 20px; color: rgba(255, 255, 255, 0.6);">
+          deslizar a la izquierda para ver más resultados
+        </span>
+      </div>
+    </section>
+
+    <!-- 2. ALTERNATIVA DE CONTROL CON SUB-SECCIONES ESTRUCTURADAS -->
+    <section id="card-alternative-control" class="glass-card-dash alternative-section">
+      <div class="chat-header" style="margin-bottom: 12px;">
+        <h3 class="section-title mint-txt">Sección de Alternativa</h3>
+        <span class="badge-client badge-mint-border">SODIE v3.5</span>
+      </div>
+
+      <!-- ENCABEZADO ESTRUCTURADO -->
+      <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.15); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
+        <p class="step-desc highlight-white" style="margin: 0; font-weight: 600;">
+          Con SODIE obtienes el control de tu cuenta publicitaria:
+        </p>
+      </div>
+      
+      <!-- SUB-TARJETAS PARA CADA PUNTO -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        
+        <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 12px 14px;">
+          <span style="color: #00ffcc; font-weight: bold; margin-right: 6px;">1.</span>
+          <span><strong>Subes la data de tus compradores</strong> para obtener mayor ROAS.</span>
+        </div>
+
+        <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 12px 14px;">
+          <span style="color: #00ffcc; font-weight: bold; margin-right: 6px;">2.</span>
+          <span><strong>Subes las fotos y vídeos de tu campaña desde tu panel:</strong> SODIE no procesa fotos y vídeos. Solo segmentación.</span>
+        </div>
+
+        <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 12px 14px;">
+          <span style="color: #00ffcc; font-weight: bold; margin-right: 6px;">3.</span>
+          <span><strong>Resultados por campaña en vivo</strong>, no en un PDF a final de semana esperando que el pixel se entrene durante 60 o 90 días.</span>
+        </div>
+
+        <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 12px 14px;">
+          <span style="color: #00ffcc; font-weight: bold; margin-right: 6px;">4.</span>
+          <span><strong>No se necesitan datos de tarjeta de crédito o cambios de inversión:</strong> Lo que invertías ayer en tu campaña, lo seguirás haciendo durante 30 días.</span>
+        </div>
+
+        <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 12px 14px;">
+          <span style="color: #00ffcc; font-weight: bold; margin-right: 6px;">5.</span>
+          <span><strong>SODIE no necesita que inviertas más en tu campaña para mayor ROAS</strong>, solo necesita acceso como evaluador, aceptar los permisos para inyectar la segmentación en tu borrador y lo activas desde el panel de ads.</span>
+        </div>
+
+      </div>
+
+      <!-- CIERRE EN SUB-TARJETA -->
+      <div style="background: rgba(217, 70, 239, 0.05); border: 1px solid rgba(217, 70, 239, 0.15); border-radius: 10px; padding: 12px; margin-top: 14px;">
+        <p class="step-desc alt-closing-text" style="margin: 0; font-size: 0.88rem;">
+          Podrás ver cómo conseguí estos resultados usando SODIE, cuánto pierdes con mala segmentación y cuántos cupos quedan disponibles.
+        </p>
+      </div>
+    </section>
+
+    <!-- 3. DEMO BORRADOR VIDEO -->
+    <section id="card-demo-video" class="glass-card-dash video-section">
+      <div class="chat-header" style="margin-bottom: 12px;">
+        <h3 class="section-title mint-txt">Demostración en Vivo</h3>
+        <span class="badge-client badge-mint-border">30-40 segs</span>
+      </div>
+      <p class="step-desc" style="margin-bottom: 16px;">
+        Observa cómo subimos la lista de compradores desde SODIE, se crea automáticamente la campaña con borrador sin segmentación manual y se publica en Meta Ads.
+      </p>
+      <div class="video-container-glass">
+        <video id="sodie-demo-video" controls poster="poster-demo.jpg" class="demo-video-player">
+          <source src="sodie-demo-borrador.mp4" type="video/mp4">
+        </video>
+      </div>
+    </section>
+
+    <!-- 4. ANALIZA TUS MÉTRICAS ACTUALES CON IA3 -->
+    <section id="ia3-calculator-analyzer" class="glass-card-dash metrics-analyzer-section mb-space">
+      <h3 class="section-title mint-txt section-title-md">Analiza Tus Métricas Actuales</h3>
+      <p class="step-desc step-desc-sm" style="margin-bottom: 16px;">
+        Ingresa tus datos de rendimiento actuales en Meta Ads para generar una auditoría inmediata impulsada por IA3.
+      </p>
+      
+      <div class="form-stack-compact analyzer-grid" style="margin-bottom: 16px;">
+        <div>
+          <label class="form-label-compact">Inversión Actual en ADS ($ USDC)</label>
+          <input type="number" id="ia3-ad-spend" placeholder="ej. 2500" class="input-dark-custom" />
+        </div>
+        <div>
+          <label class="form-label-compact">ROAS Mensual Actual</label>
+          <input type="number" step="0.1" id="ia3-roas" placeholder="ej. 2.1" class="input-dark-custom" />
+        </div>
+      </div>
+
+      <button type="button" id="btn-ia3-analizar" class="btn-pf-action btn-pay-gradient full-width btn-analyze">
+        ANALIZAR CON IA3
+      </button>
+
+      <!-- BURBUJA / MODAL FLOTANTE DE RESULTADOS IA3 -->
+      <div id="ia3-modal-result" class="ia3-float-card hidden">
+        <h4 class="fuchsia-txt ia3-modal-title">Diagnóstico de Rendimiento IA3</h4>
+        
+        <div class="ia3-res-block">
+          <strong class="mint-txt label-sm">Métricas Actuales:</strong>
+          <p id="ia3-val-user" class="ia3-val-text"></p>
+        </div>
+
+        <div class="ia3-res-block">
+          <strong class="fuchsia-txt label-sm">Problemas Detectados:</strong>
+          <p id="ia3-val-problems" class="ia3-val-text"></p>
+        </div>
+
+        <div class="ia3-res-block">
+          <strong class="mint-txt label-sm">Solución con SODIE:</strong>
+          <p id="ia3-val-solution" class="ia3-val-text"></p>
+        </div>
+
+        <div class="ia3-res-block mb-space">
+          <strong class="sky-txt label-sm">Ahorro Estimado con SODIE:</strong>
+          <p id="ia3-val-savings" class="ia3-savings-text"></p>
+        </div>
+
+        <div class="flex-wrap-gap">
+          <button type="button" onclick="document.getElementById('chat-section-anchor').scrollIntoView({behavior: 'smooth'})" class="btn-pf-action flex-equal-btn">
+            Ir a Chat Web
+          </button>
+          <button type="button" onclick="document.getElementById('pf-card').scrollIntoView({behavior: 'smooth'})" class="btn-pf-action btn-pay-gradient flex-equal-btn font-bold">
+            Ir a Pago Final
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. CHAT WEB INTEGRADO CON IA2 -->
+    <section id="chat-section-anchor" class="glass-card-dash chat-section">
+      <div class="chat-header" style="margin-bottom: 12px;">
+        <h3 class="section-title">Chat Web</h3>
+        <div class="cupos-badge">
+          <span class="purple-neon-dot"></span>
+          <span id="cupos-count-badge" class="cupos-text">Pocos Cupos Disponibles</span>
+        </div>
+      </div>
+      
+      <div id="chat-body" class="chat-body" style="margin-bottom: 12px;">
+        <div class="incoming-simple">
+          <p id="chat-welcome-msg">Gracias por confirmar que este software funciona. Dirigido a marcas que invierten de 900$ a 18K$/mes. Solo 3 Cupos iniciales disponibles. Pagas la cuota de Hora 0 para iniciar la inyección automatizada con contrato firmado. Conoce todo sobre la plataforma en las opciones indicadas.</p>
+        </div>
+      </div>
+
+      <div id="quick-replies" class="chat-quick-options" style="margin-bottom: 12px;">
+        <button type="button" class="opt-btn" data-payload="tres_cuotas">¿Cómo son las cuotas?</button>
+        <button type="button" class="opt-btn" data-payload="cupo_4">¿Qué ocurre en el Cupo 4?</button>
+        <button type="button" class="opt-btn" data-payload="como_funciona">¿Cómo funciona?</button>
+        <button type="button" class="opt-btn" data-payload="ecommerce">Ecommerce</button>
+        <button type="button" class="opt-btn" data-payload="metodos_pago">Métodos de pago</button>
+        <button type="button" class="opt-btn" data-payload="acceder">SODIE vs Agencias</button>
+        <button type="button" class="opt-btn" data-payload="tres_evaluadores">3 evaluadores</button>
+        <button type="button" class="opt-btn" data-payload="comparacion">Reservar Slot</button>
+      </div>
+
+      <!-- SUB-SECCIÓN LEVE PARA HINT SLIDER CHAT -->
+      <div style="text-align: right; margin-bottom: 12px;">
+        <span style="display: inline-block; font-size: 0.72rem; padding: 4px 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.15); border-radius: 20px; color: rgba(255, 255, 255, 0.6);">
+          deslizar a la izquierda para ver más opciones
+        </span>
+      </div>
+
+      <div class="chat-input-bar">
+        <input id="chat-input" type="text" placeholder="Escribe un mensaje..." />
+        <button type="button" id="chat-send" class="chat-send-btn">➤</button>
+      </div>
+    </section>
+
+    <!-- 6. SECCIÓN DE PAGO FINAL / LISTA DE ESPERA -->
+    <section id="pf-card" class="glass-card-dash pf-section pf-section-styled">
+      
+      <!-- CONTENIDO A: FLUJO DE PAGO ACTIVO -->
+      <div id="pf-active-payment-flow">
+        
+        <div id="pf-intro-card" class="text-center">
+          
+          <!-- BLOQUE 1: TÍTULO Y DESCRIPCIÓN PRINCIPAL -->
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.15); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <h3 id="pf-main-title" class="section-title mint-txt pf-title-size" style="margin-bottom: 10px;">Reserva de Slot e Inyección Automatizada</h3>
+            <p class="step-desc pf-description" style="margin: 0; line-height: 1.5;">
+              El pago se financiará en un <strong>Inicial del 28% ($7.000 USDC)</strong> + 3 cuotas semanales de $6.000 USDC, donde las siguientes semanas se pagarán directamente de los resultados obtenidos directamente de SODIE.
+            </p>
+          </div>
+
+          <!-- BLOQUE 2: DETALLES DEL PLAN Y TARJETA DE PRECIOS -->
+          <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(217, 70, 239, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+            <div class="flex-between-center" style="margin-bottom: 12px;">
+              <h4 class="mint-txt plan-card-title" style="margin: 0; font-size: 1.1rem;">Plan de Financiación SODIE</h4>
+              <span class="badge-client badge-mint-border">3 Cupos</span>
+            </div>
+
+            <div class="plan-price-main" style="font-size: 1.8rem; font-weight: bold; margin-bottom: 14px; color: #fff;">
+              $7.000 <small class="plan-price-sub" style="font-size: 0.9rem; opacity: 0.8;">USDC / Pago Inicial</small>
+            </div>
+
+            <div style="background: rgba(255, 255, 255, 0.02); border-radius: 8px; padding: 12px; text-align: left; margin-bottom: 16px;">
+              <ul class="plan-features-list" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
+                <li style="display: flex; justify-content: space-between;">
+                  <span>• Pago Inicial (28%):</span>
+                  <strong>$7.000 USDC</strong>
+                </li>
+                <!-- ELIMINADO EL "c/u" -->
+                <li style="display: flex; justify-content: space-between;">
+                  <span>• 3 Cuotas Semanales:</span>
+                  <strong>$6.000 USDC</strong>
+                </li>
+                <li class="plan-total-row" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; margin-top: 4px; display: flex; justify-content: space-between; color: #00ffcc; font-weight: bold;">
+                  <span>Total:</span>
+                  <span>$25.000 USDC</span>
+                </li>
+              </ul>
+            </div>
+
+            <button type="button" id="btn-iniciar-pago" onclick="mostrarPasoConexion()" class="btn-pf-action btn-pay-gradient btn-main-pay full-width">
+              PAGAR
+            </button>
+          </div>
+
+        </div>
+
+        <!-- PASO 1: USER DE FACEBOOK -->
+        <div id="pf-step-billing" class="form-billing-box margin-v-sm hidden step-billing-custom">
+          <h4 class="fuchsia-txt step-title-center">Paso 1: Conexión con Meta Ads</h4>
+          
+          <div class="form-group margin-top-sm">
+            <label for="fbUserId" class="form-label-billing">
+              User de Facebook / ID de Perfil <span class="fuchsia-txt">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="fbUserId" 
+              name="fbUserId" 
+              placeholder="ej. juan.perez.12 o ID numérico" 
+              required 
+              class="input-dark-custom input-billing-style"
+            />
+          </div>
+
+          <button type="button" id="btn-procesar-pago-pasarela" onclick="desplegarIframePago()" class="btn-pf-action btn-pay-gradient full-width btn-continue-pay">
+            CONTINUAR AL PAGO
+          </button>
+        </div>
+
+        <!-- PASO 1.5: IFRAME DE LA PASARELA DE PAGO -->
+        <div id="pf-step-iframe" class="iframe-payment-box margin-v-sm hidden iframe-box-custom">
+          <div class="flex-between-center mb-small">
+            <h4 class="mint-txt iframe-head-title">Pasarela de Pago Segura</h4>
+            <span class="badge-client badge-mint-border">SSL 256-bit</span>
+          </div>
+          
+          <div class="iframe-container iframe-wrapper-styled">
+            <iframe src="https://nowpayments.io/embeds/payment-widget?iid=5260032422" width="410" height="696" frameborder="0" scrolling="no" class="iframe-widget">
+              No se puede cargar el widget
+            </iframe>
+          </div>
+        </div>
+
+        <!-- PASO 2: CARGA DE EXCEL -->
+        <div id="pf-step-excel" class="upload-excel-box margin-v-sm hidden upload-box-custom">
+          <h4 class="mint-txt mb-small">Paso 2: Subir Excel de Compradores</h4>
+          <p class="step-desc step-desc-upload">
+            Firma y pago completados. Carga la lista de compradores para generar los borradores e iniciar la inyección automatizada:
+          </p>
+          <div class="input-group-flow flex-col-gap">
+            <input type="file" id="client-file-input" class="file-input-custom full-width" accept=".csv,.xlsx,.xls" />
+            <button type="button" id="btn-client-upload-file" onclick="finalizarYConfirmar()" class="btn-pf-action btn-pay-gradient btn-upload-finish">
+              Finalizar Registro (Ir a Confirmación)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTENIDO B: LISTA DE ESPERA CON MONTO DE 2.000 USDC -->
+      <div id="pf-waitlist-block" class="hidden text-center margin-v-sm waitlist-container-styled">
+        <span class="badge-client badge-soldout">CUPOS AGOTADOS</span>
+        <h3 class="section-title fuchsia-txt waitlist-title" style="margin-top: 10px;">Unirse a la Lista de Espera Exclusiva V4</h3>
+        <p class="step-desc waitlist-desc" style="margin-bottom: 16px;">
+          Los cupos activos para esta ventana de inyección se han completado. Ingresa tus datos y realiza el pago de <strong class="mint-txt">2.000 USDC solo para reservar</strong> tu identificador <code class="fuchsia-txt">CLIENT-V4-#</code>.
+        </p>
+
+        <form id="form-waitlist" onsubmit="event.preventDefault();" class="flex-col-gap">
+          <input 
+            type="text" 
+            id="wl-brand-name" 
+            placeholder="Nombre de tu Marca / Empresa *" 
+            required 
+            class="input-dark-custom" 
+          />
+          <input 
+            type="email" 
+            id="wl-email" 
+            placeholder="Correo Electrónico *" 
+            required 
+            class="input-dark-custom" 
+          />
+          <input 
+            type="tel" 
+            id="wl-phone" 
+            placeholder="WhatsApp con Código de País *" 
+            required 
+            class="input-dark-custom" 
+          />
+          
+          <!-- LINK ÚNICO DIRECTO A PAGO DE RESERVA V4 DE 2.000 USDC -->
+          <a href="https://nowpayments.io/payment/?iid=5476660121&source=button" 
+             id="btn-waitlist-checkout" 
+             target="_blank" 
+             rel="noreferrer noopener" 
+             class="btn-pf-action btn-pay-gradient full-width btn-checkout-waitlist">
+            PAGAR RESERVA V4
+          </a>
+        </form>
+      </div>
+
+    </section>
+
+    <!-- 7. CRONÓMETRO REGRESIVO -->
+    <section class="glass-card-dash timer-section text-center">
+      <span class="timer-label" id="timer-status-title" style="display: block; margin-bottom: 8px;">TIEMPO PARA PRÓXIMA APERTURA DE CUPOS</span>
+      <div id="timer-main-display" class="timer-digits mint-txt" style="margin-bottom: 8px;">720:00:00</div>
+      <span class="timer-sub" id="timer-status-sub" style="display: block; font-size: 0.8rem; opacity: 0.8;">Estado del Sistema: Servidores SODIE en Capacidad Máxima al cupo 3 (28 Días mínimo para activar el resto de cupos)</span>
+    </section>
+
+    <footer class="dash-footer text-center margin-v-md footer-styled" style="margin-top: 24px; margin-bottom: 16px;">
+      <p>© SODIE v3.5. 2026. TODOS LOS DERECHOS RESERVADOS</p>
+    </footer>
+  </main>
+  
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
