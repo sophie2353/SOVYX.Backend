@@ -7,23 +7,60 @@ const helmet = require('helmet');
 
 const app = express();
 
-// Configuración de Seguridad y CORS ajustada para desarrollo/simulación
-app.use(helmet({ 
-  crossOriginResourcePolicy: false,
-  contentSecurityPolicy: false // Deshabilitado para permitir la carga fluida de scripts/assets locales en simulación
-}));
-
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-}));
-
 // Configuración & Logging Centralizado
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
 
 const API_URL = process.env.API_URL || '';
-const ADMIN_KEY = process.env.ADMIN_KEY || '';
+const ADMIN_KEY = process.env.ADMIN_KEY || config.SOVYX_ADMIN_KEY;
+
+// ============================================
+// CONFIGURACIÓN DE CIBERSEGURIDAD AVANZADA
+// ============================================
+
+// 1. Helmet: Protección de cabeceras HTTP en Producción
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://connect.facebook.net"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", API_URL, "https://graph.facebook.com", "https://*.render.com", "wss:"],
+      mediaSrc: ["'self'", "blob:", "data:"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  xssFilter: true,
+  noSniff: true,
+  hidePoweredBy: true
+}));
+
+// 2. Control de CORS Estricto
+const allowedOrigins = [
+  API_URL,
+  process.env.FRONTEND_URL,
+  '',
+  ''
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Permitir solicitudes sin origen (como apps móviles, Postman o llamadas entre scripts del servidor)
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    return callback(new Error('Acceso denegado por políticas de CORS.'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true
+}));
 
 // ============================================
 // 1. MIDDLEWARES PRINCIPALES
@@ -31,10 +68,7 @@ const ADMIN_KEY = process.env.ADMIN_KEY || '';
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ============================================
-// SERVIDOR DE ARCHIVOS ESTÁTICOS FRONTEND (TEMPORAL / SIMULACIÓN)
-// ============================================
-// 1. Exponer la carpeta public ubicada en la raíz (../public)
+// Servidor de archivos estáticos Frontend
 const publicPath = path.join(__dirname, '../public');
 
 app.use(express.static(publicPath));
@@ -42,10 +76,7 @@ app.use('/js', express.static(path.join(publicPath, 'js')));
 app.use('/video', express.static(path.join(publicPath, 'video')));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Fallback adicional por si la carpeta public está en el directorio actual
-app.use(express.static(path.join(process.cwd(), 'public')));
-
-// Logger global
+// Logger global de peticiones HTTP
 app.use((req, res, next) => {
   if (sovyxLogger && sovyxLogger.info) {
     sovyxLogger.info(`${req.method} ${req.path}`);
@@ -78,7 +109,6 @@ if (MONGO_URI) {
 // --- CONFIGURACIÓN & AUTENTICACIÓN ADMIN ---
 app.get('/api/config', (req, res) => res.json({ API_URL }));
 
-// --- AUTENTICACIÓN ADMIN ---
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
 
@@ -89,9 +119,7 @@ app.post('/api/admin/login', (req, res) => {
     });
   }
 
-  const masterKey = process.env.ADMIN_KEY || config.SOVYX_ADMIN_KEY;
-
-  if (!masterKey) {
+  if (!ADMIN_KEY) {
     console.error('🔴 [SECURITY WARNING] No hay ADMIN_KEY configurada en el entorno.');
     return res.status(500).json({ 
       success: false, 
@@ -99,7 +127,7 @@ app.post('/api/admin/login', (req, res) => {
     });
   }
 
-  if (password === masterKey) {
+  if (password === ADMIN_KEY) {
     return res.json({ 
       success: true, 
       message: 'Acceso autorizado' 
@@ -144,22 +172,12 @@ try {
   console.warn('⚠️ [WAITLIST ROUTES] No se pudo cargar waitlist.js:', e.message);
 }
 
-// --- CHAT IA2 & NUCLEO IA2 ---
+// --- CHAT IA2 & NÚCLEO IA2 ---
 try {
   const ia2Module = require('../modules/ia2-conversar') || require('../routes/ia2Routes');
   app.use(['/api/ia2', '/api/v1/ia2', '/api/v1/chat', '/api/chat'], ia2Module);
 } catch (e) {
-  console.warn('⚠️ [IA2 MODULE] No se pudo cargar IA2, activando fallback estático:', e.message);
-  
-  const chatFallback = (req, res) => {
-    res.json({
-      success: true,
-      reply: 'Sistema SODIE IA2: Cierre y estrategia de conversión activada.',
-      plan: 'Ecommerce Exclusivo',
-      status: 'ACTIVE'
-    });
-  };
-  app.post(['/api/v1/chat/message', '/api/chat', '/api/ia2/conversar'], chatFallback);
+  console.warn('⚠️ [IA2 MODULE] No se pudo cargar módulo IA2:', e.message);
 }
 
 // --- MÓDULO IA3 ANALYZER ---
@@ -167,7 +185,7 @@ try {
   const ia3AnalyzerModule = require('../modules/ia3-analyzer') || require('../routes/ia3Routes');
   app.use(['/api/ia3', '/api/v1/ia3'], ia3AnalyzerModule);
 } catch (e) {
-  console.warn('⚠️️ [IA3 ANALYZER] ia3-analyzer.js no cargado:', e.message);
+  console.warn('⚠️ [IA3 ANALYZER] ia3-analyzer.js no cargado:', e.message);
 }
 
 // --- CLIENT ID & MEDIA UPLOADS ---
@@ -182,13 +200,10 @@ try {
   const mediaRoutes = require('../routes/mediaRoutes');
   app.use(['/api/v1/media', '/api/media'], mediaRoutes);
 } catch (e) {
-  console.warn('⚠️ [MEDIA ROUTES] mediaRoutes.js no cargado, aplicando fallback:', e.message);
-  app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/upload-contract'], (req, res) => {
-    res.json({ success: true, message: 'Archivo procesado correctamente', url: '/uploads/demo.mp4' });
-  });
+  console.warn('⚠️ [MEDIA ROUTES] mediaRoutes.js no cargado:', e.message);
 }
 
-// --- OTROS ENDPOINTS DEL SISTEMA ---
+// --- ENDPOINTS OFICIALES ---
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 2;
   res.json({
@@ -200,80 +215,30 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   });
 });
 
-app.get('/api/health', (req, res) => res.json({ status: '🟢 SODIE OPERATIONAL', mode: process.env.NODE_ENV || 'production' }));
-
-// --- SIMULACIÓN MASTER ---
-app.get('/api/admin/run-simulation', (req, res) => {
-  const fs = require('fs');
-
-  global.expressApp = req.app;
-
-  const possiblePaths = [
-    path.join(process.cwd(), 'test/simulation-master.js'),
-    path.join(process.cwd(), 'tests/simulation-master.js'),
-    path.join(__dirname, '../test/simulation-master.js'),
-    path.join(__dirname, '../tests/simulation-master.js'),
-    path.join(__dirname, 'test/simulation-master.js'),
-    path.join(__dirname, 'tests/simulation-master.js')
-  ];
-
-  const validPath = possiblePaths.find(p => fs.existsSync(p));
-
-  if (!validPath) {
-    return res.status(404).json({
-      status: "error",
-      message: "No se encontró simulation-master.js. Rutas probadas:",
-      tested: possiblePaths
-    });
-  }
-
-  res.json({ 
-    status: "ok", 
-    message: `🚀 Simulación iniciada en segundo plano desde: ${validPath}. Revisa los logs en Render.` 
-  });
-
-  setImmediate(async () => {
-    try {
-      console.log(`\n========================================`);
-      console.log(`🔥 INICIANDO SIMULACIÓN DESDE HTTP`);
-      console.log(`📍 Ruta: ${validPath}`);
-      console.log(`========================================\n`);
-
-      delete require.cache[require.resolve(validPath)];
-      const simulation = require(validPath);
-
-      if (typeof simulation === 'function') {
-        await simulation();
-      } else if (typeof simulation.run === 'function') {
-        await simulation.run();
-      }
-
-      console.log(`\n========================================`);
-      console.log(`✅ SIMULACIÓN FINALIZADA CON ÉXITO`);
-      console.log(`========================================\n`);
-    } catch (err) {
-      console.error("❌ Error crítico en la ejecución de la simulación:", err.stack || err);
-    }
-  });
-});
+app.get('/api/health', (req, res) => res.json({ 
+  status: '🟢 SODIE OPERATIONAL', 
+  mode: process.env.NODE_ENV || 'production',
+  timestamp: new Date().toISOString()
+}));
 
 // ============================================
-// 4. RUTAS FRONTEND Y CONTROL DE ERRORES (404)
+// 4. RUTAS FRONTEND Y MANEJO DE ERRORES
 // ============================================
 
-// Si piden la raíz '/', servimos el index.html del frontend
+// Servir la vista principal en '/'
 app.get('/', (req, res) => {
   const indexPath = path.join(__dirname, '../public/index.html');
   res.sendFile(indexPath, (err) => {
     if (err) {
-      res.status(200).json({ status: 'online', system: 'SODIE Core AI Engine', version: '2.0.26' });
+      res.status(200).json({ status: 'online', system: 'SODIE Core AI Engine', version: '3.5.0' });
     }
   });
 });
 
-// Manejo 404 para peticiones no encontradas
+// Manejo de errores 404
 app.use((req, res) => res.status(404).json({ error: `Ruta ${req.url} no encontrada` }));
 
+// Manejo global de excepciones 500
 app.use((err, req, res, next) => {
   console.error('💥 Error no controlado:', err);
   res.status(500).json({ error: 'Falla interna en el motor de SODIE.' });
@@ -286,8 +251,9 @@ const PORT = process.env.PORT || config.port || 10000;
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
-  🚀 SODIE OS v2.0.26 - SISTEMA ACTIVADO Y SINCRONIZADO
+  🚀 SODIE OS v3.5.0 - PRODUCCIÓN Y CIBERSEGURIDAD ACTIVADA
   📡 Puerto: ${PORT}
+  🔒 Modo: ${process.env.NODE_ENV || 'production'}
   📂 Servidor Estático Frontend: ../public
   🎯 Límite: 3 Clientes Exclusivos ($75,000 USD Total)
   📂 Subida Media & CSV: /api/v1/media/upload
