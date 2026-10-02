@@ -7,8 +7,12 @@ const helmet = require('helmet');
 
 const app = express();
 
-// Configuración de Seguridad y CORS ajustada
-app.use(helmet({ crossOriginResourcePolicy: false }));
+// Configuración de Seguridad y CORS ajustada para desarrollo/simulación
+app.use(helmet({ 
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false // Deshabilitado para permitir la carga fluida de scripts/assets locales en simulación
+}));
+
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
@@ -27,10 +31,19 @@ const ADMIN_KEY = process.env.ADMIN_KEY || '';
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Archivos estáticos
-app.use(express.static(path.join(process.cwd(), 'public')));
-app.use(express.static(path.join(__dirname, 'public')));
+// ============================================
+// SERVIDOR DE ARCHIVOS ESTÁTICOS FRONTEND (TEMPORAL / SIMULACIÓN)
+// ============================================
+// 1. Exponer la carpeta public ubicada en la raíz (../public)
+const publicPath = path.join(__dirname, '../public');
+
+app.use(express.static(publicPath));
+app.use('/js', express.static(path.join(publicPath, 'js')));
+app.use('/video', express.static(path.join(publicPath, 'video')));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Fallback adicional por si la carpeta public está en el directorio actual
+app.use(express.static(path.join(process.cwd(), 'public')));
 
 // Logger global
 app.use((req, res, next) => {
@@ -65,11 +78,10 @@ if (MONGO_URI) {
 // --- CONFIGURACIÓN & AUTENTICACIÓN ADMIN ---
 app.get('/api/config', (req, res) => res.json({ API_URL }));
 
-// --- AUTENTICACIÓN ADMIN (PRODUCCIÓN - MÁXIMA SEGURIDAD) ---
+// --- AUTENTICACIÓN ADMIN ---
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
 
-  // 1. Requerir obligatoriamente contraseña
   if (!password || typeof password !== 'string') {
     return res.status(400).json({ 
       success: false, 
@@ -77,7 +89,6 @@ app.post('/api/admin/login', (req, res) => {
     });
   }
 
-  // 2. Clave configurada en las variables de entorno (.env)
   const masterKey = process.env.ADMIN_KEY || config.SOVYX_ADMIN_KEY;
 
   if (!masterKey) {
@@ -88,7 +99,6 @@ app.post('/api/admin/login', (req, res) => {
     });
   }
 
-  // 3. Comparación estricta
   if (password === masterKey) {
     return res.json({ 
       success: true, 
@@ -96,7 +106,6 @@ app.post('/api/admin/login', (req, res) => {
     });
   }
 
-  // Credenciales incorrectas
   return res.status(401).json({ 
     success: false, 
     message: 'Contraseña incorrecta' 
@@ -111,6 +120,14 @@ app.post('/api/v1/auth/biometrics/register', (req, res) => {
   res.json({ success: true, message: 'Biometría registrada correctamente' });
 });
 
+// --- WEBHOOKS & FIRMA DE CONTRATOS ---
+try {
+  const webhookRoutes = require('../routes/webhook');
+  app.use(['/api/webhook', '/api/v1/webhook'], webhookRoutes);
+} catch (e) {
+  console.warn('⚠️ [WEBHOOK ROUTES] No se pudo cargar webhook.js:', e.message);
+}
+
 // --- FACEBOOK & META ROUTES ---
 try {
   const facebookRoutes = require('../routes/facebookRoutes');
@@ -122,20 +139,18 @@ try {
 // --- WAITLIST / V4 ROUTES ---
 try {
   const waitlistRoutes = require('../routes/waitlist');
-  app.use(['/api/v1/waitlist', '/api/lista-espera', '/waitlist'], waitlistRoutes);
+  app.use(['/api/waitlist', '/api/v1/waitlist', '/api/lista-espera', '/waitlist'], waitlistRoutes);
 } catch (e) {
   console.warn('⚠️ [WAITLIST ROUTES] No se pudo cargar waitlist.js:', e.message);
 }
 
 // --- CHAT IA2 & NUCLEO IA2 ---
 try {
-  // Búsqueda flexible de la ruta de IA2
   const ia2Module = require('../modules/ia2-conversar') || require('../routes/ia2Routes');
   app.use(['/api/ia2', '/api/v1/ia2', '/api/v1/chat', '/api/chat'], ia2Module);
 } catch (e) {
   console.warn('⚠️ [IA2 MODULE] No se pudo cargar IA2, activando fallback estático:', e.message);
   
-  // Solo se registra el fallback SI FALLA el módulo real
   const chatFallback = (req, res) => {
     res.json({
       success: true,
@@ -152,7 +167,7 @@ try {
   const ia3AnalyzerModule = require('../modules/ia3-analyzer') || require('../routes/ia3Routes');
   app.use(['/api/ia3', '/api/v1/ia3'], ia3AnalyzerModule);
 } catch (e) {
-  console.warn('⚠️ [IA3 ANALYZER] ia3-analyzer.js no cargado:', e.message);
+  console.warn('⚠️️ [IA3 ANALYZER] ia3-analyzer.js no cargado:', e.message);
 }
 
 // --- CLIENT ID & MEDIA UPLOADS ---
@@ -185,7 +200,6 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   });
 });
 
-app.get('/', (req, res) => res.status(200).json({ status: 'online', system: 'SODIE Core AI Engine', version: '2.0.26' }));
 app.get('/api/health', (req, res) => res.json({ status: '🟢 SODIE OPERATIONAL', mode: process.env.NODE_ENV || 'production' }));
 
 // --- SIMULACIÓN MASTER ---
@@ -244,8 +258,20 @@ app.get('/api/admin/run-simulation', (req, res) => {
 });
 
 // ============================================
-// 4. CONTROL DE ERRORES Y MANEJO 404
+// 4. RUTAS FRONTEND Y CONTROL DE ERRORES (404)
 // ============================================
+
+// Si piden la raíz '/', servimos el index.html del frontend
+app.get('/', (req, res) => {
+  const indexPath = path.join(__dirname, '../public/index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      res.status(200).json({ status: 'online', system: 'SODIE Core AI Engine', version: '2.0.26' });
+    }
+  });
+});
+
+// Manejo 404 para peticiones no encontradas
 app.use((req, res) => res.status(404).json({ error: `Ruta ${req.url} no encontrada` }));
 
 app.use((err, req, res, next) => {
@@ -262,12 +288,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`
   🚀 SODIE OS v2.0.26 - SISTEMA ACTIVADO Y SINCRONIZADO
   📡 Puerto: ${PORT}
+  📂 Servidor Estático Frontend: ../public
   🎯 Límite: 3 Clientes Exclusivos ($75,000 USD Total)
   📂 Subida Media & CSV: /api/v1/media/upload
-  📋 Lista de Espera SODIE V4: /api/v1/waitlist/registro
-  💬 Chat IA2: /api/v1/chat & /api/ia2
-  📊 IA3 Analyzer: /api/ia3/analizar
-  📘 Conexión Facebook: /api/facebook/connect
+  📋 Lista de Espera SODIE V4: /api/waitlist/confirm-waitlist
+  📄 Webhook Contrato: /api/webhook/contrato-waitlist-firmado
   🟢 Base de Datos: ${MONGO_URI ? 'Configurada' : 'Pendiente URI'}
   `);
 });
