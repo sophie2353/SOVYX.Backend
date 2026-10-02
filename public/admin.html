@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
-    /* Estilos de layout para unificar con el Dashboard Principal */
     .admin-container {
       max-width: 1100px;
       margin: 0 auto;
@@ -138,15 +137,12 @@
 </head>
 <body class="admin-body" style="background: #0B0813; color: #FFFFFF; margin: 0; font-family: system-ui, -apple-system, sans-serif;">
 
-  <!-- PANTALLA LOGIN -->
   <main id="admin-login-view" style="display: flex;">
     <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; width: 100%;">
       <div style="background: #150F24; border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 20px; padding: 32px; width: 100%; max-width: 380px; text-align: center; box-shadow: 0 0 30px rgba(157, 0, 255, 0.15);">
-        <div style="font-size: 3rem; margin-bottom: 10px;">🦁</div>
         <h2 style="margin: 0 0 8px 0; font-size: 1.3rem;">Acceso Administrativo</h2>
         <p style="color: #A098B5; font-size: 0.85rem; margin-bottom: 20px;">Panel de control SODIE</p>
 
-        <!-- PASO 1: CONTRASEÑA -->
         <div id="step-password">
           <div style="text-align: left; margin-bottom: 16px;">
             <label for="admin-pass" style="color: #00FFCC; font-size: 0.8rem; display: block; margin-bottom: 6px;">Paso 1: Contraseña</label>
@@ -157,10 +153,9 @@
           </button>
         </div>
 
-        <!-- PASO 2: BIOMETRÍA -->
         <div id="step-biometric" style="display: none;">
           <p style="color: #00FFCC; font-size: 0.9rem; margin-bottom: 16px;">Paso 2: Validación Biométrica (WebAuthn)</p>
-          <button type="button" id="btn-admin-biometric" onclick="sodieValidarBiometria()" class="btn-action" style="width: 100%; padding: 14px; background: linear-gradient(90deg, #00FFCC, #9D00FF); color: #FFFFFF; font-size: 0.95rem; border: none;">
+          <button type="button" id="admin-biometric" onclick="sodieValidarBiometria()" class="btn-action" style="width: 100%; padding: 14px; background: linear-gradient(90deg, #00FFCC, #9D00FF); color: #FFFFFF; font-size: 0.95rem; border: none;">
             Verificar Biometría
           </button>
         </div>
@@ -170,13 +165,11 @@
     </div>
   </main>
 
-  <!-- DASHBOARD PRINCIPAL DE ADMIN -->
   <main id="admin-dashboard-view" class="admin-container" style="display: none;">
     
-    <!-- HEADER SUPERIOR -->
     <header class="admin-header-card">
       <div>
-        <h2 style="margin: 0; font-size: 1.4rem; color: #FFFFFF;">Panel de Control Admin 👺</h2>
+        <h2 style="margin: 0; font-size: 1.4rem; color: #FFFFFF;">Panel de Control Admin</h2>
         <p style="margin: 4px 0 0 0; color: #A098B5; font-size: 0.85rem;">Gestión central de SODIE, archivos y estado del sistema</p>
       </div>
       <button type="button" onclick="sodieCerrarSesionAdmin()" class="btn-action fuchsia">
@@ -184,10 +177,8 @@
       </button>
     </header>
 
-    <!-- GRID DE TARJETAS TIPO DASHBOARD -->
     <div class="admin-grid-layout">
 
-      <!-- TARJETA 1: NAVEGACIÓN -->
       <div class="admin-card">
         <h3 class="admin-card-title">Vista Rápida</h3>
         <p style="color: #A098B5; font-size: 0.8rem; margin-bottom: 14px;">Accede a las vistas públicas del sistema para verificar cambios.</p>
@@ -197,30 +188,29 @@
         </div>
       </div>
 
-      <!-- TARJETA 2: TIMERS Y CRONÓMETROS -->
       <div class="admin-card">
         <h3 class="admin-card-title">Timer de Lanzamiento (24h)</h3>
         <div class="timer-box">
           <div id="admin-timer-display" class="timer-display">24:00:00</div>
         </div>
         <div class="btn-group-3">
-          <button type="button" onclick="sodieIniciarCronometro24h()" class="btn-action">▶️ Iniciar</button>
-          <button type="button" onclick="sodiePausarCronometro()" class="btn-action fuchsia">⏸️ Pausar</button>
-          <button type="button" onclick="sodieReiniciarCronometro()" class="btn-action fuchsia">🔄 Reset</button>
+          <button type="button" onclick="sodieIniciarCronometro24h()" class="btn-action">Iniciar</button>
+          <button type="button" onclick="sodiePausarCronometro()" class="btn-action fuchsia">Pausar</button>
+          <button type="button" onclick="sodieReiniciarCronometro()" class="btn-action fuchsia">Reset</button>
         </div>
       </div>
 
-      <!-- TARJETA 3: SUBIDA DE VIDEO -->
-      <div id= "dashboard-video" class="admin-card">
+      <div id="dashboard-video" class="admin-card">
         <h3 class="admin-card-title">Video Demo Principal</h3>
+        <div class="file-drop-zone">
+          <input type="file" id="admin-video-file" accept="video/mp4,video/*" />
         </div>
         <button type="button" id="btn-upload-video" onclick="sodieSubirVideoDemo()" class="btn-action" style="width: 100%;">
           Subir Video Demo
         </button>
       </div>
 
-      <!-- TARJETA 4: BASE DE DATOS EXCEL -->
-      <div id= "admin-excel-id" class="admin-card">
+      <div id="admin-excel-id" class="admin-card">
         <h3 class="admin-card-title">Audiencia Excel / CSV</h3>
         <div class="file-drop-zone">
           <input type="file" id="admin-excel-file" accept=".csv, .xlsx, .xls" />
@@ -230,7 +220,6 @@
         </button>
       </div>
 
-      <!-- TARJETA 5: ACCIONES CRÍTICAS (ANCHO COMPLETO) -->
       <div id="admin-activate-close" class="admin-card full-width" style="border-color: rgba(255, 0, 127, 0.3);">
         <h3 class="admin-card-title danger">Disparadores de Campaña y V4</h3>
         <p style="color: #A098B5; font-size: 0.85rem; margin-bottom: 16px;">Controles directos para cambiar el estado global de la app.</p>
