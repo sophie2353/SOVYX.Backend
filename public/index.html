@@ -6,10 +6,8 @@
   <title>SODIE</title>
   <link rel="stylesheet" href="styles.css">
   
-  <!-- SheetJS para lectura/procesamiento de Excel en cliente -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- Meta Pixel Code -->
   <script>
   !function(f,b,e,v,n,t,s)
   {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -28,7 +26,6 @@
 </head>
 <body>
 
-  <!-- TOAST NOTIFICACIÓN -->
   <div id="toast-notification" class="toast-bubble hidden">
     <div class="toast-content">
       <span class="toast-icon"></span>
@@ -39,7 +36,6 @@
     </div>
   </div>
 
-  <!-- SPLASH SCREEN -->
   <div id="view-splash" class="full-screen">
     <div class="splash-content">
       <div class="logo-wrapper">
@@ -110,11 +106,10 @@
         <a href="admin.html" class="admin-btn-link">
           Admin
         </a>
-        <button type="button" class="btn-icon btn-admin-trigger" id="btn-sodie-logo-trigger" onclick="sodieContarToquesAdmin()">🦁</button>
+        <button type="button" class="btn-icon btn-admin-trigger" id="btn-sodie-logo-trigger" onclick="sodieContarToquesAdmin()"></button>
       </div>
     </header>
 
-    <!-- 1. MÉTRICAS -->
     <section class="metrics-section">
       <h3 class="section-title">Métricas en Tiempo Real</h3>
       <div class="metrics-slider" id="metrics-slider">
@@ -172,7 +167,6 @@
         </article>
       </div>
 
-      <!-- SUB-SECCIÓN LEVE PARA HINT SLIDER -->
       <div style="text-align: right; margin-top: 8px;">
         <span style="display: inline-block; font-size: 0.72rem; padding: 4px 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.15); border-radius: 20px; color: rgba(255, 255, 255, 0.6);">
           deslizar a la izquierda para ver más resultados
@@ -180,21 +174,18 @@
       </div>
     </section>
 
-    <!-- 2. ALTERNATIVA DE CONTROL CON SUB-SECCIONES ESTRUCTURADAS -->
     <section id="card-alternative-control" class="glass-card-dash alternative-section">
       <div class="chat-header" style="margin-bottom: 12px;">
         <h3 class="section-title mint-txt">Sección de Alternativa</h3>
         <span class="badge-client badge-mint-border">SODIE v3.5</span>
       </div>
 
-      <!-- ENCABEZADO ESTRUCTURADO -->
       <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.15); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
         <p class="step-desc highlight-white" style="margin: 0; font-weight: 600;">
           Con SODIE obtienes el control de tu cuenta publicitaria:
         </p>
       </div>
       
-      <!-- SUB-TARJETAS PARA CADA PUNTO -->
       <div style="display: flex; flex-direction: column; gap: 10px;">
         
         <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 12px 14px;">
@@ -224,7 +215,6 @@
 
       </div>
 
-      <!-- CIERRE EN SUB-TARJETA -->
       <div style="background: rgba(217, 70, 239, 0.05); border: 1px solid rgba(217, 70, 239, 0.15); border-radius: 10px; padding: 12px; margin-top: 14px;">
         <p class="step-desc alt-closing-text" style="margin: 0; font-size: 0.88rem;">
           Podrás ver cómo conseguí estos resultados usando SODIE, cuánto pierdes con mala segmentación y cuántos cupos quedan disponibles.
@@ -232,7 +222,6 @@
       </div>
     </section>
 
-    <!-- 3. DEMO BORRADOR VIDEO -->
     <section id="card-demo-video" class="glass-card-dash video-section">
       <div class="chat-header" style="margin-bottom: 12px;">
         <h3 class="section-title mint-txt">Demostración en Vivo</h3>
@@ -248,7 +237,6 @@
       </div>
     </section>
 
-    <!-- 4. ANALIZA TUS MÉTRICAS ACTUALES CON IA3 -->
     <section id="ia3-calculator-analyzer" class="glass-card-dash metrics-analyzer-section mb-space">
       <h3 class="section-title mint-txt section-title-md">Analiza Tus Métricas Actuales</h3>
       <p class="step-desc step-desc-sm" style="margin-bottom: 16px;">
@@ -270,7 +258,6 @@
         ANALIZAR CON IA3
       </button>
 
-      <!-- BURBUJA / MODAL FLOTANTE DE RESULTADOS IA3 -->
       <div id="ia3-modal-result" class="ia3-float-card hidden">
         <h4 class="fuchsia-txt ia3-modal-title">Diagnóstico de Rendimiento IA3</h4>
         
@@ -305,7 +292,6 @@
       </div>
     </section>
 
-    <!-- 5. CHAT WEB INTEGRADO CON IA2 -->
     <section id="chat-section-anchor" class="glass-card-dash chat-section">
       <div class="chat-header" style="margin-bottom: 12px;">
         <h3 class="section-title">Chat Web</h3>
@@ -332,7 +318,6 @@
         <button type="button" class="opt-btn" data-payload="comparacion">Reservar Slot</button>
       </div>
 
-      <!-- SUB-SECCIÓN LEVE PARA HINT SLIDER CHAT -->
       <div style="text-align: right; margin-bottom: 12px;">
         <span style="display: inline-block; font-size: 0.72rem; padding: 4px 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.15); border-radius: 20px; color: rgba(255, 255, 255, 0.6);">
           deslizar a la izquierda para ver más opciones
@@ -345,15 +330,12 @@
       </div>
     </section>
 
-    <!-- 6. SECCIÓN DE PAGO FINAL / LISTA DE ESPERA -->
     <section id="pf-card" class="glass-card-dash pf-section pf-section-styled">
       
-      <!-- CONTENIDO A: FLUJO DE PAGO ACTIVO -->
       <div id="pf-active-payment-flow">
         
         <div id="pf-intro-card" class="text-center">
           
-          <!-- BLOQUE 1: TÍTULO Y DESCRIPCIÓN PRINCIPAL -->
           <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.15); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
             <h3 id="pf-main-title" class="section-title mint-txt pf-title-size" style="margin-bottom: 10px;">Reserva de Slot e Inyección Automatizada</h3>
             <p class="step-desc pf-description" style="margin: 0; line-height: 1.5;">
@@ -361,7 +343,6 @@
             </p>
           </div>
 
-          <!-- BLOQUE 2: DETALLES DEL PLAN Y TARJETA DE PRECIOS -->
           <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(217, 70, 239, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
             <div class="flex-between-center" style="margin-bottom: 12px;">
               <h4 class="mint-txt plan-card-title" style="margin: 0; font-size: 1.1rem;">Plan de Financiación SODIE</h4>
@@ -378,7 +359,6 @@
                   <span>• Pago Inicial (28%):</span>
                   <strong>$7.000 USDC</strong>
                 </li>
-                <!-- ELIMINADO EL "c/u" -->
                 <li style="display: flex; justify-content: space-between;">
                   <span>• 3 Cuotas Semanales:</span>
                   <strong>$6.000 USDC</strong>
@@ -397,7 +377,6 @@
 
         </div>
 
-        <!-- PASO 1: USER DE FACEBOOK -->
         <div id="pf-step-billing" class="form-billing-box margin-v-sm hidden step-billing-custom">
           <h4 class="fuchsia-txt step-title-center">Paso 1: Conexión con Meta Ads</h4>
           
@@ -420,7 +399,6 @@
           </button>
         </div>
 
-        <!-- PASO 1.5: IFRAME DE LA PASARELA DE PAGO -->
         <div id="pf-step-iframe" class="iframe-payment-box margin-v-sm hidden iframe-box-custom">
           <div class="flex-between-center mb-small">
             <h4 class="mint-txt iframe-head-title">Pasarela de Pago Segura</h4>
@@ -434,7 +412,6 @@
           </div>
         </div>
 
-        <!-- PASO 2: CARGA DE EXCEL -->
         <div id="pf-step-excel" class="upload-excel-box margin-v-sm hidden upload-box-custom">
           <h4 class="mint-txt mb-small">Paso 2: Subir Excel de Compradores</h4>
           <p class="step-desc step-desc-upload">
@@ -449,7 +426,6 @@
         </div>
       </div>
 
-      <!-- CONTENIDO B: LISTA DE ESPERA CON MONTO DE 2.000 USDC -->
       <div id="pf-waitlist-block" class="hidden text-center margin-v-sm waitlist-container-styled">
         <span class="badge-client badge-soldout">CUPOS AGOTADOS</span>
         <h3 class="section-title fuchsia-txt waitlist-title" style="margin-top: 10px;">Unirse a la Lista de Espera Exclusiva V4</h3>
@@ -480,7 +456,8 @@
             class="input-dark-custom" 
           />
           
-          <!-- LINK ÚNICO DIRECTO A PAGO DE RESERVA V4 DE 2.000 USDC -->
+          <button type="submit" id="btn-waitlist-access" class="hidden"></button>
+          
           <a href="https://nowpayments.io/payment/?iid=5476660121&source=button" 
              id="btn-waitlist-checkout" 
              target="_blank" 
@@ -493,7 +470,6 @@
 
     </section>
 
-    <!-- 7. CRONÓMETRO REGRESIVO -->
     <section class="glass-card-dash timer-section text-center">
       <span class="timer-label" id="timer-status-title" style="display: block; margin-bottom: 8px;">TIEMPO PARA PRÓXIMA APERTURA DE CUPOS</span>
       <div id="timer-main-display" class="timer-digits mint-txt" style="margin-bottom: 8px;">720:00:00</div>
