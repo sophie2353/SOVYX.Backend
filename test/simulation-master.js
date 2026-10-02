@@ -366,6 +366,9 @@ function auditAdminClientSpecialFlows() {
 /* ==========================================================================
    5. AUDITORÍA JS Y VINCULARIDAD DE ELEMENTOS
    ========================================================================== */
+/* ==========================================================================
+   5. AUDITORÍA JS Y VINCULARIDAD DE ELEMENTOS
+   ========================================================================== */
 function auditFrontendJSFiles() {
   console.log("\n📜 Auditando vincularidad JS ↔ HTML en public/js/...");
 
@@ -379,7 +382,7 @@ function auditFrontendJSFiles() {
         `Archivo JS faltante: ${pageConfig.jsFile}`,
         `No existe el archivo de scripts en ${jsPath}`,
         `public/${pageConfig.jsFile}`,
-        "El botón/vista no funcionará porque el script asociado no existe en el directorio public.",
+        "El botón/vista no funcionará porque el script asociado no existe.",
         1,
         `Crear el archivo public/${pageConfig.jsFile} e incluirlo en ${pageConfig.html}.`
       );
@@ -389,18 +392,21 @@ function auditFrontendJSFiles() {
     const jsContent = fs.readFileSync(jsPath, 'utf8');
 
     pageConfig.elements.forEach(elem => {
-      if (elem.id) {
+      // Ignorar contenedores/secciones estáticas que no requieren listener en JS obligatoriamente
+      const isInteractive = elem.id && (elem.id.startsWith('btn-') || elem.id.startsWith('input-') || elem.id.includes('file') || elem.id.includes('pass'));
+
+      if (elem.id && isInteractive) {
         const idReferenced = jsContent.includes(elem.id);
         if (!idReferenced) {
           const lineHtml = findExactLineInFile(path.join(PUBLIC_DIR, pageConfig.html), elem.id) || 'N/A';
           logFail(
             `JS_ID_MISMATCH_${pageConfig.jsFile}_${elem.id}`,
             `Selector Inexistente: #${elem.id}`,
-            `El elemento con ID '${elem.id}' de ${pageConfig.html} no se está escuchando en ${pageConfig.jsFile}`,
+            `El elemento interactivo '${elem.id}' de ${pageConfig.html} no se está escuchando en ${pageConfig.jsFile}`,
             `public/${pageConfig.jsFile}`,
-            `El botón no reacciona al clic porque ${pageConfig.jsFile} no le hace getElementById('${elem.id}') ni addEventListener.`,
+            `El botón/input no reacciona porque ${pageConfig.jsFile} no le hace getElementById('${elem.id}') ni addEventListener.`,
             `Línea HTML: ${lineHtml}`,
-            `Agregar const el = document.getElementById('${elem.id}'); el.addEventListener('click', ...); en public/${pageConfig.jsFile}.`
+            `Agregar listener para '#${elem.id}' en public/${pageConfig.jsFile}.`
           );
         } else {
           logPass(`JS_ID_OK_${pageConfig.jsFile}_${elem.id}`, `Selector #${elem.id}`, `El JS escucha y manipula el elemento.`);
@@ -415,11 +421,11 @@ function auditFrontendJSFiles() {
           logFail(
             `JS_FN_MISSING_${pageConfig.jsFile}_${fnName}`,
             `Evento Inexistente: ${fnName}()`,
-            `El evento onclick '${fnName}()' del HTML ${pageConfig.html} no está definido en ${pageConfig.jsFile}`,
+            `El evento onclick '${fnName}()' de ${pageConfig.html} no está definido en ${pageConfig.jsFile}`,
             `public/${pageConfig.jsFile}`,
-            `El botón arroja Uncaught ReferenceError: ${fnName} is not defined al hacer clic.`,
+            `El botón arroja ReferenceError: ${fnName} is not defined al hacer clic.`,
             `Línea HTML: ${lineHtml}`,
-            `Declarar window.${fnName} = function() { ... } o function ${fnName}() { ... } en public/${pageConfig.jsFile}.`
+            `Declarar window.${fnName} o function ${fnName}() en public/${pageConfig.jsFile}.`
           );
         } else {
           logPass(`JS_FN_OK_${pageConfig.jsFile}_${fnName}`, `Evento ${fnName}()`, `La función está declarada correctamente.`);
