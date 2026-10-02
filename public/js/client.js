@@ -107,6 +107,12 @@ function updateClientSessionUI() {
     clientIdBadge.textContent = `Cliente: ${CLIENT_STATE.clientId} ${CLIENT_STATE.isAuthenticated ? '🔒 (Biometría Activa)' : '⚠️ (Sin Biometría)'}`;
   }
 
+  // Actualizar vista global de autenticación si existe
+  const authView = document.getElementById('client-auth-view');
+  if (authView) {
+    authView.style.display = CLIENT_STATE.isAuthenticated ? 'none' : 'block';
+  }
+
   // Actualizar estado visual de los botones biométricos
   const btnAuth = document.getElementById('btn-biometric-auth');
   if (btnAuth && CLIENT_STATE.isAuthenticated) {
@@ -118,9 +124,6 @@ function updateClientSessionUI() {
 /* ==========================================================================
    3. AUTENTICACIÓN BIOMÉTRICA (WEBAUTHN - REGISTRO Y LOGIN)
    ========================================================================== */
-/**
- * Convierte un ArrayBuffer a formato Base64URL
- */
 function arrayBufferToBase64Url(buffer) {
   return btoa(String.fromCharCode(...new Uint8Array(buffer)))
     .replace(/\+/g, '-')
@@ -128,9 +131,6 @@ function arrayBufferToBase64Url(buffer) {
     .replace(/=+$/, '');
 }
 
-/**
- * Convierte una cadena Base64URL a Uint8Array
- */
 function base64UrlToUint8Array(base64Url) {
   const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);
   const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -142,9 +142,31 @@ function base64UrlToUint8Array(base64Url) {
   return outputArray;
 }
 
-/**
- * Registro de nueva credencial biométrica / Passkey para el clientId actual
- */
+// Funciones globales expuestas para atributos onclick en HTML
+window.sodieMostrarRegistroBiometrico = function() {
+  console.log("🧬 Desplegando registro biométrico...");
+  const regBox = document.getElementById('client-register-box');
+  const loginBox = document.getElementById('client-login-box');
+  if (regBox) regBox.style.display = 'block';
+  if (loginBox) loginBox.style.display = 'none';
+};
+
+window.sodieOcultarRegistroBiometrico = function() {
+  console.log("🙈 Ocultando registro biométrico...");
+  const regBox = document.getElementById('client-register-box');
+  const loginBox = document.getElementById('client-login-box');
+  if (regBox) regBox.style.display = 'none';
+  if (loginBox) loginBox.style.display = 'block';
+};
+
+window.sodieRegistrarBiometriaCliente = async function() {
+  await registrarBiometriaCliente();
+};
+
+window.sodieLoginBiometricoCliente = async function() {
+  await iniciarSesionBiometricaCliente();
+};
+
 async function registrarBiometriaCliente() {
   if (!window.PublicKeyCredential) {
     showToast('Biometría No Soportada', 'Tu navegador o dispositivo no soporta autenticación biométrica WebAuthn.', true);
@@ -169,7 +191,7 @@ async function registrarBiometriaCliente() {
       },
       pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
       authenticatorSelection: {
-        authenticatorAttachment: "platform", // Huella / FaceID integrado en el dispositivo
+        authenticatorAttachment: "platform",
         userVerification: "required"
       },
       timeout: 60000
@@ -182,23 +204,25 @@ async function registrarBiometriaCliente() {
     if (credential) {
       const rawId = arrayBufferToBase64Url(credential.rawId);
       
-      // Persistir la credencial biométrica asociada al id de este cliente
       localStorage.setItem(`sodie_biometric_id_${clientId}`, rawId);
       sessionStorage.setItem('sodie_authenticated_client_id', clientId);
       CLIENT_STATE.isAuthenticated = true;
 
       updateClientSessionUI();
+      sodieOcultarRegistroBiometrico();
       showToast('Registro Exitoso', `Acceso biométrico registrado correctamente para ${clientId}.`);
     }
   } catch (error) {
     console.error('Error al registrar biometría:', error);
+    const authError = document.getElementById('client-auth-error');
+    if (authError) {
+      authError.textContent = '❌ Error al completar registro biométrico.';
+      authError.style.display = 'block';
+    }
     showToast('Error Biométrico', 'No se pudo completar el registro biométrico.', true);
   }
 }
 
-/**
- * Inicio de sesión mediante biometría / Passkey previa
- */
 async function iniciarSesionBiometricaCliente() {
   if (!window.PublicKeyCredential) {
     showToast('Biometría No Soportada', 'Tu navegador no soporta autenticación biométrica.', true);
@@ -239,46 +263,104 @@ async function iniciarSesionBiometricaCliente() {
     }
   } catch (error) {
     console.error('Error al iniciar sesión biométrica:', error);
+    const authError = document.getElementById('client-auth-error');
+    if (authError) {
+      authError.textContent = '❌ Verificación biométrica fallida.';
+      authError.style.display = 'block';
+    }
     showToast('Error de Inicio de Sesión', 'Verificación biométrica fallida o cancelada.', true);
   }
 }
 
 /* ==========================================================================
-   4. EVENT LISTENERS DE INTERFAZ
+   4. EVENT LISTENERS DE INTERFAZ Y BINDINGS DE SELECTORES (CORREGIDOS)
    ========================================================================== */
 function setupEventListeners() {
-  // 0. Biometría (Registro y Login)
-  const btnRegisterBio = document.getElementById('btn-biometric-register');
-  if (btnRegisterBio) {
-    btnRegisterBio.addEventListener('click', registrarBiometriaCliente);
+  // Brand Header
+  const brandTitle = document.getElementById('header-brand-title');
+  if (brandTitle && !brandTitle.dataset.bound) {
+    brandTitle.addEventListener('click', () => {
+      window.location.reload();
+    });
+    brandTitle.dataset.bound = "true";
   }
 
-  const btnLoginBio = document.getElementById('btn-biometric-login') || document.getElementById('btn-biometric-auth');
-  if (btnLoginBio) {
-    btnLoginBio.addEventListener('click', iniciarSesionBiometricaCliente);
+  // Biometría (Registro y Login)
+  const btnRegisterBio = document.getElementById('btn-client-biometric-reg') || document.getElementById('btn-biometric-register');
+  if (btnRegisterBio && !btnRegisterBio.dataset.bound) {
+    btnRegisterBio.addEventListener('click', window.sodieRegistrarBiometriaCliente);
+    btnRegisterBio.dataset.bound = "true";
   }
 
-  // 1. Subir Excel (Paso Diario cada 24 horas)
+  const btnLoginBio = document.getElementById('btn-client-biometric-login') || document.getElementById('btn-biometric-login') || document.getElementById('btn-biometric-auth');
+  if (btnLoginBio && !btnLoginBio.dataset.bound) {
+    btnLoginBio.addEventListener('click', window.sodieLoginBiometricoCliente);
+    btnLoginBio.dataset.bound = "true";
+  }
+
+  // Input Email Registro
+  const clientEmailReg = document.getElementById('client-email-reg');
+  if (clientEmailReg && !clientEmailReg.dataset.bound) {
+    clientEmailReg.addEventListener('input', (e) => {
+      console.log('📧 Email ingresado:', e.target.value);
+    });
+    clientEmailReg.dataset.bound = "true";
+  }
+
+  // Subir Excel (Paso Diario cada 24 horas)
   const btnUpload = document.getElementById('btn-client-upload-excel');
-  if (btnUpload) {
+  if (btnUpload && !btnUpload.dataset.bound) {
     btnUpload.addEventListener('click', sodieFlujoInyeccionCliente);
+    btnUpload.dataset.bound = "true";
   }
 
-  // 2. Activar Campaña en Meta Ads
+  // Card Injection Flow
+  const cardInjectionFlow = document.getElementById('card-injection-flow');
+  if (cardInjectionFlow && !cardInjectionFlow.dataset.bound) {
+    cardInjectionFlow.addEventListener('click', (e) => {
+      console.log('⚡ Clic en Card Injection Flow');
+      sodieFlujoInyeccionCliente();
+    });
+    cardInjectionFlow.dataset.bound = "true";
+  }
+
+  // Activar Campaña en Meta Ads
   const btnActivate = document.getElementById('btn-client-activate-campaign');
-  if (btnActivate) {
+  if (btnActivate && !btnActivate.dataset.bound) {
     btnActivate.addEventListener('click', sodieConfirmarActivacionCliente);
+    btnActivate.dataset.bound = "true";
   }
 
-  // 3. Botones de Confirmación de Pago Semanal ($6,000 USDT) - Sin llamadas a backend
+  // Botones de Confirmación de Pago Semanal ($6,000 USDT)
   const btnPaySemana1 = document.getElementById('btn-pay-semana1');
-  if (btnPaySemana1) btnPaySemana1.addEventListener('click', (e) => sodieProcesarPagoSemanal(e, 1));
+  if (btnPaySemana1 && !btnPaySemana1.dataset.bound) {
+    btnPaySemana1.addEventListener('click', (e) => sodieProcesarPagoSemanal(e, 1));
+    btnPaySemana1.dataset.bound = "true";
+  }
 
   const btnPaySemana2 = document.getElementById('btn-pay-semana2');
-  if (btnPaySemana2) btnPaySemana2.addEventListener('click', (e) => sodieProcesarPagoSemanal(e, 2));
+  if (btnPaySemana2 && !btnPaySemana2.dataset.bound) {
+    btnPaySemana2.addEventListener('click', (e) => sodieProcesarPagoSemanal(e, 2));
+    btnPaySemana2.dataset.bound = "true";
+  }
 
   const btnPaySemana3 = document.getElementById('btn-pay-semana3');
-  if (btnPaySemana3) btnPaySemana3.addEventListener('click', (e) => sodieProcesarPagoSemanal(e, 3));
+  if (btnPaySemana3 && !btnPaySemana3.dataset.bound) {
+    btnPaySemana3.addEventListener('click', (e) => sodieProcesarPagoSemanal(e, 3));
+    btnPaySemana3.dataset.bound = "true";
+  }
+
+  // Slider e Indicadores de Métricas
+  const metricsSlider = document.getElementById('metrics-slider');
+  if (metricsSlider && !metricsSlider.dataset.bound) {
+    metricsSlider.addEventListener('input', (e) => {
+      const val = e.target.value;
+      console.log('🎚️ Nivel del slider de métricas:', val);
+      const metricActivos = document.getElementById('metric-activos');
+      if (metricActivos) metricActivos.textContent = `${val}% Proyectado`;
+    });
+    metricsSlider.dataset.bound = "true";
+  }
 }
 
 /* ==========================================================================
@@ -305,12 +387,16 @@ function showToast(title, body, isError = false) {
 }
 
 /* ==========================================================================
-   6. MÉTRICAS DE RENDIMIENTO (/api/facebook/metrics)
+   6. MÉTRICAS DE RENDIMIENTO Y ACTUALIZACIÓN DINÁMICA
    ========================================================================== */
 async function fetchClientMetrics() {
   const elSpend = document.getElementById('metric-spend');
   const elReach = document.getElementById('metric-reach');
   const elVisitors = document.getElementById('metric-visitors');
+
+  const elSpendStatus = document.getElementById('metric-spend-status');
+  const elReachStatus = document.getElementById('metric-reach-status');
+  const elActivos = document.getElementById('metric-activos');
 
   try {
     const res = await fetch(`${getBaseUrl()}/api/facebook/metrics?clientId=${encodeURIComponent(CLIENT_STATE.clientId)}`);
@@ -321,11 +407,19 @@ async function fetchClientMetrics() {
       if (elSpend) elSpend.textContent = `$${(data.spend || 0).toLocaleString()}`;
       if (elReach) elReach.textContent = (data.reach || 0).toLocaleString();
       if (elVisitors) elVisitors.textContent = (data.visitors || 0).toLocaleString();
+
+      if (elSpendStatus) elSpendStatus.textContent = '🟢 Presupuesto en optimización';
+      if (elReachStatus) elReachStatus.textContent = '🟢 Cobertura activa';
+      if (elActivos) elActivos.textContent = `${data.activos || 1} Campaña(s) Activa(s)`;
     }
   } catch (error) {
     if (elSpend) elSpend.textContent = '$0';
     if (elReach) elReach.textContent = '0';
     if (elVisitors) elVisitors.textContent = '0';
+
+    if (elSpendStatus) elSpendStatus.textContent = '⚪ Esperando activación';
+    if (elReachStatus) elReachStatus.textContent = '⚪ Sin tráfico registrado';
+    if (elActivos) elActivos.textContent = '0 Campañas';
   }
 }
 
@@ -346,7 +440,6 @@ async function sodieFlujoInyeccionCliente() {
     return;
   }
 
-  // Verificar si se alcanzó el día 7 y está bloqueado por falta de pago
   const elapsedDays = Math.floor(CLIENT_STATE.elapsedSeconds / 86400);
   if (elapsedDays >= 7 && !CLIENT_STATE.paymentConfirmed) {
     showToast('Pago Requerido', 'Debes liquidar la cuota semanal ($6,000 USDT) para habilitar la inyección del siguiente ciclo.', true);
@@ -380,10 +473,8 @@ async function sodieFlujoInyeccionCliente() {
       btnUpload.style.background = 'rgba(0, 255, 204, 0.2)';
     }
 
-    // Reiniciar temporizador de 24 horas para la siguiente inyección
     localStorage.setItem(`sodie_last_excel_time_${CLIENT_STATE.clientId}`, Date.now().toString());
 
-    // Mostrar botón de activar campaña si ya está pagado
     const btnActivate = document.getElementById('btn-client-activate-campaign');
     if (btnActivate) {
       btnActivate.classList.remove('hidden');
@@ -412,7 +503,6 @@ function sodieProcesarPagoSemanal(event, weekNumber) {
 
   CLIENT_STATE.currentWeek = weekNumber;
 
-  // Solicitud local del Hash de Transacción On-Chain (sin llamadas a pasarelas backend)
   const txHash = prompt(`Ingresa el Hash de Transacción (txHash) de Polygon para verificar el pago de $6,000 USDT (Semana ${weekNumber}):`);
 
   if (!txHash || !txHash.trim()) {
@@ -422,7 +512,6 @@ function sodieProcesarPagoSemanal(event, weekNumber) {
 
   const cleanTxHash = txHash.trim();
 
-  // Guardar confirmación en el estado y almacenamiento del cliente
   CLIENT_STATE.paymentConfirmed = true;
   localStorage.setItem(`sodie_payment_week_${weekNumber}_${CLIENT_STATE.clientId}`, JSON.stringify({
     txHash: cleanTxHash,
@@ -432,11 +521,9 @@ function sodieProcesarPagoSemanal(event, weekNumber) {
 
   showToast('Pago Registrado', `Cuota de $6,000 USDT registrada correctamente para ${CLIENT_STATE.clientId} (Semana ${weekNumber}).`);
 
-  // Ocultar la advertencia de bloqueo si existía
   const lockWarning = document.getElementById('weekly-payment-lock-warning');
   if (lockWarning) lockWarning.classList.add('hidden');
 
-  // Marcar botón de la semana como pagado
   const btnWeek = document.getElementById(`btn-pay-semana${weekNumber}`);
   if (btnWeek) {
     btnWeek.textContent = `✓ Cuota Semana ${weekNumber} Validada ($6,000 USDT)`;
@@ -444,7 +531,6 @@ function sodieProcesarPagoSemanal(event, weekNumber) {
     btnWeek.onclick = null;
   }
 
-  // Habilitar botón de Activar Campaña
   const btnActivate = document.getElementById('btn-client-activate-campaign');
   if (btnActivate) {
     btnActivate.classList.remove('hidden');
@@ -534,7 +620,6 @@ function initGlobalAndWeeklyTimers() {
 
   if (CLIENT_STATE.timerInterval) clearInterval(CLIENT_STATE.timerInterval);
 
-  // Inicialización del timestamp global (28 días = 4 semanas)
   const savedStartTime = localStorage.getItem(`sodie_timer_start_${CLIENT_STATE.clientId}`);
   if (savedStartTime) {
     CLIENT_STATE.startTimeStamp = parseInt(savedStartTime, 10);
@@ -543,15 +628,14 @@ function initGlobalAndWeeklyTimers() {
     localStorage.setItem(`sodie_timer_start_${CLIENT_STATE.clientId}`, CLIENT_STATE.startTimeStamp.toString());
   }
 
-  const MAX_GLOBAL_SECONDS = 28 * 86400; // 28 Días
-  const SECONDS_24H = 24 * 3600;         // 24 Horas
-  const SECONDS_WEEK = 7 * 86400;        // 7 Días
+  const MAX_GLOBAL_SECONDS = 28 * 86400;
+  const SECONDS_24H = 24 * 3600;
+  const SECONDS_WEEK = 7 * 86400;
 
   const updateTimerTick = () => {
     const now = Date.now();
     CLIENT_STATE.elapsedSeconds = Math.floor((now - CLIENT_STATE.startTimeStamp) / 1000);
 
-    // Cierre de ciclo global en Semana 4 (28 Días)
     if (CLIENT_STATE.elapsedSeconds >= MAX_GLOBAL_SECONDS) {
       CLIENT_STATE.elapsedSeconds = MAX_GLOBAL_SECONDS;
       const sectionComplete = document.getElementById('section-week-4-complete');
@@ -559,7 +643,6 @@ function initGlobalAndWeeklyTimers() {
       if (CLIENT_STATE.timerInterval) clearInterval(CLIENT_STATE.timerInterval);
     }
 
-    // A. Formatear Cronómetro Global (28d 00h 00m 00s)
     const gDays = Math.floor(CLIENT_STATE.elapsedSeconds / 86400);
     const gHours = Math.floor((CLIENT_STATE.elapsedSeconds % 86400) / 3600).toString().padStart(2, '0');
     const gMins = Math.floor((CLIENT_STATE.elapsedSeconds % 3600) / 60).toString().padStart(2, '0');
@@ -569,7 +652,6 @@ function initGlobalAndWeeklyTimers() {
       globalTimerDisplay.textContent = `${gDays}d ${gHours}h ${gMins}m ${gSecs}s`;
     }
 
-    // B. Formatear Cronómetro Diario para Inyección Excel (24 Hours)
     const lastExcelTime = localStorage.getItem(`sodie_last_excel_time_${CLIENT_STATE.clientId}`);
     let dailyElapsed = 0;
     if (lastExcelTime) {
@@ -587,7 +669,6 @@ function initGlobalAndWeeklyTimers() {
       timer24hDisplay.textContent = `${dHours}:${dMins}:${dSecs}`;
     }
 
-    // C. Formatear Cronómetro para la Cuota Semanal ($6,000 USDT cada 7 días)
     const weekElapsed = CLIENT_STATE.elapsedSeconds % SECONDS_WEEK;
     const remainingWeek = SECONDS_WEEK - weekElapsed;
 
@@ -600,7 +681,6 @@ function initGlobalAndWeeklyTimers() {
       timerWeeklyPayDisplay.textContent = `${wDays}d ${wHours}h ${wMins}m ${wSecs}s`;
     }
 
-    // D. Detección del Día 7 para aviso de pago obligatorio
     if (gDays >= 7 && !CLIENT_STATE.paymentConfirmed) {
       const lockWarning = document.getElementById('weekly-payment-lock-warning');
       if (lockWarning) lockWarning.classList.remove('hidden');
