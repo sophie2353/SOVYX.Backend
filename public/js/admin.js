@@ -130,7 +130,7 @@ window.sodieCerrarSesionAdmin = function() {
 };
 
 /* ==========================================================================
-   2. CRONÓMETROS Y TEMPORIZADORES (CORREGIDOS)
+   2. CRONÓMETROS Y TEMPORIZADORES
    ========================================================================== */
 function actualizarDisplayCronometro() {
   const timerDisplay = document.getElementById('admin-timer-display');
@@ -218,7 +218,7 @@ window.sodieReiniciarTimer120h = function() {
 };
 
 /* ==========================================================================
-   3. NAVEGACIÓN VISTA CLIENTE
+   3. NAVEGACIÓN VISTA CLIENTE Y MÉTODOS DE MEDIA/EXCEL
    ========================================================================== */
 window.sodieAbrirVistaCliente = function(clientId = 'CLIENT-01') {
   if (clientId === 'ALL') {
@@ -229,6 +229,17 @@ window.sodieAbrirVistaCliente = function(clientId = 'CLIENT-01') {
   } else {
     window.open(`client.html?clientId=${clientId}`, '_blank');
   }
+};
+
+// Exposición global para eventos onclick HTML de Media y Excel
+window.sodieSubirVideoDemo = function() {
+  console.log("🎥 [SODIE] Ejecutando subida/procesamiento de video demo...");
+  sodieSubirVideoAdmin();
+};
+
+window.sodieInyectarExcel = function() {
+  console.log("📊 [SODIE] Inyectando base de datos Excel...");
+  sodieSubirExcelAdmin();
 };
 
 /* ==========================================================================
@@ -272,7 +283,7 @@ function animateUploadProgress(type, callback) {
 }
 
 /* ==========================================================================
-   5. LISTENERS Y ACCIONES BACKEND DINÁMICAS
+   5. LISTENERS Y ACCIONES BACKEND DINÁMICAS (CORREGIDOS Y NUEVOS)
    ========================================================================== */
 function initListeners() {
   const btnVideo = document.getElementById('btn-upload-video');
@@ -300,6 +311,55 @@ function initListeners() {
       sodieAbrirVistaCliente('CLIENT-01');
     });
     btnSwitchClient.dataset.bound = "true";
+  }
+
+  // --- SOLUCIÓN DE ERRORES REPORTADOS ---
+
+  // 1. Selector #step-password
+  const stepPassword = document.getElementById('step-password');
+  if (stepPassword && !stepPassword.dataset.bound) {
+    stepPassword.addEventListener('click', (e) => {
+      console.log('🔑 Paso Contraseña Seleccionado');
+      const passBox = document.getElementById('admin-password-box');
+      const bioBox = document.getElementById('admin-biometric-box');
+      if (passBox) passBox.style.display = 'block';
+      if (bioBox) bioBox.style.display = 'none';
+    });
+    stepPassword.dataset.bound = "true";
+  }
+
+  // 2. Selector #step-biometric
+  const stepBiometric = document.getElementById('step-biometric');
+  if (stepBiometric && !stepBiometric.dataset.bound) {
+    stepBiometric.addEventListener('click', (e) => {
+      console.log('🧬 Paso Biométrico Seleccionado');
+      const passBox = document.getElementById('admin-password-box');
+      const bioBox = document.getElementById('admin-biometric-box');
+      if (passBox) passBox.style.display = 'none';
+      if (bioBox) bioBox.style.display = 'block';
+    });
+    stepBiometric.dataset.bound = "true";
+  }
+
+  // 3. Selector #admin-biometric
+  const adminBiometric = document.getElementById('admin-biometric');
+  if (adminBiometric && !adminBiometric.dataset.bound) {
+    adminBiometric.addEventListener('click', (e) => {
+      console.log('⚡ Autenticación Biométrica Admin Activada');
+      // Lógica para autenticación biométrica WebAuthn
+    });
+    adminBiometric.dataset.bound = "true";
+  }
+
+  // 4. Selector #admin-activate-close
+  const btnClose = document.getElementById('admin-activate-close');
+  if (btnClose && !btnClose.dataset.bound) {
+    btnClose.addEventListener('click', (e) => {
+      console.log('❌ Modal / Proceso de activación cerrado');
+      const modal = document.getElementById('admin-activate-modal');
+      if (modal) modal.style.display = 'none';
+    });
+    btnClose.dataset.bound = "true";
   }
 }
 
@@ -335,8 +395,8 @@ function uploadFileWithProgress(endpoint, file, type, onComplete, onError) {
 }
 
 async function sodieSubirVideoAdmin() {
-  const fileInput = document.getElementById('admin-video-file');
-  if (!fileInput || !fileInput.files[0]) {
+  const fileInput = document.getElementById('admin-video-file') || document.getElementById('dashboard-video');
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) {
     alert('Selecciona un archivo de video primero.');
     return;
   }
@@ -363,9 +423,9 @@ async function sodieSubirVideoAdmin() {
 }
 
 function sodieSubirExcelAdmin() {
-  const fileInput = document.getElementById('admin-excel-file');
+  const fileInput = document.getElementById('admin-excel-file') || document.getElementById('admin-excel-id');
   const btn = document.getElementById('btn-upload-excel');
-  if (!fileInput || !fileInput.files[0]) {
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) {
     showAdminAlert('Selecciona un archivo de audiencia (.csv, .xlsx, .xls).', true);
     return;
   }
