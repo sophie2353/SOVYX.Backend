@@ -3,8 +3,8 @@
  * 
  * - 0 Simulaciones de datos/endpoints.
  * - Registro exclusivo en `.test-history-Frontend.json`.
- * - Mapeo estático de IDs, onclicks y endpoints entre HTML/JS y Express.
- * - Diagnóstico detallado sobre por qué fallan o no responden los botones.
+ * - Mapeo estático de IDs, onclicks, biometría, timer, videos y endpoints entre HTML/JS y Express.
+ * - Reporte de errores con línea exacta y código de solución.
  */
 
 const fs = require('fs');
@@ -25,12 +25,22 @@ const REPORT = {
   missingRoutesInFrontend: []
 };
 
-function logFail(moduleKey, moduleName, errorMsg, location, causa) {
-  REPORT.failed.push({ key: moduleKey, module: moduleName, error: errorMsg, location, causa });
-  console.log(`❌ [BOTÓN/ELEMENTO CON FALLA - ${moduleName}]`);
-  console.log(`   Ubicación: ${location}`);
-  console.log(`   Detalle: ${errorMsg}`);
-  console.log(`   💡 Por qué no funciona: ${causa}\n`);
+function logFail(moduleKey, moduleName, errorMsg, location, causa, lineExacta, solucion) {
+  REPORT.failed.push({ 
+    key: moduleKey, 
+    module: moduleName, 
+    error: errorMsg, 
+    location, 
+    causa,
+    lineaExacta: lineExacta || 'N/A',
+    solucion: solucion || 'Ajustar la referencia o declaración en el archivo correspondiente.'
+  });
+
+  console.log(`❌ [ERROR - ${moduleName}]`);
+  console.log(`   📍 Ubicación: ${location} (Línea o Bloque: ${lineExacta || 'N/A'})`);
+  console.log(`   ⚠️ Detalle: ${errorMsg}`);
+  console.log(`   💡 Causa: ${causa}`);
+  console.log(`   🔧 Solución Sugerida: ${solucion}\n`);
 }
 
 function logPass(moduleKey, moduleName, detail) {
@@ -39,7 +49,21 @@ function logPass(moduleKey, moduleName, detail) {
 }
 
 /* ==========================================================================
-   1. EXTRACTOR DE RUTAS REGISTRADAS EN INDEX.JS (BACKEND)
+   1. BUSCADOR DE LÍNEA EXACTA EN ARCHIVOS
+   ========================================================================== */
+function findExactLineInFile(filePath, searchText) {
+  if (!fs.existsSync(filePath)) return null;
+  const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(searchText)) {
+      return i + 1; // Línea base 1
+    }
+  }
+  return null;
+}
+
+/* ==========================================================================
+   2. EXTRACTOR DE RUTAS REGISTRADAS EN INDEX.JS (BACKEND)
    ========================================================================== */
 function extractAllRoutes(expressApp) {
   const routes = [];
@@ -110,7 +134,7 @@ function extractAllRoutes(expressApp) {
 }
 
 /* ==========================================================================
-   2. MAPA DE AUDITORÍA FRONTEND ↔ BACKEND
+   3. MAPA DE ESTRUCTURA FRONTEND
    ========================================================================== */
 const FRONTEND_AUDIT_MAP = [
   {
@@ -202,7 +226,7 @@ const FRONTEND_AUDIT_MAP = [
       { id: 'btn-pay-semana2', type: 'ID Botón Pay Semana 2', selector: 'id="btn-pay-semana2"' },
       { id: 'desc-semana-2', type: 'ID Desc Semana 2', selector: 'id="desc-semana-2"' },
       { id: 'btn-pay-semana3', type: 'ID Botón Pay Semana 3', selector: 'id="btn-pay-semana3"' },
-      { id: 'desc-semana-3', type: 'ID Desc Semana 3', selector: 'id="desc-semana-3"' },
+      { id: 'desc-semana-3', type: 'ID Desc Semana-3', selector: 'id="desc-semana-3"' },
       { id: 'section-week-4-complete', type: 'ID Section Week 4 Complete', selector: 'id="section-week-4-complete"' },
       { id: 'global-timer-display', type: 'ID Global Timer Display', selector: 'id="global-timer-display"' }
     ]
@@ -237,7 +261,110 @@ const FRONTEND_AUDIT_MAP = [
 ];
 
 /* ==========================================================================
-   3. AUDITORÍA JS Y COMPLEMENTO DE BOTONES
+   4. AUDITORÍA ESPECÍFICA: BIA, CLAVE TEMPORAL, TIMERS Y VIDEO DEMO
+   ========================================================================== */
+function auditAdminClientSpecialFlows() {
+  console.log("\n🔐 Auditoría de Flujos Especiales: Acceso Admin por Clave, Biometría, Timers y Video...");
+
+  // 1. Acceso Admin por Clave Temporal & ByPass Biométrico
+  const adminJsPath = path.join(PUBLIC_DIR, 'js/admin.js');
+  if (fs.existsSync(adminJsPath)) {
+    const adminJs = fs.readFileSync(adminJsPath, 'utf8');
+
+    // Verificar si el formulario o botón de clave temporal existe y no requiere WebAuthn obligatoriamente
+    const hasPassHandler = adminJs.includes('POST') && (adminJs.includes('/api/admin/login') || adminJs.includes('password'));
+    if (!hasPassHandler) {
+      const line = findExactLineInFile(adminJsPath, 'btn-admin-login-pass') || 1;
+      logFail(
+        'ADMIN_LOGIN_PASS_FAIL',
+        'Acceso por Clave Temporal Admin',
+        'El script admin.js no maneja el envío directo de la contraseña temporal al endpoint /api/admin/login',
+        'public/js/admin.js',
+        'El botón de login por clave no responde o se queda esperando la confirmación biométrica.',
+        line,
+        'Añadir manejador click en #btn-admin-login-pass enviando fetch POST a /api/admin/login con { password }.'
+      );
+    } else {
+      logPass('ADMIN_LOGIN_PASS_OK', 'Acceso por Clave Temporal Admin', 'Configurado para validar clave en backend.');
+    }
+
+    // Verificar Biometría Admin
+    const hasBiometricFallback = adminJs.includes('PublicKeyCredential') || adminJs.includes('biometrics');
+    if (!hasBiometricFallback) {
+      const line = findExactLineInFile(adminJsPath, 'step-biometric') || 1;
+      logFail(
+        'ADMIN_BIOMETRIC_FAIL',
+        'Soporte de Biometría Admin',
+        'El frontend lanza error o no responde en navegadores sin soporte WebAuthn/Biometría',
+        'public/js/admin.js',
+        'No hay chequeo previo window.PublicKeyCredential antes de iniciar el reto biométrico.',
+        line,
+        'Añadir bloque try/catch y fallback visual cuando window.PublicKeyCredential no esté disponible.'
+      );
+    }
+
+    // Verificar Subida y Emisión de Video hacia el Frontend
+    const hasVideoUpload = adminJs.includes('/api/v1/media/upload') || adminJs.includes('upload-video') || adminJs.includes('sodieSubirVideoDemo');
+    if (!hasVideoUpload) {
+      const line = findExactLineInFile(adminJsPath, 'btn-upload-video') || 1;
+      logFail(
+        'ADMIN_VIDEO_UPLOAD_FAIL',
+        'Envío de Video Demo desde Admin',
+        'El script admin.js no tiene la función para subir/transmitir el video a la vista de cliente/index',
+        'public/js/admin.js',
+        'El botón #btn-upload-video no ejecuta sodieSubirVideoDemo() ni actualiza el tag <video src="...">.',
+        line,
+        'Implementar sodieSubirVideoDemo() usando FormData y actualizando la URL devuelta en localStorage o DOM.'
+      );
+    } else {
+      logPass('ADMIN_VIDEO_UPLOAD_OK', 'Envío de Video Demo desde Admin', 'El controlador de subida de video está presente.');
+    }
+  }
+
+  // 2. Transmisión del Video en index.html
+  const indexHtmlPath = path.join(PUBLIC_DIR, 'index.html');
+  if (fs.existsSync(indexHtmlPath)) {
+    const indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
+    const hasVideoTag = indexHtml.includes('id="sodie-demo-video"') || indexHtml.includes('id="card-demo-video"');
+    if (!hasVideoTag) {
+      logFail(
+        'INDEX_VIDEO_TAG_MISSING',
+        'Tag de Video Demo en index.html',
+        'Falta el elemento <video id="sodie-demo-video"> para reproducir el video cargado por el admin',
+        'public/index.html',
+        'Al subir un video desde el admin, la vista principal no tiene el ID objetivo para incrustarlo.',
+        1,
+        'Agregar <video id="sodie-demo-video" controls autoplay class="w-full"></video> dentro de #card-demo-video.'
+      );
+    } else {
+      logPass('INDEX_VIDEO_TAG_OK', 'Tag de Video Demo en index.html', 'Elemento encontrado correctamente.');
+    }
+  }
+
+  // 3. Revisión de Timers (admin.js y client.js)
+  const clientJsPath = path.join(PUBLIC_DIR, 'js/client.js');
+  if (fs.existsSync(clientJsPath)) {
+    const clientJs = fs.readFileSync(clientJsPath, 'utf8');
+    const hasTimerLogic = clientJs.includes('setInterval') && (clientJs.includes('timer-24h-display') || clientJs.includes('timer-main-display') || clientJs.includes('timer'));
+    if (!hasTimerLogic) {
+      const line = findExactLineInFile(clientJsPath, 'timer-24h-display') || 1;
+      logFail(
+        'CLIENT_TIMER_FAIL',
+        'Cronómetro/Timer 24h Cliente',
+        'El timer no responde o permanece estático en 00:00:00',
+        'public/js/client.js',
+        'No se está ejecutando un setInterval activo actualizando el innerText de los IDs de temporizador.',
+        line,
+        'Implementar función sodieIniciarCronometro24h() ejecutando setInterval cada 1000ms.'
+      );
+    } else {
+      logPass('CLIENT_TIMER_OK', 'Cronómetro/Timer 24h Cliente', 'Sincronización de timer detectada.');
+    }
+  }
+}
+
+/* ==========================================================================
+   5. AUDITORÍA JS Y VINCULARIDAD DE ELEMENTOS
    ========================================================================== */
 function auditFrontendJSFiles() {
   console.log("\n📜 Auditando vincularidad JS ↔ HTML en public/js/...");
@@ -252,7 +379,9 @@ function auditFrontendJSFiles() {
         `Archivo JS faltante: ${pageConfig.jsFile}`,
         `No existe el archivo de scripts en ${jsPath}`,
         `public/${pageConfig.jsFile}`,
-        "El botón/vista no funcionará porque el script asociado no existe en el directorio public."
+        "El botón/vista no funcionará porque el script asociado no existe en el directorio public.",
+        1,
+        `Crear el archivo public/${pageConfig.jsFile} e incluirlo en ${pageConfig.html}.`
       );
       return;
     }
@@ -263,12 +392,15 @@ function auditFrontendJSFiles() {
       if (elem.id) {
         const idReferenced = jsContent.includes(elem.id);
         if (!idReferenced) {
+          const lineHtml = findExactLineInFile(path.join(PUBLIC_DIR, pageConfig.html), elem.id) || 'N/A';
           logFail(
             `JS_ID_MISMATCH_${pageConfig.jsFile}_${elem.id}`,
             `Selector Inexistente: #${elem.id}`,
             `El elemento con ID '${elem.id}' de ${pageConfig.html} no se está escuchando en ${pageConfig.jsFile}`,
             `public/${pageConfig.jsFile}`,
-            `El botón no reacciona al clic porque ${pageConfig.jsFile} no le hace getElementById('${elem.id}') ni addEventListener.`
+            `El botón no reacciona al clic porque ${pageConfig.jsFile} no le hace getElementById('${elem.id}') ni addEventListener.`,
+            `Línea HTML: ${lineHtml}`,
+            `Agregar const el = document.getElementById('${elem.id}'); el.addEventListener('click', ...); en public/${pageConfig.jsFile}.`
           );
         } else {
           logPass(`JS_ID_OK_${pageConfig.jsFile}_${elem.id}`, `Selector #${elem.id}`, `El JS escucha y manipula el elemento.`);
@@ -279,12 +411,15 @@ function auditFrontendJSFiles() {
         const fnName = elem.fn.replace(/\(\)/g, '');
         const fnDefined = jsContent.includes(`function ${fnName}`) || jsContent.includes(`${fnName} =`) || jsContent.includes(`${fnName}(`);
         if (!fnDefined) {
+          const lineHtml = findExactLineInFile(path.join(PUBLIC_DIR, pageConfig.html), fnName) || 'N/A';
           logFail(
             `JS_FN_MISSING_${pageConfig.jsFile}_${fnName}`,
             `Evento Inexistente: ${fnName}()`,
             `El evento onclick '${fnName}()' del HTML ${pageConfig.html} no está definido en ${pageConfig.jsFile}`,
             `public/${pageConfig.jsFile}`,
-            `El botón arroja Uncaught ReferenceError: ${fnName} is not defined al hacer clic.`
+            `El botón arroja Uncaught ReferenceError: ${fnName} is not defined al hacer clic.`,
+            `Línea HTML: ${lineHtml}`,
+            `Declarar window.${fnName} = function() { ... } o function ${fnName}() { ... } en public/${pageConfig.jsFile}.`
           );
         } else {
           logPass(`JS_FN_OK_${pageConfig.jsFile}_${fnName}`, `Evento ${fnName}()`, `La función está declarada correctamente.`);
@@ -295,7 +430,7 @@ function auditFrontendJSFiles() {
 }
 
 /* ==========================================================================
-   4. AUDITORÍA Y MAPEO DE VISTAS HTML Y RUTAS EXPRESS
+   6. AUDITORÍA INTEGRAL FRONTEND ↔ BACKEND
    ========================================================================== */
 async function runFrontendAudit(targetApp) {
   let app = targetApp || global.expressApp;
@@ -321,14 +456,17 @@ async function runFrontendAudit(targetApp) {
   // A. AUDITORÍA DE ARCHIVOS JS Y SUS ELEMENTOS
   auditFrontendJSFiles();
 
-  // B. OBTENER RUTAS EXPRESS EN INDEX.JS
+  // B. AUDITORÍA DE BIA, CLAVE TEMPORAL, TIMERS Y VIDEO
+  auditAdminClientSpecialFlows();
+
+  // C. OBTENER RUTAS EXPRESS EN INDEX.JS
   const discoveredRoutes = extractAllRoutes(app);
   REPORT.discoveredRoutes = discoveredRoutes;
 
   console.log(`\n🔍 Rutas activas encontradas en index.js: ${discoveredRoutes.length}`);
   discoveredRoutes.forEach(r => console.log(`   -> [${r.method}] ${r.path}`));
 
-  // C. VERIFICACIÓN DE VISTAS Y ESTRUCTURA HTML
+  // D. VERIFICACIÓN DE VISTAS HTML
   console.log("\n🌐 Auditando integridad de vistas HTML...");
   for (const pageConfig of FRONTEND_AUDIT_MAP) {
     const pageKey = `FRONTEND_VIEW_${pageConfig.html.replace('.', '_')}`;
@@ -348,14 +486,16 @@ async function runFrontendAudit(targetApp) {
         });
 
         if (missingElements.length === 0) {
-          logPass(pageKey, `Vista HTML: /${pageConfig.html}`, `Contiene todos sus selectores, IDs e instantes onclick.`);
+          logPass(pageKey, `Vista HTML: /${pageConfig.html}`, `Contiene todos sus selectores, IDs e instancias onclick.`);
         } else {
           logFail(
             pageKey,
             `Vista HTML: /${pageConfig.html}`,
             `Faltan elementos estructurales:\n      - ` + missingElements.join('\n      - '),
             `public/${pageConfig.html}`,
-            "El JS intenta engancharse a elementos que no existen en el DOM de esta plantilla HTML."
+            "El JS intenta engancharse a elementos que no existen en el DOM de esta plantilla HTML.",
+            "N/A",
+            "Añadir los IDs/onclicks faltantes en el HTML correspondiente."
           );
         }
       } else {
@@ -364,15 +504,17 @@ async function runFrontendAudit(targetApp) {
           `Vista HTML: /${pageConfig.html}`,
           `Código de respuesta: HTTP ${resStatus}`,
           `public/${pageConfig.html}`,
-          `El servidor no puede servir el archivo /${pageConfig.html}. Revisa la ruta en express.static().`
+          `El servidor no puede servir el archivo /${pageConfig.html}. Revisa express.static().`,
+          "index.js",
+          "Asegurarse de incluir app.use(express.static(path.join(__dirname, '../public'))); en index.js."
         );
       }
     } catch (err) {
-      logFail(pageKey, `Vista HTML: /${pageConfig.html}`, err.message, `public/${pageConfig.html}`, "Error al intentar leer la vista.");
+      logFail(pageKey, `Vista HTML: /${pageConfig.html}`, err.message, `public/${pageConfig.html}`, "Error al intentar leer la vista.", "N/A", "Verificar permisos de archivo o existencia de la plantilla.");
     }
   }
 
-  // D. MAPEO DE LLAMADAS DESDE EL JS HACIA EL BACKEND (INDEX.JS)
+  // E. MAPEO DE LLAMADAS DESDE EL JS HACIA EL BACKEND (INDEX.JS)
   console.log("\n🔌 Mapeando llamadas de red en JS contra endpoints de index.js...");
   const backendPaths = discoveredRoutes.map(r => r.path);
 
@@ -381,25 +523,25 @@ async function runFrontendAudit(targetApp) {
     if (!fs.existsSync(jsPath)) return;
 
     const jsContent = fs.readFileSync(jsPath, 'utf8');
-    
-    // Buscar URLs/endpoints llamados con fetch, axios o XMLHttpRequest
     const fetchMatches = jsContent.match(/(?:fetch|axios\.(?:get|post|put|delete))\s*\(\s*['"`]([^'"`]+)['"`]/g) || [];
 
     fetchMatches.forEach(match => {
       const extractedPath = match.replace(/^(?:fetch|axios\.(?:get|post|put|delete))\s*\(\s*['"`]/, '');
       
-      // Filtrar solo rutas internas que inicien con /
       if (extractedPath.startsWith('/') && !extractedPath.startsWith('//')) {
         const cleanPath = extractedPath.split('?')[0];
         const routeExists = backendPaths.some(bp => bp === cleanPath || cleanPath.startsWith(bp));
 
         if (!routeExists) {
+          const lineExact = findExactLineInFile(jsPath, cleanPath) || 'N/A';
           logFail(
             `BROKEN_ENDPOINT_${cleanPath}`,
-            `Llamada Frontend ↔ Backend Rotas: ${cleanPath}`,
+            `Llamada Frontend ↔ Backend Rota: ${cleanPath}`,
             `El script ${pageConfig.jsFile} intenta hacer fetch a '${cleanPath}', pero no está declarada en index.js`,
             `public/${pageConfig.jsFile}`,
-            `Al hacer clic en el botón se genera un error 404 Not Found porque la ruta Express no existe.`
+            `Al hacer clic en el botón se genera un error 404 Not Found porque la ruta Express no existe.`,
+            lineExact,
+            `Crear el endpoint en index.js o en su router correspondiente (ej. app.post('${cleanPath}', ...)).`
           );
         } else {
           logPass(`ENDPOINT_OK_${cleanPath}`, `Conexión de Endpoint '${cleanPath}'`, `Existe y coincide con index.js.`);
@@ -409,7 +551,7 @@ async function runFrontendAudit(targetApp) {
   });
 
   /* ==========================================================================
-     E. ESCRITURA EXCLUSIVA EN .test-history-Frontend.json
+     F. ESCRITURA EXCLUSIVA EN .test-history-Frontend.json
      ========================================================================== */
   const historyData = {
     updatedAt: new Date().toISOString(),
@@ -425,22 +567,23 @@ async function runFrontendAudit(targetApp) {
   console.log(`\n💾 Historial guardado en: .test-history-Frontend.json`);
 
   /* ==========================================================================
-     F. RESUMEN EN CONSOLA
+     G. RESUMEN EN CONSOLA
      ========================================================================== */
   console.log("\n==================================================");
   console.log("📊 RESUMEN DE LA AUDITORÍA FRONTEND ↔ BACKEND");
   console.log("==================================================");
 
   if (REPORT.failed.length > 0) {
-    console.log(`❌ SE ENCONTRARON ${REPORT.failed.length} BOTONES/ELEMENTOS CON PROBLEMAS:`);
+    console.log(`❌ SE ENCONTRARON ${REPORT.failed.length} BOTONES/ELEMENTOS CON PROBLEMAS:\n`);
     REPORT.failed.forEach((item, idx) => {
-      console.log(`\n${idx + 1}. Elemento: ${item.module}`);
-      console.log(`   Ubicación: ${item.location}`);
-      console.log(`   Detalle: ${item.error}`);
+      console.log(`${idx + 1}. Elemento: ${item.module}`);
+      console.log(`   📍 Ubicación: ${item.location} (Línea: ${item.lineaExacta})`);
+      console.log(`   ⚠️ Detalle: ${item.error}`);
       console.log(`   💡 Por qué no funciona: ${item.causa}`);
+      console.log(`   🔧 Solución: ${item.solucion}\n`);
     });
   } else {
-    console.log("🎉 🤠🙌🏼 ¡PERFECTO! Todos los botones, eventos onclick e IDs de las vistas coinciden con los JS y los endpoints de index.js.");
+    console.log("🎉 🤠🙌🏼 ¡PERFECTO! Todos los botones, biometría, timers, videos, eventos onclick e IDs de las vistas coinciden con los JS y los endpoints de index.js.");
   }
 }
 
