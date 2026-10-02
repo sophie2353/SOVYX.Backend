@@ -319,6 +319,77 @@ async function sendChatMessage(messageText, payload = null) {
   }
 }
 
+/* -----------
+ CONFIRMACIÓN.HTML
+ ----------------- */
+// ==========================================
+// Módulo: Manejo de Tarjeta Principal (#main-card)
+// Ubicación: public/js/app.js (confirmacion.html)
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+  const mainCard = document.getElementById('main-card');
+
+  if (mainCard) {
+    mainCard.addEventListener('click', (e) => {
+      e.preventDefault();
+
+      // Acción: Alternar clase activa o resaltar tarjeta
+      mainCard.classList.toggle('selected');
+      mainCard.classList.toggle('active-shadow');
+
+      console.log('⚡ [SOVYX/SODIE] Clic detectado en #main-card');
+
+      // Ejemplo de evento/feedback visual extra
+      const cardTitle = mainCard.querySelector('.card-title') || mainCard;
+      if (cardTitle) {
+        cardTitle.style.transition = 'transform 0.2s ease';
+        cardTitle.style.transform = 'scale(1.02)';
+        setTimeout(() => {
+          cardTitle.style.transform = 'scale(1)';
+        }, 200);
+      }
+    });
+  }
+});
+
+/* ----------
+ CARD VIDEO DEMO 
+ --------------- */
+// ==========================================
+// Módulo: Reproductor Video Demo (#card-demo-video)
+// Ubicación: public/js/app.js (o client.js / admin.js)
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+  const cardDemoVideo = document.getElementById('card-demo-video');
+
+  if (cardDemoVideo) {
+    cardDemoVideo.addEventListener('click', (e) => {
+      // Si el elemento es directamente una etiqueta <video>
+      if (cardDemoVideo.tagName === 'VIDEO') {
+        if (cardDemoVideo.paused) {
+          cardDemoVideo.play();
+          console.log('▶️ [SODIE] Reproduciendo #card-demo-video');
+        } else {
+          cardDemoVideo.pause();
+          console.log('⏸️ [SODIE] Video pausado');
+        }
+      } else {
+        // Si es un contenedor de tarjeta que hospeda un video interno
+        const innerVideo = cardDemoVideo.querySelector('video');
+        if (innerVideo) {
+          if (innerVideo.paused) {
+            innerVideo.play();
+          } else {
+            innerVideo.pause();
+          }
+        } else {
+          console.warn('⚠️ [SODIE] No se encontró la etiqueta <video> dentro de #card-demo-video');
+        }
+      }
+    });
+  }
+});
+
 /* ==========================================================================
    6. IA3 ANALYZER ENGINE (/api/ia3/analizar)
    ========================================================================== */
@@ -378,7 +449,10 @@ function initIA3Engine() {
 /* ==========================================================================
    7. EVENTOS DE FLUJO DE PAGO Y CONEXIÓN META ADS
    ========================================================================== */
-    function mostrarPasoConexion() {
+    const pfCard = document.getElementById('pf-card');
+   if (pfCard) pfCard.addEventListener('click', (e)
+
+function mostrarPasoConexion() {
       document.getElementById('pf-intro-card').classList.add('hidden');
       document.getElementById('pf-step-billing').classList.remove('hidden');
     }
@@ -392,20 +466,17 @@ function initIA3Engine() {
       }
       
       localStorage.setItem('sodie_fb_user', fbUser);
+
+      const btnIniciarPago = document.getElementById('btn-iniciar-pago');
+   if (btnIniciarPago) btnIniciarPago.addEventListener('click', (e) =>
       
       // Muestra la caja del iframe
       document.getElementById('pf-step-billing').classList.add('hidden');
       const iframeBox = document.getElementById('pf-step-iframe');
       iframeBox.classList.remove('hidden');
 
-      // Asigna el link de la pasarela de pago configurado en config.js o link directo
-      const iframeElement = document.getElementById('payment-gateway-iframe');
-      const paymentUrl = (typeof PAYMENT_GATEWAY_URL !== 'undefined') 
-        ? PAYMENT_GATEWAY_URL 
-        : 'https://nowpayments.io/embeds/payment-widget?iid=5260032422?redirect=confirmacion.html?step=generar_id';
-      
-      iframeElement.src = paymentUrl;
-    }
+      const btnProcesarPagoPasarela = document.getElementById('btn-procesar-pago-pasarela');
+    if (btnProcesarPagoPasarela) btnProcesarPagoPasarela.addEventListener('click', (e) =>
 
     // Listener de mensajes postMessage si la pasarela notifica el pago desde adentro del iframe
     window.addEventListener('message', (event) => {
@@ -414,7 +485,11 @@ function initIA3Engine() {
       }
     });
 
+
     // Procesa la carga del Excel y redirige a la confirmación
+      const btnClientUploadFile = document.getElementById('btn-client-upload-file');
+   if (btnClientUploadFile) btnClientUploadFile.addEventListener('click', (e) => {
+     
     function finalizarYConfirmar() {
       const fileInput = document.getElementById('client-file-input');
       if (!fileInput.files || fileInput.files.length === 0) {
