@@ -11,23 +11,21 @@ const app = express();
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
 
-const API_URL = process.env.API_URL || '';
+const API_URL = process.env.API_URL || 'https://api.sodie.app';
 const ADMIN_KEY = process.env.ADMIN_KEY || config.SOVYX_ADMIN_KEY;
 
 // ============================================
 // CONFIGURACIÓN DE CIBERSEGURIDAD (COMPATIBLE CON FRONTEND)
 // ============================================
 
-// Deshabilitamos CSP en Helmet para evitar que bloquee event-listeners (onclick), inline scripts y JS dinámicos
 app.use(helmet({
   crossOriginResourcePolicy: false,
-  contentSecurityPolicy: false, // Permite la ejecución de scripts/onclicks sin bloqueo de navegador
+  contentSecurityPolicy: false,
   xssFilter: true,
   noSniff: true,
   hidePoweredBy: true
 }));
 
-// CORS Abierto para evitar bloqueos entre subdominios o peticiones AJAX
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -35,17 +33,28 @@ app.use(cors({
 }));
 
 // ============================================
-// 1. MIDDLEWARES PRINCIPALES
+// 1. MIDDLEWARES PRINCIPALES Y RECURSOS ESTÁTICOS
 // ============================================
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Servidor de archivos estáticos Frontend
+// Servidor de archivos estáticos Frontend & Media
 const publicPath = path.join(__dirname, '../public');
 
 app.use(express.static(publicPath));
+// Servir la carpeta de video o assets del backend
 app.use('/video', express.static(path.join(publicPath, 'video')));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Sirve config.js con el Header correcto si la piden desde el Backend
+app.get('/config.js', (req, res) => {
+  res.type('application/javascript');
+  res.sendFile(path.join(publicPath, 'config.js'), (err) => {
+    if (err) {
+      res.send(`window.SODIE_API_URL = "${API_URL}";`);
+    }
+  });
+});
 
 // Logger global
 app.use((req, res, next) => {
@@ -77,8 +86,17 @@ if (MONGO_URI) {
 // 3. RUTAS Y MÓDULOS DEL SISTEMA
 // ============================================
 
-// --- CONFIGURACIÓN & AUTENTICACIÓN ADMIN ---
-app.get('/api/config', (req, res) => res.json({ API_URL }));
+// --- ENDPOINTS DE CONFIGURACIÓN (Corregido para soportar v1 y parámetros dinámicos) ---
+const handleConfigResponse = (req, res) => {
+  res.json({ 
+    success: true, 
+    status: 'active',
+    apiUrl: API_URL,
+    version: '3.5.0' 
+  });
+};
+
+app.get(['/api/config', '/api/v1/config', '/api/v1/config/:id'], handleConfigResponse);
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
@@ -159,7 +177,7 @@ try {
   const ia3AnalyzerModule = require('../modules/ia3-analyzer') || require('../routes/ia3Routes');
   app.use(['/api/ia3', '/api/v1/ia3'], ia3AnalyzerModule);
 } catch (e) {
-  console.warn('⚠️ [IA3 ANALYZER] Activando fallback:', e.message);
+  console.warn('⚠️️ [IA3 ANALYZER] Activando fallback:', e.message);
   app.all(['/api/ia3*', '/api/v1/ia3*'], (req, res) => res.json({ success: true, message: 'IA3 Activo' }));
 }
 
@@ -168,24 +186,25 @@ try {
   const clientIDRoutes = require('../routes/clientIDRoutes');
   app.use('/api/v1/clients', clientIDRoutes);
 } catch (e) {
-  console.warn('⚠️ [CLIENT ID] clientIDRoutes.js no cargado:', e.message);
+  console.warn('⚠️️ [CLIENT ID] clientIDRoutes.js no cargado:', e.message);
 }
 
 try {
   const mediaRoutes = require('../routes/mediaRoutes');
   app.use(['/api/v1/media', '/api/media'], mediaRoutes);
 } catch (e) {
-  console.warn('⚠️ [MEDIA ROUTES] Activando fallback:', e.message);
+  console.warn('⚠️️ [MEDIA ROUTES] Activando fallback:', e.message);
   app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/upload-contract'], (req, res) => {
     res.json({ success: true, message: 'Archivo procesado correctamente', url: '/uploads/demo.mp4' });
   });
 }
 
-const webhookClientRoutes = require('../routes/webhook-client');
-
-// Montaje del módulo en la app
-app.use('/api/webhook-client', webhookClientRoutes);
-
+try {
+  const webhookClientRoutes = require('../routes/webhook-client');
+  app.use('/api/webhook-client', webhookClientRoutes);
+} catch(e) {
+  console.warn('⚠️ [WEBHOOK CLIENT] No cargado:', e.message);
+}
 
 // --- ENDPOINTS OFICIALES ---
 app.get('/api/clientes/disponibles', async (req, res) => {
