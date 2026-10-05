@@ -181,6 +181,12 @@ try {
   });
 }
 
+const webhookClientRoutes = require('../routes/webhook-client');
+
+// Montaje del módulo en la app
+app.use('/api/webhook-client', webhookClientRoutes);
+
+
 // --- ENDPOINTS OFICIALES ---
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 2;
