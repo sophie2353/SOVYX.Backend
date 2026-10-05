@@ -11,11 +11,11 @@ const app = express();
 const config = require('../config/tokens');
 const sovyxLogger = require('../modules/sovyxLogger');
 
-const API_URL = process.env.API_URL || 'https://api.sodie.app';
+const API_URL = process.env.API_URL || '';
 const ADMIN_KEY = process.env.ADMIN_KEY || config.SOVYX_ADMIN_KEY;
 
 // ============================================
-// CONFIGURACIÓN DE CIBERSEGURIDAD (COMPATIBLE CON FRONTEND)
+// CONFIGURACIÓN DE CIBERSEGURIDAD
 // ============================================
 
 app.use(helmet({
@@ -38,23 +38,12 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Servidor de archivos estáticos Frontend & Media
+// Servidor de archivos estáticos Frontend
 const publicPath = path.join(__dirname, '../public');
 
 app.use(express.static(publicPath));
-// Servir la carpeta de video o assets del backend
 app.use('/video', express.static(path.join(publicPath, 'video')));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
-// Sirve config.js con el Header correcto si la piden desde el Backend
-app.get('/config.js', (req, res) => {
-  res.type('application/javascript');
-  res.sendFile(path.join(publicPath, 'config.js'), (err) => {
-    if (err) {
-      res.send(`window.SODIE_API_URL = "${API_URL}";`);
-    }
-  });
-});
 
 // Logger global
 app.use((req, res, next) => {
@@ -86,17 +75,9 @@ if (MONGO_URI) {
 // 3. RUTAS Y MÓDULOS DEL SISTEMA
 // ============================================
 
-// --- ENDPOINTS DE CONFIGURACIÓN (Corregido para soportar v1 y parámetros dinámicos) ---
-const handleConfigResponse = (req, res) => {
-  res.json({ 
-    success: true, 
-    status: 'active',
-    apiUrl: API_URL,
-    version: '3.5.0' 
-  });
-};
-
-app.get(['/api/config', '/api/v1/config', '/api/v1/config/:id'], handleConfigResponse);
+// --- CONFIGURACIÓN & AUTENTICACIÓN ADMIN ---
+// Formato original recuperado para no romper app.js
+app.get(['/api/config', '/api/v1/config'], (req, res) => res.json({ API_URL }));
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
@@ -145,7 +126,7 @@ try {
   console.warn('⚠️ [WEBHOOK ROUTES] No se pudo cargar webhook.js:', e.message);
 }
 
-// --- FACEBOOK & META ROUTES ---
+// --- FACEBOOK & META ROUTES (Aquí es donde van las llamadas de métricas de app.js) ---
 try {
   const facebookRoutes = require('../routes/facebookRoutes');
   app.use(['/api/facebook', '/api/v1/facebook', '/facebook'], facebookRoutes);
@@ -166,7 +147,7 @@ try {
   const ia2Module = require('../modules/ia2-conversar') || require('../routes/ia2Routes');
   app.use(['/api/ia2', '/api/v1/ia2', '/api/v1/chat', '/api/chat'], ia2Module);
 } catch (e) {
-  console.warn('⚠️ [IA2 MODULE] Activando fallback:', e.message);
+  console.warn('⚠️️ [IA2 MODULE] Activando fallback:', e.message);
   app.post(['/api/v1/chat/message', '/api/chat', '/api/ia2/conversar'], (req, res) => {
     res.json({ success: true, reply: 'Sistema SODIE IA2 Activo.', status: 'ACTIVE' });
   });
@@ -177,7 +158,7 @@ try {
   const ia3AnalyzerModule = require('../modules/ia3-analyzer') || require('../routes/ia3Routes');
   app.use(['/api/ia3', '/api/v1/ia3'], ia3AnalyzerModule);
 } catch (e) {
-  console.warn('⚠️️ [IA3 ANALYZER] Activando fallback:', e.message);
+  console.warn('⚠️ [IA3 ANALYZER] Activando fallback:', e.message);
   app.all(['/api/ia3*', '/api/v1/ia3*'], (req, res) => res.json({ success: true, message: 'IA3 Activo' }));
 }
 
@@ -186,24 +167,25 @@ try {
   const clientIDRoutes = require('../routes/clientIDRoutes');
   app.use('/api/v1/clients', clientIDRoutes);
 } catch (e) {
-  console.warn('⚠️️ [CLIENT ID] clientIDRoutes.js no cargado:', e.message);
+  console.warn('⚠️ [CLIENT ID] clientIDRoutes.js no cargado:', e.message);
 }
 
 try {
   const mediaRoutes = require('../routes/mediaRoutes');
   app.use(['/api/v1/media', '/api/media'], mediaRoutes);
 } catch (e) {
-  console.warn('⚠️️ [MEDIA ROUTES] Activando fallback:', e.message);
+  console.warn('⚠️ [MEDIA ROUTES] Activando fallback:', e.message);
   app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/upload-contract'], (req, res) => {
     res.json({ success: true, message: 'Archivo procesado correctamente', url: '/uploads/demo.mp4' });
   });
 }
 
+// --- WEBHOOK CLIENT ---
 try {
   const webhookClientRoutes = require('../routes/webhook-client');
   app.use('/api/webhook-client', webhookClientRoutes);
-} catch(e) {
-  console.warn('⚠️ [WEBHOOK CLIENT] No cargado:', e.message);
+} catch (e) {
+  console.warn('⚠️ [WEBHOOK CLIENT] No se pudo cargar webhook-client.js:', e.message);
 }
 
 // --- ENDPOINTS OFICIALES ---
