@@ -189,7 +189,7 @@ try {
 
 // --- ENDPOINTS OFICIALES ---
 app.get('/api/clientes/disponibles', async (req, res) => {
-  const maxSovyxSlots = config.sovyx?.totalSlots || 2;
+  const maxSovyxSlots = config.sovyx?.totalSlots || 3;
   res.json({
     totalSlots: maxSovyxSlots,
     ocupados: 0,
@@ -200,7 +200,7 @@ app.get('/api/clientes/disponibles', async (req, res) => {
 });
 
 // ... importaciones existentes de tu servidor ...
-const adminRoutes = require('./routes/adminRoutes');
+const adminRoutes = require('../routes/adminRoutes');
 // Rutas API
 app.use('/api/admin', adminRoutes);
 
