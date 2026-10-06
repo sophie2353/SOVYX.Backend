@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
 
 
 // Cargar configuración global/tokens
@@ -94,6 +95,29 @@ router.get('/export/export-clientes-hora48', (req, res) => {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="audiencia_sodie_48h.csv"');
   res.status(200).send('ID,Nombre,Email,Status,Presupuesto\n1,Cliente Demo,demo@sodie.app,ACTIVE,10000USD');
+});
+
+/**
+ * POST /api/admin/biometric-challenge
+ * Genera un challenge criptográfico único de 32 bytes para la verificación biométrica de WebAuthn.
+ */
+router.post('/biometric-challenge', (req, res) => {
+  try {
+    // Generar 32 bytes aleatorios y convertirlos a string en base64
+    const challengeBuffer = crypto.randomBytes(32);
+    const challenge = challengeBuffer.toString('base64');
+
+    return res.status(200).json({
+      success: true,
+      challenge: challenge
+    });
+  } catch (error) {
+    console.error('Error generando el challenge biométrico:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno al generar el challenge biométrico'
+    });
+  }
 });
 
 module.exports = router;
