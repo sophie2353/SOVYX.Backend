@@ -17,7 +17,6 @@ const ADMIN_KEY = process.env.ADMIN_KEY || config.SOVYX_ADMIN_KEY;
 // ============================================
 // CONFIGURACIÓN DE CIBERSEGURIDAD
 // ============================================
-
 app.use(helmet({
   crossOriginResourcePolicy: false,
   contentSecurityPolicy: false,
@@ -199,6 +198,11 @@ app.get('/api/clientes/disponibles', async (req, res) => {
     precio: { reserva: 1000, final: 9000, total: 10000, moneda: 'USD' }
   });
 });
+
+// ... importaciones existentes de tu servidor ...
+const adminRoutes = require('./routes/adminRoutes');
+// Rutas API
+app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (req, res) => res.json({ 
   status: '🟢 SODIE OPERATIONAL', 
