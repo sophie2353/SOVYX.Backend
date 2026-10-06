@@ -187,6 +187,12 @@ try {
   console.warn('⚠️ [WEBHOOK CLIENT] No se pudo cargar webhook-client.js:', e.message);
 }
 
+// Importar las rutas
+const metricsRoutes = require('../routes/metricsRoutes');
+
+// Registrar bajo el prefijo /api
+app.use('/api', metricsRoutes);
+
 // --- ENDPOINTS OFICIALES ---
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 3;
