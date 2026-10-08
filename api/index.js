@@ -212,8 +212,13 @@ app.use('/api/client', clientRoutes);
 
 // ... importaciones existentes de tu servidor ...
 const adminRoutes = require('../routes/adminRoutes');
-// Rutas API
+
 app.use('/api/admin', adminRoutes);
+
+const testFinalRouter = require('./test-final');
+
+// Middleware / Rutas existentes ...
+app.use('/api/admin/test-final', testFinalRouter);
 
 app.get('/api/health', (req, res) => res.json({ 
   status: '🟢 SODIE OPERATIONAL', 
