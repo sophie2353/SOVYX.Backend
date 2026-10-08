@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const campaignStorage = require('./campaignStorageService');
 
 const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -111,8 +112,8 @@ const metaService = {
         subtype: 'LOOKALIKE',
         origin_audience_id: seedAudienceId,
         lookalike_spec: JSON.stringify({
-          type: 'value_driven', // Prioriza personas con alto poder adquisitivo
-          ratio: 0.01,         // Alcance del 1% de máxima precisión en Meta
+          type: 'value_driven',
+          ratio: 0.01,
           location_spec: {
             geo_locations: {
               countries: [countryCode.toUpperCase()]
@@ -128,15 +129,11 @@ const metaService = {
     return data.id;
   },
 
-  /**
-   * Genera segmentación 100% basada en valor extrayendo los países reales del Excel
-   */
   async procesarEInyectarLookalikes({ adAccountId, token, usersPayload }) {
     if (!usersPayload || !usersPayload.length) {
       throw new Error('⚠️ No hay registros en el Excel para procesar segmentación.');
     }
 
-    // Extraer dinámicamente los países únicos presentes en el archivo subido
     const countriesFound = [...new Set(
       usersPayload
         .map(u => (u.country || '').trim().toUpperCase())
@@ -147,17 +144,14 @@ const metaService = {
       throw new Error('⚠️ No se detectaron códigos de país válidos (ej. VE, CO, MX) en la columna country.');
     }
 
-    // 1. Crear Semilla con Valor
     const seedAudienceId = await this.crearAudienciaSemillaConValor(
       adAccountId, 
       token, 
       `SODIE_Seed_Value_${Date.now()}`
     );
 
-    // 2. Inyectar Registros Cifrados
     await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, token);
 
-    // 3. Generar Lookalikes 1% por cada país detectado
     const lookalikeIds = [];
     for (const country of countriesFound) {
       try {
@@ -192,7 +186,6 @@ const metaService = {
     const cleanAccountId = actId.replace(/^act_/, '');
     const campaignName = buildCampaignName(clientId);
 
-    // A. Crear la Campaña en PAUSED
     const campaignUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns`;
     const campaignParams = new URLSearchParams({
       name: campaignName,
@@ -207,14 +200,12 @@ const metaService = {
     if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
     const campaignId = campaignData.id;
 
-    // B. Procesar Audiencias Value-Driven Lookalike 1%
     const lalTargeting = await this.procesarEInyectarLookalikes({
       adAccountId: cleanAccountId,
       token,
       usersPayload
     });
 
-    // C. Crear el AdSet Optimizado ÚNICAMENTE para Clics de Compra (PURCHASE)
     const adSetUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
@@ -244,7 +235,6 @@ const metaService = {
     
     const adSetData = await adSetRes.json();
     
-    // Fallback de optimización si la cuenta no tiene habilitada la meta VALUE directa
     if (adSetData.error && adSetData.error.message.includes('VALUE')) {
       adSetBody.optimization_goal = 'OFFSITE_CONVERSIONS';
       const fallbackRes = await fetch(adSetUrl, {
@@ -295,7 +285,8 @@ const metaService = {
     adAccountId, 
     pixelId,
     usersPayload,
-    dailyBudget = 1000
+    dailyBudget = 1000,
+    version = 'V3.5'
   }) {
     try {
       const cleanAccountId = adAccountId.replace(/^act_/, '');
@@ -316,13 +307,22 @@ const metaService = {
         usersPayload
       });
 
+      // 3. Registrar el ID en storageService (asocia a DB/Memoria con TTL 24h)
+      const isAdmin = String(clientId).toUpperCase().includes('ADMIN') || clientId === 'CLIENT-#00';
+      await campaignStorage.registrarCampaignId({
+        clientId,
+        campaignId: nuevaCampana.campaignId,
+        version,
+        isAdmin
+      });
+
       return { 
         success: true, 
         act_id: cleanAccountId,
         campaignId: nuevaCampana.campaignId, 
         status: 'PAUSED',
         campaignName: nuevaCampana.campaignName,
-        message: 'Borrador creado en estado PAUSED. Notificar a facebookRoutes para confirmacion.html.'
+        message: 'Borrador creado y registrado en storageService. Notificar a facebookRoutes para confirmacion.html.'
       };
     } catch (error) {
       console.error('Error en procesarCicloHora24 (MetaServices):', error);
