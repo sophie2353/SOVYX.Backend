@@ -8,6 +8,7 @@ const router = express.Router();
 const axios = require('axios');
 const Client = require('../models/clients');
 const tokens = require('../config/tokens');
+const campaignStorage = require('../services/campaignStorageService');
 
 // Carga del servicio centralizado de Meta
 let metaServices = null;
@@ -70,7 +71,7 @@ async function resolveClientId(providedClientId, req) {
  */
 async function getUserMetaContext(userId, sessionId, clientId, req) {
   const activeClientId = await resolveClientId(clientId, req);
-  const { numId, aliasActId } = parseClientIdentifiers(activeClientId);
+  const { aliasActId } = parseClientIdentifiers(activeClientId);
 
   const query = clientId 
     ? { $or: [{ clientId: activeClientId }, { 'meta.aliasActId': aliasActId }] }
@@ -81,7 +82,12 @@ async function getUserMetaContext(userId, sessionId, clientId, req) {
   const act_id = clientDoc?.meta?.act_id || FB_CONFIG.MY_ACT_ID;
   const fb_token = clientDoc?.meta?.fb_token || FB_CONFIG.MY_ACCESS_TOKEN;
   const pixel_id = clientDoc?.meta?.pixel_id || FB_CONFIG.DEFAULT_PIXEL_ID;
-  const lastCampaignId = clientDoc?.meta?.lastCampaignId || null;
+
+  // Consultar ID activo validando reglas de 24h desde campaignStorage
+  const isAdmin = activeClientId.includes('ADMIN') || activeClientId === 'CLIENT-#00';
+  const lastCampaignId = await campaignStorage.obtenerCampaignIdVigente(activeClientId, isAdmin) 
+                          || clientDoc?.meta?.lastCampaignId 
+                          || null;
 
   return {
     clientId: activeClientId,
@@ -235,7 +241,7 @@ router.get('/auth/callback', async (req, res) => {
    ========================================================================== */
 router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/draft'], async (req, res) => {
   try {
-    const { userId, sessionId, clientId, usersPayload, dailyBudget } = req.body;
+    const { userId, sessionId, clientId, usersPayload, dailyBudget, version } = req.body;
     const metaCtx = await getUserMetaContext(userId, sessionId, clientId, req);
 
     if (!metaServices || typeof metaServices.procesarCicloHora24 !== 'function') {
@@ -252,17 +258,11 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
       adAccountId: metaCtx.act_id,
       pixelId: metaCtx.pixel_id,
       usersPayload: usersPayload || [],
-      dailyBudget: dailyBudget || 1000
+      dailyBudget: dailyBudget || 1000,
+      version: version || 'V3.5'
     });
 
     const campaignId = borradorResult.campaignId;
-
-    // Actualiza el puntero de la última campaña generada en la BD
-    await Client.findOneAndUpdate(
-      { clientId: metaCtx.clientId },
-      { $set: { 'meta.lastCampaignId': campaignId, 'meta.status': 'PAUSED' } },
-      { upsert: true }
-    );
 
     return res.json({
       success: true,
@@ -358,11 +358,26 @@ router.get('/verificar-estado', async (req, res) => {
    ========================================================================== */
 router.get('/metrics', async (req, res) => {
   try {
-    const { userId, sessionId, clientId, campaignId } = req.query;
-    const metaCtx = await getUserMetaContext(userId, sessionId, clientId, req);
-    const targetCampaignId = campaignId || metaCtx.lastCampaignId;
+    const { userId, sessionId, clientId } = req.query;
+    const activeClientId = await resolveClientId(clientId, req);
+    const isAdmin = activeClientId.includes('ADMIN') || activeClientId === 'CLIENT-#00';
 
-    if (targetCampaignId && metaCtx.fb_token) {
+    // 1. Verificar si hay un Campaign ID vigente (no expirado por las 24h)
+    const targetCampaignId = req.query.campaignId || await campaignStorage.obtenerCampaignIdVigente(activeClientId, isAdmin);
+
+    if (!targetCampaignId) {
+      return res.json({
+        success: true,
+        clientId: activeClientId,
+        campaignId: null,
+        metrics: { reach: 0, impressions: 0, clicks: 0, spend: 0, ctr: '0.00%', cpc: '0.00' },
+        message: 'No hay campañas activas en la ventana de 24 horas.'
+      });
+    }
+
+    const metaCtx = await getUserMetaContext(userId, sessionId, activeClientId, req);
+
+    if (metaCtx.fb_token) {
       try {
         let stats = null;
         if (metaServices && typeof metaServices.obtenerMetricas === 'function') {
@@ -391,12 +406,12 @@ router.get('/metrics', async (req, res) => {
       }
     }
 
-    // Fallback dinámico si aún no hay métricas disponibles en la Graph API
+    // Fallback dinámico
     return res.json({
       success: true,
       clientId: metaCtx.clientId,
       aliasActId: metaCtx.aliasActId,
-      campaignId: targetCampaignId || `CAMP-${metaCtx.clientId}`,
+      campaignId: targetCampaignId,
       actId: metaCtx.act_id,
       metrics: {
         reach: 18500 + Math.floor(Math.random() * 200),
