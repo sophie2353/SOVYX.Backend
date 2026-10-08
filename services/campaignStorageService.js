@@ -1,4 +1,4 @@
-const Client = require('../models/Client');
+const Client = require('../models/clients');
 
 // Almacenamiento temporal en memoria con TTL de 24 horas
 const activeCampaignsCache = new Map();
