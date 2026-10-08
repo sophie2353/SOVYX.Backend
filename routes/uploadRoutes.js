@@ -5,8 +5,22 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 
 const Audiencia = require('../models/Audiencia');
-const metaService = require('../services/metaService');
+const Client = require('../models/clients');
+const campaignStorage = require('../services/campaignStorageService');
 
+// Carga centralizada de metaServices
+let metaService = null;
+try {
+  metaService = require('../services/metaServices');
+} catch (e) {
+  try {
+    metaService = require('../services/metaService');
+  } catch (err) {
+    console.warn('⚠️ [UPLOAD] metaServices no encontrado.');
+  }
+}
+
+// Carga centralizada de IA1 Segmenter
 let ia1Instance = null;
 try {
   const IA1 = require('../modules/sovyxIA1Segmenter');
@@ -22,17 +36,30 @@ try {
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 } // Límite de 15MB en memoria para Render
+  limits: { fileSize: 15 * 1024 * 1024 } // Límite de 15MB para servidor Render
 });
 
-// Función de extracción y limpiado previa de los 6 campos requeridos
+/**
+ * Normaliza el clientId a formato limpio (ej: 'CLIENT-#01' -> 'CLIENT-#01')
+ */
+function normalizeClientId(rawId) {
+  if (!rawId) return 'CLIENT-#01';
+  const clean = String(rawId).trim().toUpperCase();
+  if (clean.includes('ADMIN')) return 'ADMIN';
+  const match = clean.match(/\d+/);
+  const numId = match ? match[0].padStart(2, '0') : '01';
+  return `CLIENT-#${numId}`;
+}
+
+/**
+ * Extrae y limpia los campos clave desde Excel / CSV para el Schema Match de Meta
+ */
 function extraerCamposTexto(buffer) {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
   const rawRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
 
   return rawRows.map(row => {
-    // Helper para buscar claves sin importar Mayúsculas/Minúsculas/Acentos
     const getVal = (possibleKeys) => {
       const foundKey = Object.keys(row).find(k => 
         possibleKeys.includes(k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
@@ -42,6 +69,7 @@ function extraerCamposTexto(buffer) {
 
     const email = getVal(['email', 'e-mail', 'correo', 'correo electronico', 'mail']);
     const phone = getVal(['phone', 'telefono', 'tel', 'celular', 'mobile']);
+    const country = getVal(['country', 'pais', 'geo', 'codigo pais']);
     const zip = getVal(['codigo postal', 'zip', 'zip code', 'postal code', 'cp']);
     const fn = getVal(['nombre', 'first name', 'firstname', 'fname']);
     const ln = getVal(['apellido', 'last name', 'lastname', 'lname']);
@@ -50,40 +78,41 @@ function extraerCamposTexto(buffer) {
     return {
       email: email.toLowerCase(),
       phone: phone.replace(/\D/g, ''),
+      country: country ? country.toUpperCase() : 'US',
       zip: zip,
-      fn: fn.toLowerCase(),
-      ln: ln.toLowerCase(),
+      firstName: fn.toLowerCase(),
+      lastName: ln.toLowerCase(),
       value: value ? parseFloat(value.replace(/[^0-9.-]+/g, '')) || 0 : 0
     };
-  }).filter(item => item.email || item.phone || item.fn || item.value > 0);
+  }).filter(item => item.email || item.phone || item.firstName || item.value > 0);
 }
 
 router.post('/', upload.single('file'), async (req, res) => {
   try {
-    const { sessionId, nicho, token, adAccountId, nombreBorrador, autoActivate } = req.body;
-    if (!req.file) return res.status(400).json({ error: 'Archivo no recibido' });
+    const { sessionId, clientId, nicho, token, adAccountId, pixelId, dailyBudget, version } = req.body;
+    if (!req.file) return res.status(400).json({ error: 'Archivo Excel/CSV no recibido' });
 
-    const session = sessionId || 'sess_default';
-    const nichoObjetivo = nicho || 'fitness_coach';
+    const activeClientId = normalizeClientId(clientId);
+    const session = sessionId || `sess_${activeClientId}_${Date.now()}`;
+    const nichoObjetivo = nicho || 'infoproductos';
 
-    // 1. Extraer los 6 campos requeridos (email, phone, zip, fn, ln, value) desde el archivo
+    // 1. Extraer los campos requeridos desde la hoja subida
     const parsedPayload = extraerCamposTexto(req.file.buffer);
 
     if (!parsedPayload || parsedPayload.length === 0) {
-      return res.status(400).json({ error: 'No se encontraron registros válidos con texto procesable en el archivo.' });
+      return res.status(400).json({ error: 'No se encontraron registros válidos con emails o teléfonos procesables.' });
     }
 
-    // Convertir el buffer a string limpio por si la IA1 requiere inspeccionar el raw text
     let fileContent = req.file.buffer.toString('utf-8');
     if (fileContent.charCodeAt(0) === 0xFEFF) {
       fileContent = fileContent.slice(1);
     }
 
-    // 2. Procesar y enriquecer los datos con la IA1
+    // 2. Procesar e inyectar segmentación con Sovyx IA1
     let extractedTargeting;
 
     if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
-      extractedTargeting = await ia1Instance.segmentarCsv(parsedPayload, nichoObjetivo, fileContent);
+      extractedTargeting = await ia1Instance.segmentarCsv(fileContent, { nicho: nichoObjetivo });
     } else if (ia1Instance && typeof ia1Instance.generarSegmentacion === 'function') {
       extractedTargeting = ia1Instance.generarSegmentacion(nichoObjetivo, false, { 
         rawCsv: fileContent,
@@ -93,27 +122,35 @@ router.post('/', upload.single('file'), async (req, res) => {
       extractedTargeting = {
         nicho: nichoObjetivo,
         age_min: 22,
-        age_max: 45,
+        age_max: 55,
         country: 'US',
         countriesFound: ['US'],
         usersPayload: parsedPayload
       };
     }
 
-    // Garantizar que la lista estructurada con los 6 campos persista tras pasar por la IA1
     if (!extractedTargeting.usersPayload || extractedTargeting.usersPayload.length === 0) {
       extractedTargeting.usersPayload = parsedPayload;
     }
 
-    if (typeof extractedTargeting === 'object' && !extractedTargeting.nicho) {
-      extractedTargeting.nicho = nichoObjetivo;
+    // 3. Resolver credenciales y contexto desde la DB si no vienen explícitos
+    let userToken = token || process.env.META_ACCESS_TOKEN;
+    let userAdAccount = adAccountId || process.env.AD_ACCOUNT_ID;
+    let userPixelId = pixelId || process.env.META_PIXEL_ID;
+
+    const clientDoc = await Client.findOne({ clientId: activeClientId });
+    if (clientDoc && clientDoc.meta) {
+      userToken = clientDoc.meta.fb_token || userToken;
+      userAdAccount = clientDoc.meta.act_id || userAdAccount;
+      userPixelId = clientDoc.meta.pixel_id || userPixelId;
     }
 
-    // 3. Persistir en MongoDB
+    // 4. Persistir datos del dataset en MongoDB
     const audienciaGuardada = await Audiencia.findOneAndUpdate(
       { sessionId: session },
       {
         sessionId: session,
+        clientId: activeClientId,
         fileUrl: `memory://${req.file.originalname}`,
         fileName: req.file.originalname,
         segmentacion: extractedTargeting,
@@ -123,58 +160,42 @@ router.post('/', upload.single('file'), async (req, res) => {
       { upsert: true, new: true }
     );
 
-    if (typeof global.sessionsDB !== 'undefined') {
-      global.sessionsDB[session] = {
-        ...(global.sessionsDB[session] || {}),
-        fileUploaded: true,
-        targetingData: extractedTargeting,
-        audienciaId: audienciaGuardada._id
-      };
-    }
-
-    // 4. Enviar los datos extraídos y procesados a Meta Services (quien creará el borrador, aplicará hashing y Lookalike)
+    // 5. Invocación a MetaServices (Ejecuta ciclo de 24h y guarda campaign_id en storage)
     let metaResult = null;
-    const userToken = token || process.env.ACCESS_TOKEN;
-    const userAdAccount = adAccountId || process.env.AD_ACCOUNT_ID;
-    const draftName = nombreBorrador || 'Prueba Hora 24';
 
-    if (userToken && userAdAccount) {
-      console.log(`📡 [UPLOAD] Enviando ${extractedTargeting.usersPayload.length} registros enriquecidos a Meta Services para borrador "${draftName}"...`);
+    if (userToken && userAdAccount && metaService && typeof metaService.procesarCicloHora24 === 'function') {
+      console.log(`📡 [UPLOAD] Enviando ${extractedTargeting.usersPayload.length} registros para ${activeClientId} a Meta Services...`);
 
-      const dataSegmentacion = {
-        age_min: extractedTargeting.age_min,
-        age_max: extractedTargeting.age_max,
-        geo_locations: {
-          countries: extractedTargeting.countriesFound || ['US', 'CO', 'MX']
-        }
-      };
-
-      metaResult = await metaService.procesarBorradorYActivar({
-        sessionId: session,
+      metaResult = await metaService.procesarCicloHora24({
+        clientId: activeClientId,
         token: userToken,
         adAccountId: userAdAccount,
-        nombreBorrador: draftName,
-        dataSegmentacion: dataSegmentacion,
-        usersPayload: extractedTargeting.usersPayload, // Pasa email, phone, zip, fn, ln y value procesados
-        countriesFound: extractedTargeting.countriesFound || ['US']
+        pixelId: userPixelId,
+        usersPayload: extractedTargeting.usersPayload,
+        dailyBudget: dailyBudget ? parseFloat(dailyBudget) : 1000,
+        version: version || 'V3.5'
       });
 
       await Audiencia.findByIdAndUpdate(audienciaGuardada._id, { estado: 'COMPLETADO_Y_ACTIVADO' });
+    } else {
+      console.warn('⚠️ [UPLOAD] No se ejecutó procesarCicloHora24: Faltan tokens, cuenta publicitaria o servicio.');
     }
 
     return res.json({ 
       ok: true, 
+      clientId: activeClientId,
       audienciaId: audienciaGuardada._id,
       totalRegistros: parsedPayload.length,
       targeting: extractedTargeting,
-      metaResult: metaResult || { message: 'Data con valor e identidad extraída e inyectada internamente. Listo para activación.' }
+      campaignId: metaResult?.campaignId || null,
+      metaResult: metaResult || { message: 'Data procesada correctamente. Pendiente conexión completa a Meta.' }
     });
 
   } catch (error) {
     console.error('💥 Error procesando archivo en IA1 y Meta:', error);
     return res.status(500).json({ 
       ok: false, 
-      error: 'Error al procesar los campos del archivo y sincronizar con Meta Services.',
+      error: 'Error al procesar el archivo Excel y sincronizar con Meta Services.',
       details: error.message 
     });
   }
