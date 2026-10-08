@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const metaServices = require('../services/metaServices');
+const Client = require('../models/clients');
 
 // Cargar configuración global/tokens
 let config = {};
