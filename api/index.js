@@ -205,6 +205,11 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   });
 });
 
+const clientRoutes = require('../routes/clientRoutes');
+
+// Registrar módulo de rutas del cliente
+app.use('/api/client', clientRoutes);
+
 // ... importaciones existentes de tu servidor ...
 const adminRoutes = require('../routes/adminRoutes');
 // Rutas API
