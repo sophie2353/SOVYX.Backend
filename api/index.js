@@ -14,6 +14,33 @@ const sovyxLogger = require('../modules/sovyxLogger');
 const API_URL = process.env.API_URL || '';
 const ADMIN_KEY = process.env.ADMIN_KEY || config.SOVYX_ADMIN_KEY;
 
+// HELPER DE SEGURIDAD: Garantiza que lo que pase a app.use sea una función/router válida
+function safeUse(pathOrMiddleware, possibleMiddleware) {
+  let routePath = null;
+  let middleware = pathOrMiddleware;
+
+  if (possibleMiddleware) {
+    routePath = pathOrMiddleware;
+    middleware = possibleMiddleware;
+  }
+
+  // Extraer el router si fue exportado como un objeto { router }, { default }, etc.
+  if (middleware && typeof middleware === 'object') {
+    middleware = middleware.router || middleware.default || middleware;
+  }
+
+  if (typeof middleware !== 'function') {
+    console.warn(`⚠️ [ROUTER WARNING] El middleware cargado para '${routePath || 'Global'}' no es una función válida (es ${typeof middleware}). Omitiendo para evitar crash.`);
+    return;
+  }
+
+  if (routePath) {
+    app.use(routePath, middleware);
+  } else {
+    app.use(middleware);
+  }
+}
+
 // ============================================
 // CONFIGURACIÓN DE CIBERSEGURIDAD
 // ============================================
@@ -75,7 +102,6 @@ if (MONGO_URI) {
 // ============================================
 
 // --- CONFIGURACIÓN & AUTENTICACIÓN ADMIN ---
-// Formato original recuperado para no romper app.js
 app.get(['/api/config', '/api/v1/config'], (req, res) => res.json({ API_URL }));
 
 app.post('/api/admin/login', (req, res) => {
@@ -120,15 +146,15 @@ app.post('/api/v1/auth/biometrics/register', (req, res) => {
 // --- WEBHOOKS & FIRMA DE CONTRATOS ---
 try {
   const webhookRoutes = require('../routes/webhook');
-  app.use(['/api/webhook', '/api/v1/webhook'], webhookRoutes);
+  safeUse(['/api/webhook', '/api/v1/webhook'], webhookRoutes);
 } catch (e) {
   console.warn('⚠️ [WEBHOOK ROUTES] No se pudo cargar webhook.js:', e.message);
 }
 
-// --- FACEBOOK & META ROUTES (Aquí es donde van las llamadas de métricas de app.js) ---
+// --- FACEBOOK & META ROUTES ---
 try {
   const facebookRoutes = require('../routes/facebookRoutes');
-  app.use(['/api/facebook', '/api/v1/facebook', '/facebook'], facebookRoutes);
+  safeUse(['/api/facebook', '/api/v1/facebook', '/facebook'], facebookRoutes);
 } catch (e) {
   console.warn('⚠️ [FB ROUTES] No se pudo cargar facebookRoutes.js:', e.message);
 }
@@ -136,7 +162,7 @@ try {
 // --- WAITLIST / V4 ROUTES ---
 try {
   const waitlistRoutes = require('../routes/waitlist');
-  app.use(['/api/waitlist', '/api/v1/waitlist', '/api/lista-espera', '/waitlist'], waitlistRoutes);
+  safeUse(['/api/waitlist', '/api/v1/waitlist', '/api/lista-espera', '/waitlist'], waitlistRoutes);
 } catch (e) {
   console.warn('⚠️ [WAITLIST ROUTES] No se pudo cargar waitlist.js:', e.message);
 }
@@ -144,9 +170,9 @@ try {
 // --- CHAT IA2 & NÚCLEO IA2 ---
 try {
   const ia2Module = require('../modules/ia2-conversar') || require('../routes/ia2Routes');
-  app.use(['/api/ia2', '/api/v1/ia2', '/api/v1/chat', '/api/chat'], ia2Module);
+  safeUse(['/api/ia2', '/api/v1/ia2', '/api/v1/chat', '/api/chat'], ia2Module);
 } catch (e) {
-  console.warn('⚠️️ [IA2 MODULE] Activando fallback:', e.message);
+  console.warn('⚠️ [IA2 MODULE] Activando fallback:', e.message);
   app.post(['/api/v1/chat/message', '/api/chat', '/api/ia2/conversar'], (req, res) => {
     res.json({ success: true, reply: 'Sistema SODIE IA2 Activo.', status: 'ACTIVE' });
   });
@@ -155,7 +181,7 @@ try {
 // --- MÓDULO IA3 ANALYZER ---
 try {
   const ia3AnalyzerModule = require('../modules/ia3-analyzer') || require('../routes/ia3Routes');
-  app.use(['/api/ia3', '/api/v1/ia3'], ia3AnalyzerModule);
+  safeUse(['/api/ia3', '/api/v1/ia3'], ia3AnalyzerModule);
 } catch (e) {
   console.warn('⚠️ [IA3 ANALYZER] Activando fallback:', e.message);
   app.all(['/api/ia3*', '/api/v1/ia3*'], (req, res) => res.json({ success: true, message: 'IA3 Activo' }));
@@ -164,14 +190,14 @@ try {
 // --- CLIENT ID & MEDIA UPLOADS ---
 try {
   const clientIDRoutes = require('../routes/clientIDRoutes');
-  app.use('/api/v1/clients', clientIDRoutes);
+  safeUse('/api/v1/clients', clientIDRoutes);
 } catch (e) {
   console.warn('⚠️ [CLIENT ID] clientIDRoutes.js no cargado:', e.message);
 }
 
 try {
   const mediaRoutes = require('../routes/mediaRoutes');
-  app.use(['/api/v1/media', '/api/media'], mediaRoutes);
+  safeUse(['/api/v1/media', '/api/media'], mediaRoutes);
 } catch (e) {
   console.warn('⚠️ [MEDIA ROUTES] Activando fallback:', e.message);
   app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/upload-contract'], (req, res) => {
@@ -182,16 +208,18 @@ try {
 // --- WEBHOOK CLIENT ---
 try {
   const webhookClientRoutes = require('../routes/webhook-client');
-  app.use('/api/webhook-client', webhookClientRoutes);
+  safeUse('/api/webhook-client', webhookClientRoutes);
 } catch (e) {
   console.warn('⚠️ [WEBHOOK CLIENT] No se pudo cargar webhook-client.js:', e.message);
 }
 
-// Importar las rutas
-const metricsRoutes = require('../routes/metricsRoutes');
-
-// Registrar bajo el prefijo /api
-app.use('/api', metricsRoutes);
+// --- METRICS ROUTES ---
+try {
+  const metricsRoutes = require('../routes/metricsRoutes');
+  safeUse('/api', metricsRoutes);
+} catch (e) {
+  console.warn('⚠️ [METRICS ROUTES] No se pudo cargar metricsRoutes.js:', e.message);
+}
 
 // --- ENDPOINTS OFICIALES ---
 app.get('/api/clientes/disponibles', async (req, res) => {
@@ -205,20 +233,29 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   });
 });
 
-const clientRoutes = require('../routes/clientRoutes');
+// --- CLIENT ROUTES ---
+try {
+  const clientRoutes = require('../routes/clientRoutes');
+  safeUse('/api/client', clientRoutes);
+} catch (e) {
+  console.warn('⚠️ [CLIENT ROUTES] No se pudo cargar clientRoutes.js:', e.message);
+}
 
-// Registrar módulo de rutas del cliente
-app.use('/api/client', clientRoutes);
+// --- ADMIN ROUTES ---
+try {
+  const adminRoutes = require('../routes/adminRoutes');
+  safeUse('/api/admin', adminRoutes);
+} catch (e) {
+  console.warn('⚠️ [ADMIN ROUTES] No se pudo cargar adminRoutes.js:', e.message);
+}
 
-// ... importaciones existentes de tu servidor ...
-const adminRoutes = require('../routes/adminRoutes');
-
-app.use('/api/admin', adminRoutes);
-
-const testFinalRouter = require('./test-final');
-
-// Middleware / Rutas existentes ...
-app.use('/api/admin/test-final', testFinalRouter);
+// --- TEST FINAL ROUTER ---
+try {
+  const testFinalRouter = require('./test-final');
+  safeUse('/api/admin/test-final', testFinalRouter);
+} catch (e) {
+  console.warn('⚠️ [TEST FINAL] No se pudo cargar test-final.js:', e.message);
+}
 
 app.get('/api/health', (req, res) => res.json({ 
   status: '🟢 SODIE OPERATIONAL', 
