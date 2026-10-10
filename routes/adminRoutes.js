@@ -12,7 +12,7 @@ try {
   config = require('../config/tokens');
 } catch (e) {
   try {
-    config = require('./config/tokens');
+    config = require('../config/tokens');
   } catch (err) {
     console.warn('⚠️ [ADMIN ROUTES] No se pudo cargar config/tokens, usando fallbacks de env.');
   }
@@ -45,15 +45,15 @@ router.post('/login', (req, res) => {
 router.post('/fb-exchange-token', async (req, res) => {
   try {
     const { shortLivedToken } = req.body;
-    const appId = process.env.FB_APP_ID || config.meta?.appId;
-    const appSecret = process.env.FB_APP_SECRET || config.meta?.appSecret;
+    const appId = process.env.APP_ID || config.meta?.appId;
+    const appSecret = process.env.APP_SECRET || config.meta?.appSecret;
 
     if (!shortLivedToken) {
       return res.status(400).json({ success: false, error: 'Se requiere el shortLivedToken' });
     }
 
     // Intercambio con Graph API para extender a ~60-90 días
-    const graphUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortLivedToken}`;
+    const graphUrl = `https://graph.facebook.com/v26.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortLivedToken}`;
     
     const response = await fetch(graphUrl);
     const data = await response.json();
@@ -84,12 +84,12 @@ router.post(['/campaigns/activate', '/activar-campana'], async (req, res) => {
     const { token, triggeredBy } = req.body;
 
     // 1. Extraer act_id y pixel_id PRIVADOS desde variables de entorno o config
-    const rawActId = config.meta?.adAccountId || process.env.AD_ACCOUNT_ID || process.env.FB_AD_ACCOUNT_ID || '';
-    const pixelId = config.meta?.pixelId || process.env.PIXEL_ID || process.env.FB_PIXEL_ID || '';
+    const rawActId = config.meta?.adAccountId || process.env.AD_ACCOUNT_ID || process.env.AD_ACCOUNT_ID || '';
+    const pixelId = config.meta?.pixelId || process.env.PIXEL_ID || process.env.PIXEL_ID || '';
 
     const cleanActId = rawActId.replace(/^act_/, '');
     const fullActId = `act_${cleanActId}`;
-    const effectiveToken = token || process.env.FB_ACCESS_TOKEN;
+    const effectiveToken = token || process.env.ACCESS_TOKEN;
 
     const clientId = 'ADMIN-SUPERUSER';
 
