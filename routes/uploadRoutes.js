@@ -10,7 +10,7 @@ const Client = require('../models/clients');
 // Carga segura de campaignStorage (si existe, se usa; si no, no rompe el arranque)
 let campaignStorage = null;
 try {
-  campaignStorage = require('../services/campaignStorageService');
+  campaignStorage = require('./campaignStorageService');
 } catch (e) {
   console.warn('⚠️ [UPLOAD] campaignStorageService opcional no encontrado.');
 }
@@ -18,10 +18,10 @@ try {
 // Carga centralizada y limpia de metaService (en singular)
 let metaService = null;
 try {
-  metaService = require('../services/metaService');
+  metaService = require('./metaService');
 } catch (e) {
   try {
-    metaService = require('../../services/metaService'); // Fallback por si cambia la profundidad
+    metaService = require('./services/metaService'); // Fallback por si cambia la profundidad
   } catch (err) {
     console.warn('⚠️ [UPLOAD] metaService no encontrado. Las funciones de Meta estarán desactivadas.');
   }
