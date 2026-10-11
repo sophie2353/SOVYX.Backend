@@ -87,7 +87,7 @@ function extraerCamposTexto(buffer) {
   }).filter(item => item.email || item.phone || item.firstName || item.value > 0);
 }
 
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/api/v1/media/upload', upload.single('file'), async (req, res) => {
   try {
     const { sessionId, clientId, nicho, token, adAccountId, pixelId, dailyBudget, version } = req.body;
     if (!req.file) return res.status(400).json({ error: 'Archivo Excel/CSV no recibido' });
