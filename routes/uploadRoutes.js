@@ -8,6 +8,8 @@ const Audiencia = require('../models/Audiencia');
 const Client = require('../models/clients');
 const campaignStorage = require('../services/campaignStorageService');
 
+// Al inicio de routes/uploadRoutes.js
+console.log('🚨 ¡EL ARCHIVO UPLOADROUTES.JS SE ESTÁ EJECUTANDO DE VERDAD!');
 // Carga centralizada de metaServices
 let metaService = null;
 try {
