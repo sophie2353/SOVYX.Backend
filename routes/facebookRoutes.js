@@ -163,18 +163,20 @@ router.get('/auth/callback', async (req, res) => {
     let sessionData = {};
     if (state) {
       try {
-        const decoded = Buffer.from(state, 'base64').toString('ascii');
+        const decoded = Buffer.from(state, 'base64').toString('utf-8');
         sessionData = JSON.parse(decoded);
       } catch (e) {
         sessionData = { sessionId: state };
       }
     }
 
-    const { sessionId, userId, clientId } = sessionData;
+    const { sessionId, userId, clientId, isAdmin } = sessionData;
     const activeClientId = await resolveClientId(clientId, req);
     const { aliasActId } = parseClientIdentifiers(activeClientId);
 
     let userToken = FB_CONFIG.MY_ACCESS_TOKEN;
+
+    // A) Canjear 'code' por 'short-lived token'
     if (FB_CONFIG.APP_ID && FB_CONFIG.APP_SECRET) {
       try {
         const tokenResp = await axios.get('https://graph.facebook.com/v26.0/oauth/access_token', {
@@ -187,10 +189,31 @@ router.get('/auth/callback', async (req, res) => {
         });
         userToken = tokenResp.data.access_token || userToken;
       } catch (e) {
-        console.warn('⚠️ Token local aplicado en callback:', e.message);
+        console.warn('⚠️ Error canjeando code por token:', e.message);
       }
     }
 
+    // B) Extender el token inmediatamente a 90 DÍAS (fb_exchange_token)
+    if (userToken && FB_CONFIG.APP_ID && FB_CONFIG.APP_SECRET) {
+      try {
+        const longTokenResp = await axios.get('https://graph.facebook.com/v26.0/oauth/access_token', {
+          params: {
+            grant_type: 'fb_exchange_token',
+            client_id: FB_CONFIG.APP_ID,
+            client_secret: FB_CONFIG.APP_SECRET,
+            fb_exchange_token: userToken
+          }
+        });
+        if (longTokenResp.data?.access_token) {
+          userToken = longTokenResp.data.access_token;
+          console.log('✅ Token extendido a 90 días con éxito.');
+        }
+      } catch (e) {
+        console.warn('⚠️ Error al extender a 90 días, usando token obtenido:', e.message);
+      }
+    }
+
+    // C) Extraer ID de la cuenta de anuncios y Pixel
     let fetchedActId = FB_CONFIG.MY_ACT_ID;
     let fetchedPixelId = FB_CONFIG.DEFAULT_PIXEL_ID;
 
@@ -199,18 +222,19 @@ router.get('/auth/callback', async (req, res) => {
         params: { access_token: userToken, fields: 'id,account_id,name,adspixels{id,name}' }
       });
 
-      if (meResp.data?.data && meResp.data.data.length > 0) {
+      if (meResp.data?.data?.length > 0) {
         const firstAccount = meResp.data.data[0];
         fetchedActId = firstAccount.account_id || firstAccount.id;
 
-        if (firstAccount.adspixels?.data && firstAccount.adspixels.data.length > 0) {
+        if (firstAccount.adspixels?.data?.length > 0) {
           fetchedPixelId = firstAccount.adspixels.data[0].id;
         }
       }
     } catch (e) {
-      console.warn('⚠️ Error al consultar adaccounts en Hora 0:', e.message);
+      console.warn('⚠️ Error consultando adaccounts:', e.message);
     }
 
+    // D) Guardar token de 90 días y credenciales en MongoDB
     const query = clientId ? { clientId: activeClientId } : (userId ? { userId } : { sessionId });
     await Client.findOneAndUpdate(
       query,
@@ -222,20 +246,26 @@ router.get('/auth/callback', async (req, res) => {
           'meta.act_id': fetchedActId,
           'meta.pixel_id': fetchedPixelId,
           'meta.connectedAt': new Date(),
+          'meta.tokenExpiresInDays': 90,
           'meta.status': 'VERIFYING'
         }
       },
       { upsert: true, new: true }
     );
 
+    // E) Si el login fue iniciado por Admin, notificamos enviándolo a admin.html
+    if (isAdmin || clientId === 'CLIENT-0' || req.query.from === 'admin') {
+      return res.redirect(`/admin.html?status=fb_auth_success&longLivedToken=${encodeURIComponent(userToken)}&readyToActivate=true`);
+    }
+
+    // Flujo normal de cliente público
     return res.redirect(`/confirmacion.html?step=procesar_excel&sessionId=${sessionId || ''}&clientId=${encodeURIComponent(activeClientId)}&actId=${fetchedActId || ''}`);
 
   } catch (err) {
     console.error('💥 Error en callback OAuth:', err);
-    return res.redirect('/confirmacion.html?step=error&message=auth_failed');
+    return res.redirect('/admin.html?status=error&message=auth_failed');
   }
 });
-
 /* ==========================================================================
    4. NOTIFICAR Y EJECUTAR CICLO DE REEMPLAZO EN METASERVICES
    ========================================================================== */
