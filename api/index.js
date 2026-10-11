@@ -195,14 +195,13 @@ try {
   console.warn('⚠️ [CLIENT ID] clientIDRoutes.js no cargado:', e.message);
 }
 
+// Carga limpia y directa de las rutas de subida y procesamiento de audiencia
 try {
-  const mediaRoutes = require('../routes/mediaRoutes');
-  safeUse(['/api/v1/media', '/api/media'], mediaRoutes);
+  const uploadRoutes = require('../routes/uploadRoutes'); // Ajusta la ruta relativa si es '../routes/uploadRoutes'
+  app.use('/api/v1/media', uploadRoutes);
+  console.log('✅ [ROUTES] uploadRoutes montado correctamente en /api/v1/media');
 } catch (e) {
-  console.warn('⚠️ [MEDIA ROUTES] Activando fallback:', e.message);
-  app.post(['/api/v1/media/upload', '/api/v1/media/upload-video', '/api/v1/media/upload-contract'], (req, res) => {
-    res.json({ success: true, message: 'Archivo procesado correctamente', url: '/uploads/demo.mp4' });
-  });
+  console.error('❌ [ERROR CRÍTICO] No se pudo cargar uploadRoutes:', e.message);
 }
 
 // --- WEBHOOK CLIENT ---
