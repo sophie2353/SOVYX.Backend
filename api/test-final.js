@@ -3,6 +3,9 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const axios = require('axios');
+const FormData = require('form-data');
+const XLSX = require('xlsx');
 
 // Importar el segmentador de IA1
 let sovyxIA1Segmenter;
@@ -176,5 +179,60 @@ router.all('/', async (req, res) => {
     });
   }
 });
+
+async function testUpload() {
+  try {
+    // 1. Crear un workbook simulado con 200 filas de prueba
+    const fakeRows = [];
+    for (let i = 1; i <= 200; i++) {
+      fakeRows.push({
+        email: `testuser${i}@sodie.app`,
+        phone: `+58412${Math.floor(1000000 + Math.random() * 9000000)}`,
+        nombre: `Usuario${i}`,
+        apellido: `Test${i}`,
+        valor: 100 + i
+      });
+    }
+
+    const ws = XLSX.utils.json_to_sheet(fakeRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Leads");
+    
+    // Generar buffer en memoria simulando un .xlsx
+    const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    // 2. Preparar el FormData tal cual lo manda el frontend
+    const form = new FormData();
+    form.append('file', excelBuffer, {
+      filename: 'leads_test_200.xlsx',
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    form.append('clientId', 'CLIENT-#01');
+    form.append('nicho', 'infoproductos');
+
+    console.log('🚀 Enviando archivo simulado de 200 líneas a http://api.sodie.../api/v1/media/upload ...');
+
+    // 3. Ejecutar petición POST
+    const response = await axios.post('http://api.sodie.app/api/v1/media/upload', form, {
+      headers: {
+        ...form.getHeaders()
+      }
+    });
+
+    console.log('✅ ¡Respuesta exitosa del servidor!:');
+    console.log(response.data);
+
+  } catch (error) {
+    console.error('❌ Error capturado en la prueba:');
+    if (error.response) {
+      console.error(`Status: ${error.response.status}`);
+      console.error(error.response.data);
+    } else {
+      console.error(error.message);
+    }
+  }
+}
+
+testUpload();
 
 module.exports = router;
