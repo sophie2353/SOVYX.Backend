@@ -196,12 +196,13 @@ try {
 }
 
 // Carga limpia y directa de las rutas de subida y procesamiento de audiencia
+// --- UPLOAD & MEDIA ROUTES V3.5 ---
 try {
-  const uploadRoutes = require('../routes/uploadRoutes'); // Ajusta la ruta relativa si es '../routes/uploadRoutes'
-  app.use('/api/v1/media', uploadRoutes);
-  console.log('✅ [ROUTES] uploadRoutes montado correctamente en /api/v1/media');
+  const uploadRoutes = require('../routes/uploadRoutes');
+  safeUse(['/api/v1/media', '/api/media', '/media'], uploadRoutes);
+  console.log('✅ [ROUTES] uploadRoutes montado correctamente.');
 } catch (e) {
-  console.error('❌ [ERROR CRÍTICO] No se pudo cargar uploadRoutes:', e.message);
+  console.warn('⚠️ [UPLOAD ROUTES] No se pudo cargar uploadRoutes.js:', e.message);
 }
 
 // --- WEBHOOK CLIENT ---
