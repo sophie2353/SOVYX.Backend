@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
-const metaServices = require('../services/metaServices');
+const metaServices = require('../services/metaService');
 const Client = require('../models/clients');
 
 // Cargar configuración global/tokens
@@ -71,7 +71,6 @@ router.post('/fb-exchange-token', async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 });
-
 /* ==========================================================================
    3. ENDPOINT: ACTIVAR CAMPAÑA E INYECTAR EN METASERVICES
    ========================================================================== */
