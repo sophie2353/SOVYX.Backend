@@ -6,19 +6,24 @@ const XLSX = require('xlsx');
 
 const Audiencia = require('../models/Audiencia');
 const Client = require('../models/clients');
-const campaignStorage = require('../services/campaignStorageService');
 
-// Al inicio de routes/uploadRoutes.js
-console.log('🚨 ¡EL ARCHIVO UPLOADROUTES.JS SE ESTÁ EJECUTANDO DE VERDAD!');
-// Carga centralizada de metaServices
+// Carga segura de campaignStorage (si existe, se usa; si no, no rompe el arranque)
+let campaignStorage = null;
+try {
+  campaignStorage = require('../services/campaignStorageService');
+} catch (e) {
+  console.warn('⚠️ [UPLOAD] campaignStorageService opcional no encontrado.');
+}
+
+// Carga centralizada y limpia de metaService (en singular)
 let metaService = null;
 try {
-  metaService = require('../services/metaServices');
+  metaService = require('../services/metaService');
 } catch (e) {
   try {
-    metaService = require('../services/metaService');
+    metaService = require('../../services/metaService'); // Fallback por si cambia la profundidad
   } catch (err) {
-    console.warn('⚠️ [UPLOAD] metaServices no encontrado.');
+    console.warn('⚠️ [UPLOAD] metaService no encontrado. Las funciones de Meta estarán desactivadas.');
   }
 }
 
