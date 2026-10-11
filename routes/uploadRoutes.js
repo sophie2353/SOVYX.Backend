@@ -201,4 +201,32 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// =========================================================================
+// ENDPOINT DE TEST / DEBUG PARA VERIFICAR LOGS Y SIMULACIÓN
+// =========================================================================
+router.get('/test-debug', async (req, res) => {
+  const diagnosticLogs = [];
+  try {
+    diagnosticLogs.push('🔍 [DEBUG] Verificando estado del router de media/upload...');
+    diagnosticLogs.push(`🔍 [DEBUG] Módulo XLSX cargado correctamente.`);
+    diagnosticLogs.push(`🔍 [DEBUG] Instancia de IA1 Segmenter: ${ia1Instance ? 'DISPONIBLE' : 'NO DISPONIBLE (Usará fallback)'}`);
+    diagnosticLogs.push(`🔍 [DEBUG] Servicio MetaServices: ${metaService ? 'CONECTADO' : 'NO CONECTADO'}`);
+
+    return res.status(200).json({
+      ok: true,
+      message: 'El endpoint de prueba responde correctamente.',
+      timestamp: new Date().toISOString(),
+      logs: diagnosticLogs
+    });
+  } catch (error) {
+    diagnosticLogs.push(`❌ [DEBUG ERROR] ${error.message}`);
+    return res.status(500).json({
+      ok: false,
+      error: error.message,
+      logs: diagnosticLogs
+    });
+  }
+});
+
+
 module.exports = router;
