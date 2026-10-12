@@ -8,7 +8,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const Client = require('../models/clients');
-const campaignStorage = require('./campaignStorageServices');
+const campaignStorage = require('./campaignStorageService');
 
 // Carga centralizada y limpia de metaService (ubicado en la misma carpeta routes/)
 let metaService = null;
