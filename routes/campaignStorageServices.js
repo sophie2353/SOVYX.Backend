@@ -5,7 +5,7 @@ const activeCampaignsCache = new Map();
 
 /**
  * Guarda o actualiza el campaign_id enviado desde metaServices o adminRoutes
- */.
+ */
 async function registrarCampaignId({ clientId, campaignId, version = 'V3.5', isAdmin = false }) {
   const key = isAdmin ? 'ID_CAMPAIGN_ADMIN' : `ID_CAMPAIGN_${clientId.toUpperCase()}`;
   const now = Date.now();
