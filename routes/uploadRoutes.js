@@ -10,7 +10,7 @@ const Client = require('../models/clients');
 // Carga segura de campaignStorage (si existe, se usa; si no, no rompe el arranque)
 let campaignStorage = null;
 try {
-  campaignStorage = require('./campaignStorageServices');
+  campaignStorage = require('./campaignStorageService');
 } catch (e) {
   console.warn('⚠️ [UPLOAD] campaignStorageService opcional no encontrado.');
 }
