@@ -19,9 +19,6 @@ try {
 let metaService = null;
 try {
   metaService = require('./metaService');
-} catch (e) {
-  try {
-    metaService = require('./metaService'); // Fallback por si cambia la profundidad
   } catch (err) {
     console.warn('⚠️ [UPLOAD] metaService no encontrado. Las funciones de Meta estarán desactivadas.');
   }
