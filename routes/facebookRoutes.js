@@ -1,89 +1,62 @@
 /**
  * SODIE - Meta Facebook Routes (routes/facebookRoutes.js)
- * Architecture: OAuth Hora 0 (Persistent Act_id_C{ID}) -> Drafts & Lifecycle / Deep-Link Activation / Metrics / Webhook
+ * Architecture V3.5: Clean backend automation model using Admin Token + Stored Act ID & Pixel ID per client.
+ * Cero OAuth de clientes. Configuración directa post-pago.
  */
 
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const Client = require('../models/clients');
-const tokens = require('../config/tokens');
-const campaignStorage = require('../services/campaignStorageService');
+const campaignStorage = require('./campaignStorageService');
 
-// Carga del servicio centralizado de Meta
-let metaServices = null;
+// Carga centralizada y limpia de metaService (ubicado en la misma carpeta routes/)
+let metaService = null;
 try {
-  metaServices = require('../services/metaServices');
+  metaService = require('./metaService');
 } catch (e) {
   try {
-    metaServices = require('../services/metaService');
+    metaService = require('./metaServices');
   } catch (err) {
-    console.warn('⚠️ [FB ROUTES] metaServices no encontrado. Asegúrate de incluir el servicio.');
+    console.warn('⚠️ [FB ROUTES] metaService no encontrado en routes/. Asegúrate de incluirlo.');
   }
 }
 
-// Configuración de Meta desde variables de entorno / tokens
+// Configuración global de Meta (Token maestro de administrador y defaults)
 const FB_CONFIG = {
-  APP_ID: process.env.APP_ID || tokens.meta?.appId || '',
-  APP_SECRET: process.env.APP_SECRET || tokens.meta?.appSecret || '',
-  MY_ACT_ID: process.env.AD_ACCOUNT_ID || tokens.meta?.accountId || '',
-  MY_ACCESS_TOKEN: process.env.META_ACCESS_TOKEN || tokens.meta?.accessToken || '',
-  DEFAULT_PIXEL_ID: process.env.META_PIXEL_ID || tokens.meta?.pixelId || null,
-  REDIRECT_URI: process.env.META_REDIRECT_URI || 'http://sodie.app/api/facebook/auth/callback'
+  ADMIN_TOKEN: process.env.META_ACCESS_TOKEN || process.env.ADMIN_TOKEN || '',
+  DEFAULT_ACT_ID: process.env.AD_ACCOUNT_ID || '',
+  DEFAULT_PIXEL_ID: process.env.META_PIXEL_ID || null
 };
 
 /**
- * Normaliza el clientId a formato limpio y genera alias (ej: 'CLIENT-#01' -> numId: '01', alias: 'Act_id_C01')
+ * Normaliza el clientId a formato limpio (ej: 'CLIENT-#01')
  */
-function parseClientIdentifiers(rawId) {
-  if (!rawId) return { formattedId: 'CLIENT-#01', numId: '01', aliasActId: 'Act_id_C01' };
-  const match = String(rawId).match(/\d+/);
+function normalizeClientId(rawId) {
+  if (!rawId) return 'CLIENT-#01';
+  const clean = String(rawId).trim().toUpperCase();
+  if (clean.includes('ADMIN')) return 'ADMIN';
+  const match = clean.match(/\d+/);
   const numId = match ? match[0].padStart(2, '0') : '01';
-  return {
-    formattedId: `CLIENT-#${numId}`,
-    numId,
-    aliasActId: `Act_id_C${numId}`
-  };
+  return `CLIENT-#${numId}`;
 }
 
 /**
- * Resolver el clientId activo localmente o vía API
+ * Resuelve el contexto publicitario del cliente (recuperando act_id y pixel_id guardados en DB)
  */
-async function resolveClientId(providedClientId, req) {
-  if (providedClientId) return parseClientIdentifiers(providedClientId).formattedId;
-
-  try {
-    const protocol = req.protocol || 'http';
-    const host = req.get('host') || 'localhost:1000';
-    const res = await axios.get(`${protocol}://${host}/api/v1/clients/next-id`);
-    if (res.data && res.data.clientId) {
-      return parseClientIdentifiers(res.data.clientId).formattedId;
-    }
-  } catch (e) {
-    // Fallback silencioso
-  }
-
-  return 'CLIENT-#01';
-}
-
-/**
- * Resuelve el contexto publicitario del cliente (reutiliza act_id y pixel_id guardados en Hora 0)
- */
-async function getUserMetaContext(userId, sessionId, clientId, req) {
-  const activeClientId = await resolveClientId(clientId, req);
-  const { aliasActId } = parseClientIdentifiers(activeClientId);
+async function getUserMetaContext(userId, sessionId, clientId) {
+  const activeClientId = normalizeClientId(clientId);
 
   const query = clientId 
-    ? { $or: [{ clientId: activeClientId }, { 'meta.aliasActId': aliasActId }] }
+    ? { clientId: activeClientId } 
     : (userId ? { userId } : { sessionId });
 
   const clientDoc = await Client.findOne(query);
 
-  const act_id = clientDoc?.meta?.act_id || FB_CONFIG.MY_ACT_ID;
-  const fb_token = clientDoc?.meta?.fb_token || FB_CONFIG.MY_ACCESS_TOKEN;
+  const act_id = clientDoc?.meta?.act_id || FB_CONFIG.DEFAULT_ACT_ID;
+  const fb_token = FB_CONFIG.ADMIN_TOKEN; // Usamos el token maestro de administración
   const pixel_id = clientDoc?.meta?.pixel_id || FB_CONFIG.DEFAULT_PIXEL_ID;
 
-  // Consultar ID activo validando reglas de 24h desde campaignStorage
   const isAdmin = activeClientId.includes('ADMIN') || activeClientId === 'CLIENT-#00';
   const lastCampaignId = await campaignStorage.obtenerCampaignIdVigente(activeClientId, isAdmin) 
                           || clientDoc?.meta?.lastCampaignId 
@@ -91,7 +64,6 @@ async function getUserMetaContext(userId, sessionId, clientId, req) {
 
   return {
     clientId: activeClientId,
-    aliasActId: clientDoc?.meta?.aliasActId || aliasActId,
     act_id: act_id ? String(act_id).replace(/^act_/, '') : '',
     fb_token,
     pixel_id,
@@ -101,188 +73,62 @@ async function getUserMetaContext(userId, sessionId, clientId, req) {
 }
 
 /* ==========================================================================
-   1. CAPI & ROLES
+   1. CONFIGURACIÓN POST-PAGO: GUARDAR ACT_ID Y PIXEL_ID DEL CLIENTE
    ========================================================================== */
-router.post('/capi', async (req, res) => {
+router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (req, res) => {
   try {
-    const { sessionId, clientId } = req.body;
-    const activeClientId = await resolveClientId(clientId, req);
-
-    return res.json({
-      success: true,
-      clientId: activeClientId,
-      redirectUrl: `/confirmacion.html?step=aceptar_rol&sessionId=${sessionId || ''}&clientId=${encodeURIComponent(activeClientId)}`
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-/* ==========================================================================
-   2. HORA 0: CONNECT (OAUTH CON CLIENT_ID & ALIAS)
-   ========================================================================== */
-router.post(['/connect', '/auth/login', '/api/v1/connect', '/api/v1/auth/login'], async (req, res) => {
-  try {
-    const { sessionId, userId, clientId } = req.body;
-    const activeClientId = await resolveClientId(clientId, req);
-    
-    const state = JSON.stringify({
-      sessionId: sessionId || '',
-      userId: userId || '',
-      clientId: activeClientId
-    });
-
-    const encodedState = Buffer.from(state).toString('base64');
-    const scope = 'ads_management,ads_read,business_management';
-
-    const authUrl = `https://www.facebook.com/v26.0/dialog/oauth?client_id=${FB_CONFIG.APP_ID}&redirect_uri=${encodeURIComponent(FB_CONFIG.REDIRECT_URI)}&state=${encodedState}&scope=${scope}`;
-
-    return res.json({
-      success: true,
-      clientId: activeClientId,
-      status: 'REDIRECT_REQUIRED',
-      redirectUrl: authUrl
-    });
-  } catch (err) {
-    console.error('💥 Error en /facebook/connect:', err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-/* ==========================================================================
-   3. HORA 0: CALLBACK (PERSISTENCIA DE CUENTA Y TOKENS)
-   ========================================================================== */
-router.get('/auth/callback', async (req, res) => {
-  try {
-    const { code, state } = req.query;
-
-    if (!code) {
-      return res.redirect('/confirmacion.html?step=error&message=missing_auth_code');
+    const { clientId, actId, pixelId } = req.body;
+    if (!actId) {
+      return res.status(400).json({ success: false, error: 'El ID de la cuenta publicitaria (actId) es obligatorio.' });
     }
 
-    let sessionData = {};
-    if (state) {
-      try {
-        const decoded = Buffer.from(state, 'base64').toString('utf-8');
-        sessionData = JSON.parse(decoded);
-      } catch (e) {
-        sessionData = { sessionId: state };
-      }
-    }
+    const activeClientId = normalizeClientId(clientId);
+    const cleanActId = String(actId).replace(/^act_/, '').trim();
+    const cleanPixelId = pixelId ? String(pixelId).trim() : null;
 
-    const { sessionId, userId, clientId, isAdmin } = sessionData;
-    const activeClientId = await resolveClientId(clientId, req);
-    const { aliasActId } = parseClientIdentifiers(activeClientId);
-
-    let userToken = FB_CONFIG.MY_ACCESS_TOKEN;
-
-    // A) Canjear 'code' por 'short-lived token'
-    if (FB_CONFIG.APP_ID && FB_CONFIG.APP_SECRET) {
-      try {
-        const tokenResp = await axios.get('https://graph.facebook.com/v26.0/oauth/access_token', {
-          params: {
-            client_id: FB_CONFIG.APP_ID,
-            client_secret: FB_CONFIG.APP_SECRET,
-            redirect_uri: FB_CONFIG.REDIRECT_URI,
-            code
-          }
-        });
-        userToken = tokenResp.data.access_token || userToken;
-      } catch (e) {
-        console.warn('⚠️ Error canjeando code por token:', e.message);
-      }
-    }
-
-    // B) Extender el token inmediatamente a 90 DÍAS (fb_exchange_token)
-    if (userToken && FB_CONFIG.APP_ID && FB_CONFIG.APP_SECRET) {
-      try {
-        const longTokenResp = await axios.get('https://graph.facebook.com/v26.0/oauth/access_token', {
-          params: {
-            grant_type: 'fb_exchange_token',
-            client_id: FB_CONFIG.APP_ID,
-            client_secret: FB_CONFIG.APP_SECRET,
-            fb_exchange_token: userToken
-          }
-        });
-        if (longTokenResp.data?.access_token) {
-          userToken = longTokenResp.data.access_token;
-          console.log('✅ Token extendido a 90 días con éxito.');
-        }
-      } catch (e) {
-        console.warn('⚠️ Error al extender a 90 días, usando token obtenido:', e.message);
-      }
-    }
-
-    // C) Extraer ID de la cuenta de anuncios y Pixel
-    let fetchedActId = FB_CONFIG.MY_ACT_ID;
-    let fetchedPixelId = FB_CONFIG.DEFAULT_PIXEL_ID;
-
-    try {
-      const meResp = await axios.get(`https://graph.facebook.com/v26.0/me/adaccounts`, {
-        params: { access_token: userToken, fields: 'id,account_id,name,adspixels{id,name}' }
-      });
-
-      if (meResp.data?.data?.length > 0) {
-        const firstAccount = meResp.data.data[0];
-        fetchedActId = firstAccount.account_id || firstAccount.id;
-
-        if (firstAccount.adspixels?.data?.length > 0) {
-          fetchedPixelId = firstAccount.adspixels.data[0].id;
-        }
-      }
-    } catch (e) {
-      console.warn('⚠️ Error consultando adaccounts:', e.message);
-    }
-
-    // D) Guardar token de 90 días y credenciales en MongoDB
-    const query = clientId ? { clientId: activeClientId } : (userId ? { userId } : { sessionId });
     await Client.findOneAndUpdate(
-      query,
+      { clientId: activeClientId },
       {
         $set: {
           clientId: activeClientId,
-          'meta.aliasActId': aliasActId,
-          'meta.fb_token': userToken,
-          'meta.act_id': fetchedActId,
-          'meta.pixel_id': fetchedPixelId,
-          'meta.connectedAt': new Date(),
-          'meta.tokenExpiresInDays': 90,
-          'meta.status': 'VERIFYING'
+          'meta.act_id': cleanActId,
+          'meta.pixel_id': cleanPixelId,
+          'meta.configuredAt': new Date(),
+          'meta.status': 'CONFIGURED'
         }
       },
       { upsert: true, new: true }
     );
 
-    // E) Si el login fue iniciado por Admin, notificamos enviándolo a admin.html
-    if (isAdmin || clientId === 'CLIENT-0' || req.query.from === 'admin') {
-      return res.redirect(`/admin.html?status=fb_auth_success&longLivedToken=${encodeURIComponent(userToken)}&readyToActivate=true`);
-    }
-
-    // Flujo normal de cliente público
-    return res.redirect(`/confirmacion.html?step=procesar_excel&sessionId=${sessionId || ''}&clientId=${encodeURIComponent(activeClientId)}&actId=${fetchedActId || ''}`);
-
+    return res.json({
+      success: true,
+      message: 'Credenciales publicitarias guardadas exitosamente.',
+      clientId: activeClientId,
+      act_id: cleanActId,
+      pixel_id: cleanPixelId
+    });
   } catch (err) {
-    console.error('💥 Error en callback OAuth:', err);
-    return res.redirect('/admin.html?status=error&message=auth_failed');
+    console.error('💥 Error guardando credenciales de Meta:', err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
+
 /* ==========================================================================
-   4. NOTIFICAR Y EJECUTAR CICLO DE REEMPLAZO EN METASERVICES
+   2. CREAR BORRADOR EN META (USA TOKEN MAESTRO + CREDENCIALES DEL CLIENTE)
    ========================================================================== */
 router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/draft'], async (req, res) => {
   try {
     const { userId, sessionId, clientId, usersPayload, dailyBudget, version } = req.body;
-    const metaCtx = await getUserMetaContext(userId, sessionId, clientId, req);
+    const metaCtx = await getUserMetaContext(userId, sessionId, clientId);
 
-    if (!metaServices || typeof metaServices.procesarCicloHora24 !== 'function') {
+    if (!metaService || typeof metaService.procesarCicloHora24 !== 'function') {
       return res.status(500).json({ 
         success: false, 
-        error: 'metaServices.procesarCicloHora24 no está disponible.' 
+        error: 'metaService.procesarCicloHora24 no está disponible.' 
       });
     }
 
-    // Notifica los datos de campaña y ejecuta el ciclo de reemplazo puro en Meta
-    const borradorResult = await metaServices.procesarCicloHora24({
+    const borradorResult = await metaService.procesarCicloHora24({
       clientId: metaCtx.clientId,
       token: metaCtx.fb_token,
       adAccountId: metaCtx.act_id,
@@ -297,7 +143,6 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
     return res.json({
       success: true,
       clientId: metaCtx.clientId,
-      aliasActId: metaCtx.aliasActId,
       campaignId,
       status: 'PAUSED',
       redirectUrl: `/confirmacion.html?step=activar_campana&clientId=${encodeURIComponent(metaCtx.clientId)}&campaignId=${campaignId}&actId=${metaCtx.act_id}`
@@ -310,12 +155,12 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
 });
 
 /* ==========================================================================
-   5. GENERAR ENLACE DIRECTO A ADS MANAGER (DEEP-LINK ACTIVACIÓN)
+   3. GENERAR ENLACE DE ACTIVACIÓN (DEEP-LINK ADS MANAGER)
    ========================================================================== */
 router.post(['/activar-campana', '/campaigns/activate', '/api/v1/activar-campana', '/api/v1/campaigns/activate'], async (req, res) => {
   try {
     const { userId, sessionId, clientId, campaignId } = req.body;
-    const metaCtx = await getUserMetaContext(userId, sessionId, clientId, req);
+    const metaCtx = await getUserMetaContext(userId, sessionId, clientId);
 
     const targetCampaignId = campaignId || metaCtx.lastCampaignId;
 
@@ -331,7 +176,6 @@ router.post(['/activar-campana', '/campaigns/activate', '/api/v1/activar-campana
       success: true,
       status: 'PENDING_USER_ACTIVATION',
       clientId: metaCtx.clientId,
-      aliasActId: metaCtx.aliasActId,
       campaignId: targetCampaignId,
       actId: metaCtx.act_id,
       pixelId: metaCtx.pixel_id,
@@ -346,18 +190,18 @@ router.post(['/activar-campana', '/campaigns/activate', '/api/v1/activar-campana
 });
 
 /* ==========================================================================
-   6. VERIFICAR ESTADO DE LA CAMPAÑA
+   4. VERIFICAR ESTADO DE LA CAMPAÑA
    ========================================================================== */
 router.get('/verificar-estado', async (req, res) => {
   try {
     const { userId, sessionId, clientId, campaignId } = req.query;
-    const metaCtx = await getUserMetaContext(userId, sessionId, clientId, req);
+    const metaCtx = await getUserMetaContext(userId, sessionId, clientId);
     const targetCampaignId = campaignId || metaCtx.lastCampaignId;
 
     let isNowActive = false;
 
-    if (metaServices && typeof metaServices.verificarEstadoCampana === 'function') {
-      isNowActive = await metaServices.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
+    if (metaService && typeof metaService.verificarEstadoCampana === 'function') {
+      isNowActive = await metaService.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
     }
 
     if (isNowActive) {
@@ -370,7 +214,6 @@ router.get('/verificar-estado', async (req, res) => {
     return res.json({
       success: true,
       clientId: metaCtx.clientId,
-      aliasActId: metaCtx.aliasActId,
       isActive: isNowActive,
       status: isNowActive ? 'ACTIVE' : 'PAUSED',
       campaignId: targetCampaignId,
@@ -384,15 +227,14 @@ router.get('/verificar-estado', async (req, res) => {
 });
 
 /* ==========================================================================
-   7. SOLICITAR MÉTRICAS A METASERVICES
+   5. CONSULTAR MÉTRICAS CON TOKEN MAESTRO
    ========================================================================== */
 router.get('/metrics', async (req, res) => {
   try {
     const { userId, sessionId, clientId } = req.query;
-    const activeClientId = await resolveClientId(clientId, req);
+    const activeClientId = normalizeClientId(clientId);
     const isAdmin = activeClientId.includes('ADMIN') || activeClientId === 'CLIENT-#00';
 
-    // 1. Verificar si hay un Campaign ID vigente (no expirado por las 24h)
     const targetCampaignId = req.query.campaignId || await campaignStorage.obtenerCampaignIdVigente(activeClientId, isAdmin);
 
     if (!targetCampaignId) {
@@ -405,20 +247,19 @@ router.get('/metrics', async (req, res) => {
       });
     }
 
-    const metaCtx = await getUserMetaContext(userId, sessionId, activeClientId, req);
+    const metaCtx = await getUserMetaContext(userId, sessionId, activeClientId);
 
     if (metaCtx.fb_token) {
       try {
         let stats = null;
-        if (metaServices && typeof metaServices.obtenerMetricas === 'function') {
-          stats = await metaServices.obtenerMetricas(metaCtx.fb_token, targetCampaignId);
+        if (metaService && typeof metaService.obtenerMetricas === 'function') {
+          stats = await metaService.obtenerMetricas(metaCtx.fb_token, targetCampaignId);
         }
 
         if (stats && Object.keys(stats).length > 0) {
           return res.json({
             success: true,
             clientId: metaCtx.clientId,
-            aliasActId: metaCtx.aliasActId,
             campaignId: targetCampaignId,
             actId: metaCtx.act_id,
             metrics: {
@@ -436,11 +277,9 @@ router.get('/metrics', async (req, res) => {
       }
     }
 
-    // Fallback dinámico
     return res.json({
       success: true,
       clientId: metaCtx.clientId,
-      aliasActId: metaCtx.aliasActId,
       campaignId: targetCampaignId,
       actId: metaCtx.act_id,
       metrics: {
@@ -459,14 +298,14 @@ router.get('/metrics', async (req, res) => {
 });
 
 /* ==========================================================================
-   8. WEBHOOK
+   6. WEBHOOK
    ========================================================================== */
 router.post('/webhook', async (req, res) => {
   try {
     const { campaignId, status, sessionId, userId, clientId } = req.body;
 
     if (campaignId && status === 'ACTIVE') {
-      const activeClientId = await resolveClientId(clientId, req);
+      const activeClientId = normalizeClientId(clientId);
       const query = clientId ? { clientId: activeClientId } : (userId ? { userId } : { sessionId });
       
       await Client.findOneAndUpdate(
@@ -477,7 +316,7 @@ router.post('/webhook', async (req, res) => {
 
     return res.json({ success: true, message: 'Webhook procesado' });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: `Error en webhook: ${err.message}` });
   }
 });
 
