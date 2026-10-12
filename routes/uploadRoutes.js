@@ -163,7 +163,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // 5. Invocación a MetaServices (Ejecuta ciclo de 24h y guarda campaign_id en storage)
+        // 5. Invocación a MetaServices (Solo si ya hay cuenta publicitaria configurada)
     let metaResult = null;
 
     if (userToken && userAdAccount && metaService && typeof metaService.procesarCicloHora24 === 'function') {
@@ -181,7 +181,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
       await Audiencia.findByIdAndUpdate(audienciaGuardada._id, { estado: 'COMPLETADO_Y_ACTIVADO' });
     } else {
-      console.warn('⚠️ [UPLOAD] No se ejecutó procesarCicloHora24: Faltan tokens, cuenta publicitaria o servicio.');
+      console.warn('⚠️ [UPLOAD] Archivo guardado. Falta configurar act_id o token para inyectar en Meta en este paso.');
+      await Audiencia.findByIdAndUpdate(audienciaGuardada._id, { estado: 'PENDING_META_CONFIG' });
     }
 
     return res.json({ 
