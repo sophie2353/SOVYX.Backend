@@ -19,9 +19,8 @@ try {
 let metaService = null;
 try {
   metaService = require('./metaService');
-  } catch (err) {
-    console.warn('⚠️ [UPLOAD] metaService no encontrado. Las funciones de Meta estarán desactivadas.');
-  }
+} catch (err) {
+  console.warn('⚠️ [UPLOAD] metaService no encontrado. Las funciones de Meta estarán desactivadas.');
 }
 
 // Carga centralizada de IA1 Segmenter
