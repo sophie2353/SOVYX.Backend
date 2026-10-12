@@ -3,11 +3,11 @@
  * Architecture V3.5: Clean backend automation model using Admin Token + Stored Act ID & Pixel ID per client.
  * Cero OAuth de clientes. Configuración directa post-pago.
  */
-
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const Client = require('../models/clients');
+const Audiencia = require('../models/Audiencia');
 const campaignStorage = require('./campaignStorageService');
 
 // Carga centralizada y limpia de metaService (ubicado en la misma carpeta routes/)
@@ -118,8 +118,26 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
    ========================================================================== */
 router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/draft'], async (req, res) => {
   try {
-    const { userId, sessionId, clientId, usersPayload, dailyBudget, version } = req.body;
+    const { userId, sessionId, clientId, dailyBudget, version } = req.body;
+    let { usersPayload } = req.body;
     const metaCtx = await getUserMetaContext(userId, sessionId, clientId);
+
+    // Si usersPayload no viene en el body, lo buscamos de la última audiencia guardada del cliente
+    if (!usersPayload || usersPayload.length === 0) {
+      const Audiencia = require('../models/Audiencia'); // Asegúrate de importar el modelo si no está arriba
+      const ultimaAudiencia = await Audiencia.findOne({ clientId: metaCtx.clientId }).sort({ createdAt: -1 });
+      
+      if (ultimaAudiencia && ultimaAudiencia.segmentacion?.usersPayload) {
+        usersPayload = ultimaAudiencia.segmentacion.usersPayload;
+      }
+    }
+
+    if (!usersPayload || usersPayload.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No se encontró un payload de usuarios válido. Sube un archivo Excel primero.' 
+      });
+    }
 
     if (!metaService || typeof metaService.procesarCicloHora24 !== 'function') {
       return res.status(500).json({ 
@@ -128,12 +146,13 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
       });
     }
 
+    // Aquí ya cuenta con: metaCtx.clientId, el token maestro (metaCtx.fb_token), el act_id y pixel_id guardados en DB, y los datos del Excel
     const borradorResult = await metaService.procesarCicloHora24({
       clientId: metaCtx.clientId,
       token: metaCtx.fb_token,
       adAccountId: metaCtx.act_id,
       pixelId: metaCtx.pixel_id,
-      usersPayload: usersPayload || [],
+      usersPayload: usersPayload,
       dailyBudget: dailyBudget || 1000,
       version: version || 'V3.5'
     });
