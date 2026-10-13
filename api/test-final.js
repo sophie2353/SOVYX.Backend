@@ -104,7 +104,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     logs.push('📡 [TEST] POST /api/v1/facebook/configurar...');
     const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
       clientId: testClientId,
-      actId: 'act_123456789012345',
+      actId: 'act_838621568649149',
       pixelId: '987654321012345'
     });
 
