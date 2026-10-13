@@ -98,18 +98,15 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     console.log('✅ PASO 1 OK (Upload + IA1):', uploadRes.data.ok ? 'EXITOSO' : 'FALLIDO');
     logs.push(`Upload ok=${uploadRes.data.ok}. Registros parseados: ${uploadRes.data.totalRegistros}`);
 
+        // -----------------------------------------------------------------------
+    // PASO 2: Configurar Credenciales Post-Pago con tu Act ID REAL
     // -----------------------------------------------------------------------
-    // PASO 2: Configurar Credenciales Post-Pago (guarda act_id y pixel_id en DB)
-    // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/facebook/configurar...');
+    logs.push('📡 [TEST] Enviando POST /api/v1/facebook/configurar...');
     const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
       clientId: testClientId,
-      actId: 'act_838621568649149',
-      pixelId: '987654321012345'
+      actId: process.env.AD_ACCOUNT_ID || '', // 👈 Aquí va tu cuenta real
+      pixelId: process.env.META_PIXEL_ID || '' // 👈 Aquí va tu pixel real
     });
-
-    console.log('✅ PASO 2 OK (Guardar Credenciales):', configRes.data.success ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Configuración registrada en DB para act_id: ${configRes.data.act_id}`);
 
     // -----------------------------------------------------------------------
     // PASO 3: Crear Borrador -> facebookRoutes extrae la audiencia de Mongo
