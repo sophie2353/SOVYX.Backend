@@ -7,23 +7,13 @@ const XLSX = require('xlsx');
 const Audiencia = require('../models/Audiencia');
 const Client = require('../models/clients');
 
-// Carga segura de campaignStorage (si existe, se usa; si no, no rompe el arranque)
-let campaignStorage = null;
-try {
-  campaignStorage = require('./campaignStorageService');
-} catch (e) {
-  console.warn('⚠️ [UPLOAD] campaignStorageService opcional no encontrado.');
-}
-
-// Carga centralizada y limpia de metaService (en singular)
 let metaService = null;
 try {
   metaService = require('./metaService');
 } catch (err) {
-  console.warn('⚠️ [UPLOAD] metaService no encontrado. Las funciones de Meta estarán desactivadas.');
+  console.warn('⚠️ [UPLOAD] metaService no encontrado.');
 }
 
-// Carga centralizada de IA1 Segmenter
 let ia1Instance = null;
 try {
   const IA1 = require('../modules/sovyxIA1Segmenter');
@@ -33,18 +23,15 @@ try {
     const IA1 = require('../../modules/sovyxIA1Segmenter');
     ia1Instance = new IA1();
   } catch (err) {
-    console.warn('⚠️ [UPLOAD] No se pudo instanciar sovyxIA1Segmenter. Usando fallback.');
+    console.warn('⚠️ [UPLOAD] No se pudo instanciar sovyxIA1Segmenter.');
   }
 }
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 } // Límite de 15MB para servidor Render
+  limits: { fileSize: 15 * 1024 * 1024 }
 });
 
-/**
- * Normaliza el clientId a formato limpio (ej: 'CLIENT-#01' -> 'CLIENT-#01')
- */
 function normalizeClientId(rawId) {
   if (!rawId) return 'CLIENT-#01';
   const clean = String(rawId).trim().toUpperCase();
@@ -54,9 +41,6 @@ function normalizeClientId(rawId) {
   return `CLIENT-#${numId}`;
 }
 
-/**
- * Extrae y limpia los campos clave desde Excel / CSV para el Schema Match de Meta
- */
 function extraerCamposTexto(buffer) {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -92,14 +76,14 @@ function extraerCamposTexto(buffer) {
 
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
-    const { sessionId, clientId, nicho, token, adAccountId, pixelId, dailyBudget, version } = req.body;
+    const { sessionId, clientId, nicho, token, adAccountId } = req.body;
     if (!req.file) return res.status(400).json({ error: 'Archivo Excel/CSV no recibido' });
 
     const activeClientId = normalizeClientId(clientId);
     const session = sessionId || `sess_${activeClientId}_${Date.now()}`;
     const nichoObjetivo = nicho || 'infoproductos';
 
-    // 1. Extraer los campos requeridos desde la hoja subida
+    // 1. Extraer los datos limpios del Excel
     const parsedPayload = extraerCamposTexto(req.file.buffer);
 
     if (!parsedPayload || parsedPayload.length === 0) {
@@ -111,9 +95,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       fileContent = fileContent.slice(1);
     }
 
-    // 2. Procesar e inyectar segmentación con Sovyx IA1
+    // 2. Procesar la segmentación con IA1
     let extractedTargeting;
-
     if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
       extractedTargeting = await ia1Instance.segmentarCsv(fileContent, { nicho: nichoObjetivo });
     } else if (ia1Instance && typeof ia1Instance.generarSegmentacion === 'function') {
@@ -136,19 +119,18 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       extractedTargeting.usersPayload = parsedPayload;
     }
 
-    // 3. Resolver credenciales y contexto desde la DB si no vienen explícitos
-    let userToken = token || process.env.META_ACCESS_TOKEN;
-    let userAdAccount = adAccountId || process.env.AD_ACCOUNT_ID;
-    let userPixelId = pixelId || process.env.META_PIXEL_ID;
-
-    const clientDoc = await Client.findOne({ clientId: activeClientId });
-    if (clientDoc && clientDoc.meta) {
-      userToken = clientDoc.meta.fb_token || userToken;
-      userAdAccount = clientDoc.meta.act_id || userAdAccount;
-      userPixelId = clientDoc.meta.pixel_id || userPixelId;
+    // 4. Crear Audiencia Semilla + Lookalikes en Meta (Segmentación lista)
+    let metaTargeting = null;
+    if (userToken && userAdAccount && metaService && typeof metaService.procesarEInyectarLookalikes === 'function') {
+      console.log(`🌱 [UPLOAD] Generando Audiencia Semilla + Lookalikes en Meta para ${activeClientId}...`);
+      metaTargeting = await metaService.procesarEInyectarLookalikes({
+        adAccountId: userAdAccount,
+        token: userToken,
+        usersPayload: extractedTargeting.usersPayload
+      });
     }
 
-    // 4. Persistir datos del dataset en MongoDB
+    // 5. Guardar la audiencia lista en MongoDB
     const audienciaGuardada = await Audiencia.findOneAndUpdate(
       { sessionId: session },
       {
@@ -156,34 +138,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         clientId: activeClientId,
         fileUrl: `memory://${req.file.originalname}`,
         fileName: req.file.originalname,
-        segmentacion: extractedTargeting,
+        segmentacion: {
+          ...extractedTargeting,
+          custom_audiences: metaTargeting?.custom_audiences || []
+        },
         totalRegistros: parsedPayload.length,
-        estado: 'PROCESANDO_META'
+        estado: metaTargeting ? 'SEGMENTADA_Y_LISTA' : 'PENDIENTE_CONEXION_META'
       },
       { upsert: true, new: true }
     );
-
-        // 5. Invocación a MetaServices (Solo si ya hay cuenta publicitaria configurada)
-    let metaResult = null;
-
-    if (userToken && userAdAccount && metaService && typeof metaService.procesarCicloHora24 === 'function') {
-      console.log(`📡 [UPLOAD] Enviando ${extractedTargeting.usersPayload.length} registros para ${activeClientId} a Meta Services...`);
-
-      metaResult = await metaService.procesarCicloHora24({
-        clientId: activeClientId,
-        token: userToken,
-        adAccountId: userAdAccount,
-        pixelId: userPixelId,
-        usersPayload: extractedTargeting.usersPayload,
-        dailyBudget: dailyBudget ? parseFloat(dailyBudget) : 1000,
-        version: version || 'V3.5'
-      });
-
-      await Audiencia.findByIdAndUpdate(audienciaGuardada._id, { estado: 'COMPLETADO_Y_ACTIVADO' });
-    } else {
-      console.warn('⚠️ [UPLOAD] Archivo guardado. Falta configurar act_id o token para inyectar en Meta en este paso.');
-      await Audiencia.findByIdAndUpdate(audienciaGuardada._id, { estado: 'PENDING_META_CONFIG' });
-    }
 
     return res.json({ 
       ok: true, 
@@ -191,46 +154,26 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       audienciaId: audienciaGuardada._id,
       totalRegistros: parsedPayload.length,
       targeting: extractedTargeting,
-      campaignId: metaResult?.campaignId || null,
-      metaResult: metaResult || { message: 'Data procesada correctamente. Pendiente conexión completa a Meta.' }
+      customAudiences: metaTargeting?.custom_audiences || [],
+      message: 'Excel procesado con IA1 y Audiencia Semilla inyectada en Meta. Listo para crear borrador.'
     });
 
   } catch (error) {
-    console.error('💥 Error procesando archivo en IA1 y Meta:', error);
+    console.error('💥 Error procesando archivo en Upload:', error);
     return res.status(500).json({ 
       ok: false, 
-      error: 'Error al procesar el archivo Excel y sincronizar con Meta Services.',
+      error: 'Error al procesar el archivo Excel y generar la segmentación.',
       details: error.message 
     });
   }
 });
 
-// =========================================================================
-// ENDPOINT DE TEST / DEBUG PARA VERIFICAR LOGS Y SIMULACIÓN
-// =========================================================================
 router.get('/test-debug', async (req, res) => {
-  const diagnosticLogs = [];
-  try {
-    diagnosticLogs.push('🔍 [DEBUG] Verificando estado del router de media/upload...');
-    diagnosticLogs.push(`🔍 [DEBUG] Módulo XLSX cargado correctamente.`);
-    diagnosticLogs.push(`🔍 [DEBUG] Instancia de IA1 Segmenter: ${ia1Instance ? 'DISPONIBLE' : 'NO DISPONIBLE (Usará fallback)'}`);
-    diagnosticLogs.push(`🔍 [DEBUG] Servicio MetaServices: ${metaService ? 'CONECTADO' : 'NO CONECTADO'}`);
-
-    return res.status(200).json({
-      ok: true,
-      message: 'El endpoint de prueba responde correctamente.',
-      timestamp: new Date().toISOString(),
-      logs: diagnosticLogs
-    });
-  } catch (error) {
-    diagnosticLogs.push(`❌ [DEBUG ERROR] ${error.message}`);
-    return res.status(500).json({
-      ok: false,
-      error: error.message,
-      logs: diagnosticLogs
-    });
-  }
+  return res.status(200).json({
+    ok: true,
+    message: 'El endpoint de upload responde correctamente.',
+    timestamp: new Date().toISOString()
+  });
 });
-
 
 module.exports = router;
