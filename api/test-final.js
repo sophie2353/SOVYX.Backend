@@ -1,20 +1,21 @@
+/**
+ * SODIE - Test Suite V3.5 (Lazy Orchestration & Deferred Campaign Creation)
+ */
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const axios = require('axios');
 const FormData = require('form-data');
 const XLSX = require('xlsx');
 
-// Modelos y Almacenamiento para verificación y limpieza
+// Modelos y Almacenamiento
 const Client = require('../models/clients');
 const Audiencia = require('../models/Audiencia');
 const campaignStorage = require('../routes/campaignStorageService');
 
 const HISTORY_FILE = path.join(__dirname, 'test-history.json');
 
-// Helper para guardar auditoría en JSON
 function saveTestHistory(entry) {
   let history = [];
   if (fs.existsSync(HISTORY_FILE)) {
@@ -31,7 +32,6 @@ function saveTestHistory(entry) {
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
 }
 
-// Generador de 200 leads dinámicos
 function generate200MockLeads() {
   const locations = [
     { ciudad: 'Ciudad de México', pais: 'MX', phoneCode: '+52' },
@@ -60,21 +60,19 @@ function generate200MockLeads() {
   return leads;
 }
 
-/**
- * SIMULACIÓN DE FLUJO COMPLETO SODIE V3.5 CON EXTRACCIÓN DE AUDIENCIA Y STORAGE CHECK
- */
 async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
   const testClientId = 'CLIENT-#01';
   const logs = [];
 
   console.log('\n======================================================');
-  console.log('🚀 INICIANDO TEST DE INTEGRACIÓN END-TO-END SODIE V3.5');
+  console.log('🚀 INICIANDO TEST DE INTEGRATION E2E SODIE V3.5 (LAZY)');
   console.log('======================================================\n');
 
   try {
     // -----------------------------------------------------------------------
-    // PASO 1: Subida de Excel + Segmentación IA1 (Persiste en DB Audiencia)
+    // PASO 1: Subida de Excel + Segmentación IA1 (Retiene LALs)
     // -----------------------------------------------------------------------
+    logs.logTimestamp = new Date().toISOString();
     logs.push('1. Generando Excel en memoria con 200 leads simulados...');
     const fakeLeads = generate200MockLeads();
     const ws = XLSX.utils.json_to_sheet(fakeLeads);
@@ -95,36 +93,38 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
       headers: form.getHeaders()
     });
 
-    console.log('✅ PASO 1 OK (Upload + IA1):', uploadRes.data.ok ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Upload ok=${uploadRes.data.ok}. Registros parseados: ${uploadRes.data.totalRegistros}`);
+    console.log('✅ PASO 1 OK (Upload + LAL Retenidos):', uploadRes.data.ok ? 'EXITOSO' : 'FALLIDO');
+    logs.push(`Upload ok=${uploadRes.data.ok}. Registros: ${uploadRes.data.totalRegistros}`);
 
-        // -----------------------------------------------------------------------
-    // PASO 2: Configurar Credenciales Post-Pago con tu Act ID REAL
     // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] Enviando POST /api/v1/facebook/configurar...');
+    // PASO 2: Configuración (Hora 0) -> Envía actId y dispara creación del borrador
+    // -----------------------------------------------------------------------
+    logs.push('📡 [TEST] POST /api/v1/facebook/configurar (Hora 0 - Inyección de Credenciales y Activación del Buffer)...');
     const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
       clientId: testClientId,
-      actId: process.env.AD_ACCOUNT_ID || '', // 👈 Aquí va tu cuenta real
-      pixelId: process.env.META_PIXEL_ID || '' // 👈 Aquí va tu pixel real
+      actId: process.env.AD_ACCOUNT_ID || '', // 👈 Tu cuenta publicitaria comercial real
+      pixelId: process.env.META_PIXEL_ID || '', // 👈 Tu pixel real
+      dailyBudget: 1500,
+      version: 'V3.5'
     });
 
+    console.log('✅ PASO 2 OK (Configurar + Sincronización Meta):', configRes.data.success ? 'EXITOSO' : 'FALLIDO');
+
     // -----------------------------------------------------------------------
-    // PASO 3: Crear Borrador -> facebookRoutes extrae la audiencia de Mongo
+    // PASO 3: Forzar explicitamente /crear-borrador si el buffer requiere paso manual o validar ID generado
     // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/facebook/crear-borrador (Extracción automática de Audiencia de Mongo)...');
-    
-    // NOTA: No enviamos usersPayload en el body a propósito para probar que lo extraiga de la DB
+    logs.push('📡 [TEST] POST /api/v1/facebook/crear-borrador (Validación de ensamble final)...');
     const draftRes = await axios.post(`${baseUrl}/api/v1/facebook/crear-borrador`, {
       clientId: testClientId,
       dailyBudget: 1500,
       version: 'V3.5'
     });
 
-    console.log('✅ PASO 3 OK (Extracción de DB + MetaService):', draftRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 3 OK (Borrador Ensamblado con LALs Retenidos):', draftRes.data.success ? 'EXITOSO' : 'FALLIDO');
     const generatedCampaignId = draftRes.data.campaignId;
-    logs.push(`Borrador inyectado en Meta. Campaign ID: ${generatedCampaignId}`);
+    logs.push(`Campaña en borrador creada con éxito. ID: ${generatedCampaignId}`);
 
-    // VERIFICACIÓN DE ALMACENAMIENTO EN CAMPAIGN STORAGE (TTL 24h)
+    // Verificación de almacenamiento con TTL (campaignStorage)
     let storedCampaignId = null;
     if (campaignStorage && typeof campaignStorage.obtenerCampaignIdVigente === 'function') {
       storedCampaignId = await campaignStorage.obtenerCampaignIdVigente(testClientId, false);
@@ -132,16 +132,16 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     }
 
     // -----------------------------------------------------------------------
-    // PASO 4: Consultar Métricas usando Token Maestro y Campaign ID del Storage
+    // PASO 4: Consultar Métricas
     // -----------------------------------------------------------------------
     logs.push('📡 [TEST] GET /api/v1/facebook/metrics...');
     const metricsRes = await axios.get(`${baseUrl}/api/v1/facebook/metrics?clientId=${encodeURIComponent(testClientId)}`);
 
-    console.log('✅ PASO 4 OK (Consulta Métricas via Storage):', metricsRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 4 OK (Consulta de Métricas):', metricsRes.data.success ? 'EXITOSO' : 'FALLIDO');
     logs.push(`Métricas recibidas: Alcance=${metricsRes.data.metrics?.reach || 0}`);
 
     const summary = {
-      testId: `sim_v35_e2e_${Date.now()}`,
+      testId: `sim_v35_lazy_${Date.now()}`,
       status: 'SUCCESS',
       clientId: testClientId,
       uploadOk: uploadRes.data.ok,
@@ -154,7 +154,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     };
 
     saveTestHistory(summary);
-    console.log('\n✨ ¡FLUJO E2E PROBADO Y REGISTRADO EN CAMPAIGN STORAGE CON ÉXITO! ✨\n');
+    console.log('\n✨ ¡TEST E2E DE ORQUESTACIÓN DIFERIDA COMPLETADO CON ÉXITO! ✨\n');
     return summary;
 
   } catch (error) {
@@ -171,20 +171,19 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     throw error;
   } finally {
     // -----------------------------------------------------------------------
-    // LIMPIEZA AUTOMÁTICA EN MONGODB (Para que la DB quede impecable)
+    // LIMPIEZA AUTOMÁTICA EN MONGODB
     // -----------------------------------------------------------------------
     try {
       console.log('🧹 [CLEANUP] Limpiando datos de simulación en MongoDB...');
       await Client.deleteOne({ clientId: testClientId });
       await Audiencia.deleteMany({ clientId: testClientId });
-      console.log('✨ [CLEANUP] MongoDB limpio y listo para clientes de producción.');
+      console.log('✨ [CLEANUP] MongoDB limpio y listo.');
     } catch (cleanupErr) {
-      console.error('⚠️ [CLEANUP WARNING] No se pudo limpiar la base de datos:', cleanupErr.message);
+      console.error('⚠️ [CLEANUP WARNING]:', cleanupErr.message);
     }
   }
 }
 
-// Endpoint GET/POST para disparar la prueba
 router.all('/', async (req, res) => {
   try {
     const protocol = req.protocol || 'http';
@@ -194,7 +193,7 @@ router.all('/', async (req, res) => {
     const result = await runFullIntegrationTest(baseUrl);
     return res.status(200).json({
       ok: true,
-      message: 'Prueba de integración V3.5 ejecutada correctamente.',
+      message: 'Prueba de integración V3.5 (Lazy Orchestration) ejecutada correctamente.',
       result
     });
   } catch (err) {
