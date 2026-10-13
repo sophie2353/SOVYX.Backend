@@ -10,7 +10,7 @@ const XLSX = require('xlsx');
 // Modelos y Almacenamiento para verificación y limpieza
 const Client = require('../models/clients');
 const Audiencia = require('../models/Audiencia');
-const campaignStorage = require('./campaignStorageService');
+const campaignStorage = require('../routes/campaignStorageService');
 
 const HISTORY_FILE = path.join(__dirname, 'test-history.json');
 
