@@ -1,17 +1,19 @@
 const mongoose = require('mongoose');
 
-const clientSchema = new mongoose.Schema({
-  userId: { type: String, required: true, unique: true }, // ID del cliente
-  nombre: String,
-  email: String,
-  // Agrupa los datos de Meta dentro de un solo objeto sub-documento
+const ClientSchema = new mongoose.Schema({
+  clientId: { type: String, required: true, unique: true, index: true }, // 👈 ASEGÚRATE DE QUE ESTE CAMPO EXISTA
+  sessionId: { type: String },
   meta: {
-    act_id: { type: String, default: null },
-    pixel_id: { type: String, default: null },
-    fb_token: { type: String, default: null },
-    account_name: { type: String, default: null },
-    updatedAt: { type: Date, default: Date.now }
-  }
-}, { timestamps: true });
+    act_id: { type: String },
+    pixel_id: { type: String },
+    admin_token: { type: String },
+    lastCampaignId: { type: String },
+    version: { type: String },
+    campaignExpiresAt: { type: Date },
+    status: { type: String, default: 'PENDING' },
+    configuredAt: { type: Date }
+  },
+  createdAt: { type: Date, default: Date.now }
+});
 
-module.exports = mongoose.model('Client', clientSchema);
+module.exports = mongoose.model('Client', ClientSchema);
