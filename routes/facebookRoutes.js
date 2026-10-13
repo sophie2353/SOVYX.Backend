@@ -25,8 +25,8 @@ try {
 // Configuración global de Meta (Token maestro de administrador y defaults)
 const FB_CONFIG = {
   ADMIN_TOKEN: process.env.ADMIN_TOKEN || process.env.ADMIN_TOKEN || '',
-  DEFAULT_ACT_ID: process.env.ACCOUNT_ID || '',
-  DEFAULT_PIXEL_ID: process.env.PIXEL_ID || null
+  DEFAULT_ACT_ID: process.env.AD_ACCOUNT_ID || '',
+  DEFAULT_PIXEL_ID: process.env.META_PIXEL_ID || null
 };
 
 /**
