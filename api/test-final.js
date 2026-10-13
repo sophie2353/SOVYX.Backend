@@ -58,7 +58,7 @@ function generate200MockLeads() {
 /**
  * SIMULACIÓN DE FLUJO COMPLETO SODIE V3.5
  */
-async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
+async function runFullIntegrationTest(baseUrl = 'http://api.sodie.app') {
   const testClientId = 'CLIENT-#01';
   const logs = [];
 
