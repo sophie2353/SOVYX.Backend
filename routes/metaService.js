@@ -172,7 +172,7 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
   // =========================================================================
   // 3. CREACIÓN DE BORRADOR (PURCHASE / VENTAS)
   // =========================================================================
-  async crearCampanaVentas({ 
+    async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
@@ -183,26 +183,36 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
     const cleanAccountId = actId.replace(/^act_/, '');
     const campaignName = buildCampaignName(clientId);
 
+    // 1. Crear Campaña pasando JSON limpio
     const campaignUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns`;
-    const campaignParams = new URLSearchParams({
-      name: campaignName,
-      objective: 'OUTCOME_SALES',
-      status: 'PAUSED',
-      special_ad_categories: '[]',
-      access_token: token
+    
+    const campaignRes = await fetch(campaignUrl, { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: campaignName,
+        objective: 'OUTCOME_SALES',
+        status: 'PAUSED',
+        special_ad_categories: [], // 👈 Arreglo vacío en JSON real
+        access_token: token
+      })
     });
 
-    const campaignRes = await fetch(campaignUrl, { method: 'POST', body: campaignParams });
     const campaignData = await campaignRes.json();
-    if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
+    if (campaignData.error) {
+      console.error('❌ Error de Meta al crear campaña:', campaignData.error);
+      throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
+    }
     const campaignId = campaignData.id;
 
+    // 2. Procesar e inyectar Lookalikes (Audiencia + LAL 1%)
     const lalTargeting = await this.procesarEInyectarLookalikes({
       adAccountId: cleanAccountId,
       token,
       usersPayload
     });
 
+    // 3. Crear AdSet
     const adSetUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
@@ -252,7 +262,6 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
       campaignName
     };
   },
-
   // =========================================================================
   // 4. CICLO DE 24 HORAS & DESACTIVACIÓN
   // =========================================================================
