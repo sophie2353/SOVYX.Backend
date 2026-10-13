@@ -1,3 +1,4 @@
+// routes/metaService.js
 const crypto = require('crypto');
 const campaignStorage = require('./campaignStorageService');
 
@@ -24,9 +25,10 @@ function buildCampaignName(clientId = 'ADMIN') {
 
 const metaService = {
   // =========================================================================
-  // 1. BÚSQUEDA DE CAMPAÑAS PREVIAS
+  // 1. BUSCAR BORRADORES EXISTENTES
   // =========================================================================
-async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
+  async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
+    if (!adAccountId) return null;
     const targetName = buildCampaignName(clientId);
     const cleanAccountId = adAccountId.replace(/^act_/, '');
     const url = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns?fields=id,name,status&access_token=${token}`;
@@ -39,7 +41,7 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
   },
 
   // =========================================================================
-  // 2. SEGMENTACIÓN DE ALTO VALOR (AUDIENCIAS VALUE-BASED & LAL 1%)
+  // 2. CREACIÓN DE AUDIENCIA SEMILLA Y LOOKALIKES (RETENIDOS O GENERADOS)
   // =========================================================================
   async crearAudienciaSemillaConValor(adAccountId, token, name) {
     const cleanAccountId = adAccountId.replace(/^act_/, '');
@@ -51,7 +53,7 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
       body: JSON.stringify({
         name: name,
         subtype: 'CUSTOM',
-        description: 'Semilla inyectada desde IA1 SODIE (Value-Based pura)',
+        description: 'Semilla inyectada desde IA1 SODIE (Value-Based)',
         customer_file_source: 'USER_PROVIDED_ONLY',
         is_value_based: true,
         access_token: token
@@ -67,7 +69,6 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
     const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY', 'VALUE'];
 
-    // Cifrar datos personales y conservar el VALUE numérico plano
     const formattedData = usersPayload.map(u => [
       hashData(u.email),
       hashData(u.phone),
@@ -85,10 +86,7 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        payload: {
-          schema: schema,
-          data: formattedData
-        },
+        payload: { schema, data: formattedData },
         access_token: token
       })
     });
@@ -113,9 +111,7 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
           type: 'value_driven',
           ratio: 0.01,
           location_spec: {
-            geo_locations: {
-              countries: [countryCode.toUpperCase()]
-            }
+            geo_locations: { countries: [countryCode.toUpperCase()] }
           }
         }),
         access_token: token
@@ -138,18 +134,19 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
         .filter(c => c.length === 2)
     )];
 
-    if (!countriesFound.length) {
-      throw new Error('⚠️ No se detectaron códigos de país válidos (ej. VE, CO, MX) en la columna country.');
-    }
+    if (!countriesFound.length) countriesFound.push('US');
 
+    // 1. Crear Audiencia Semilla
     const seedAudienceId = await this.crearAudienciaSemillaConValor(
       adAccountId, 
       token, 
       `SODIE_Seed_Value_${Date.now()}`
     );
 
+    // 2. Inyectar registros cifrados SHA-256
     await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, token);
 
+    // 3. Generar Lookalikes 1% por cada país detectado
     const lookalikeIds = [];
     for (const country of countriesFound) {
       try {
@@ -160,32 +157,33 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
       }
     }
 
-    if (!lookalikeIds.length) {
-      throw new Error('No se pudo generar ningún Lookalike 1% en Meta Ads.');
-    }
-
     return {
-      custom_audiences: lookalikeIds.map(id => ({ id }))
+      custom_audiences: lookalikeIds.length > 0 
+        ? lookalikeIds.map(id => ({ id })) 
+        : [{ id: seedAudienceId }]
     };
   },
 
   // =========================================================================
-  // 3. CREACIÓN DE BORRADOR (PURCHASE / VENTAS)
+  // 3. CREACIÓN DE CAMPAÑA + ADSET (RECIBE LAL DE RETENCIÓN + ACT_ID + PIXEL)
   // =========================================================================
-    async crearCampanaVentas({ 
+  async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
     clientId = 'ADMIN', 
     dailyBudget = 1000, 
-    usersPayload 
+    customAudiences = [] 
   }) {
+    if (!actId) {
+      throw new Error('⚠️ Imposible crear campaña: Falta el actId de la cuenta publicitaria.');
+    }
+
     const cleanAccountId = actId.replace(/^act_/, '');
     const campaignName = buildCampaignName(clientId);
 
-    // 1. Crear Campaña pasando JSON limpio
+    // 1. Crear Campaña (JSON Limpio - evita Error #200 e Invalid Parameter)
     const campaignUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns`;
-    
     const campaignRes = await fetch(campaignUrl, { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -193,26 +191,16 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
         name: campaignName,
         objective: 'OUTCOME_SALES',
         status: 'PAUSED',
-        special_ad_categories: [], // 👈 Arreglo vacío en JSON real
+        special_ad_categories: [], // Array vacío explícito
         access_token: token
       })
     });
 
     const campaignData = await campaignRes.json();
-    if (campaignData.error) {
-      console.error('❌ Error de Meta al crear campaña:', campaignData.error);
-      throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
-    }
+    if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
     const campaignId = campaignData.id;
 
-    // 2. Procesar e inyectar Lookalikes (Audiencia + LAL 1%)
-    const lalTargeting = await this.procesarEInyectarLookalikes({
-      adAccountId: cleanAccountId,
-      token,
-      usersPayload
-    });
-
-    // 3. Crear AdSet
+    // 2. Crear AdSet e inyectar la segmentación/Lookalikes retenidos
     const adSetUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
@@ -220,18 +208,13 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
       daily_budget: dailyBudget,
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'VALUE',
-      targeting: {
-        custom_audiences: lalTargeting.custom_audiences
-      },
+      targeting: { custom_audiences: customAudiences },
       status: 'PAUSED',
       access_token: token
     };
 
     if (pixelId) {
-      adSetBody.promoted_object = { 
-        pixel_id: pixelId, 
-        custom_event_type: 'PURCHASE'
-      };
+      adSetBody.promoted_object = { pixel_id: pixelId, custom_event_type: 'PURCHASE' };
     }
 
     const adSetRes = await fetch(adSetUrl, {
@@ -242,6 +225,7 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
     
     const adSetData = await adSetRes.json();
     
+    // Fallback si la cuenta aún no reúne volumen para 'VALUE'
     if (adSetData.error && adSetData.error.message.includes('VALUE')) {
       adSetBody.optimization_goal = 'OFFSITE_CONVERSIONS';
       const fallbackRes = await fetch(adSetUrl, {
@@ -262,22 +246,22 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
       campaignName
     };
   },
+
   // =========================================================================
-  // 4. CICLO DE 24 HORAS & DESACTIVACIÓN
+  // 4. CICLO DE 24 HORAS & ORQUESTACIÓN DE LALs
   // =========================================================================
   async pausarCampana(token, campaignId) {
+    if (!campaignId) return null;
     const res = await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        status: 'PAUSED',
-        access_token: token 
-      })
+      body: JSON.stringify({ status: 'PAUSED', access_token: token })
     });
     return res.json();
   },
 
   async obtenerMetricas(token, campaignId) {
+    if (!campaignId) return {};
     const url = `${GRAPH_BASE_URL}/${campaignId}/insights?fields=impressions,clicks,cpc,ctr,spend,reach,action_values,actions&access_token=${token}`;
     const res = await fetch(url);
     const data = await res.json();
@@ -289,30 +273,47 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
     token, 
     adAccountId, 
     pixelId,
-    usersPayload,
+    usersPayload = null,
+    customAudiences = [],
     dailyBudget = 1000,
     version = 'V3.5'
   }) {
     try {
+      if (!adAccountId) {
+        throw new Error('⚠️ [MetaServices] Se requiere un adAccountId válido para ejecutar la inyección en Meta.');
+      }
+
       const cleanAccountId = adAccountId.replace(/^act_/, '');
-      
-      // 1. Desactivar campaña/borrador anterior si existía
+
+      // 1. Si no nos pasan customAudiences ya retenidas pero viene un usersPayload nuevo, las procesamos al vuelo
+      let finalAudiences = customAudiences;
+      if ((!finalAudiences || finalAudiences.length === 0) && usersPayload && usersPayload.length > 0) {
+        console.log('🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes al vuelo...');
+        const generatedLal = await this.procesarEInyectarLookalikes({
+          adAccountId: cleanAccountId,
+          token,
+          usersPayload
+        });
+        finalAudiences = generatedLal.custom_audiences;
+      }
+
+      // 2. Desactivar o pausar borrador anterior
       const borradorExistente = await this.buscarBorrador(cleanAccountId, token, clientId);
       if (borradorExistente) {
         await this.pausarCampana(token, borradorExistente.id);
       }
 
-      // 2. Crear nuevo borrador en PAUSED con los datos frescos del Excel
+      // 3. Inyectar audiencias retenidas + ActID + Pixel para armar borrador
       const nuevaCampana = await this.crearCampanaVentas({
         actId: cleanAccountId,
         token,
         pixelId,
         clientId,
         dailyBudget,
-        usersPayload
+        customAudiences: finalAudiences
       });
 
-      // 3. Registrar el ID en storageService (asocia a DB/Memoria con TTL 24h)
+      // 4. Guardar ID de campaña en storage con TTL de 24 horas
       const isAdmin = String(clientId).toUpperCase().includes('ADMIN') || clientId === 'CLIENT-#00';
       await campaignStorage.registrarCampaignId({
         clientId,
@@ -326,11 +327,10 @@ async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
         act_id: cleanAccountId,
         campaignId: nuevaCampana.campaignId, 
         status: 'PAUSED',
-        campaignName: nuevaCampana.campaignName,
-        message: 'Borrador creado y registrado en storageService. Notificar a facebookRoutes para confirmacion.html.'
+        campaignName: nuevaCampana.campaignName
       };
     } catch (error) {
-      console.error('Error en procesarCicloHora24 (MetaServices):', error);
+      console.error('💥 Error en procesarCicloHora24 (MetaServices):', error);
       throw error;
     }
   },
