@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const ClientSchema = new mongoose.Schema({
-  clientId: { type: String, required: true, unique: true, index: true }, // 👈 ASEGÚRATE DE QUE ESTE CAMPO EXISTA
+  clientId: { type: String, required: true, unique: true, index: true },
   sessionId: { type: String },
   meta: {
     act_id: { type: String },
@@ -13,6 +13,16 @@ const ClientSchema = new mongoose.Schema({
     status: { type: String, default: 'PENDING' },
     configuredAt: { type: Date }
   },
+  // 👈 NUEVO: Suscripción WebPush nativa vinculada al clientId
+  pushSubscription: {
+    endpoint: { type: String },
+    expirationTime: { type: Date, default: null },
+    keys: {
+      p256dh: { type: String },
+      auth: { type: String }
+    }
+  },
+  pushEnabled: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
