@@ -5,9 +5,9 @@ const metaAdsService = require('../services/metaService');
 
 // Estado en memoria del backend (O guardado en una DB simple)
 let slotsState = {
-  totalSlots: 3,
+  totalSlots: 10,
   takenSlots: 0,
-  launchTimestamp: new Date('2026-09-28T00:00:00Z') // Ajusta la hora exacta del lanzamiento
+  launchTimestamp: new Date('2026-10-19T00:00:00Z') // Ajusta la hora exacta del lanzamiento
 };
 
 // Guardar los clientes SSE conectados para enviar la señal en tiempo real
