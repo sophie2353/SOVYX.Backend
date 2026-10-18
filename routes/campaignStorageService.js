@@ -9,7 +9,7 @@ const activeCampaignsCache = new Map();
 async function registrarCampaignId({ clientId, campaignId, version = 'V3.5', isAdmin = false }) {
   const key = isAdmin ? 'ID_CAMPAIGN_ADMIN' : `ID_CAMPAIGN_${clientId.toUpperCase()}`;
   const now = Date.now();
-  const expiresAt = now + (24 * 60 * 60 * 1000); // Expiración exacta de 24 horas (V3.5)
+  const expiresAt = now + (72 * 60 * 60 * 1000); // Expiración exacta de 24 horas (V3.5)
 
   const campaignData = {
     key,
