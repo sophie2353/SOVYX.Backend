@@ -6,7 +6,7 @@ global.waitlistDB = global.waitlistDB || [];
 global.waitlistStatusOverride = global.waitlistStatusOverride || null;
 
 // Límite total de cupos para la Waitlist
-const TOTAL_CUPOS_WAITLIST = 50;
+const TOTAL_CUPOS_WAITLIST = 10;
 
 // Registro en Lista de Espera SODIE V4 con Biometría
 router.post(['/registro', '/'], (req, res) => {
