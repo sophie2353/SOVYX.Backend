@@ -1,69 +1,72 @@
+// routes/pushRoutes.js
 const express = require('express');
 const router = express.Router();
 const webpush = require('web-push');
-const Client = require('../models/clients'); // Modelo donde guardamos la suscripción push del usuario
+const ClientPush = require('../models/ClientPush');
 
-// =========================================================================
-// CONFIGURACIÓN VAPID (Variables de entorno)
-// Si no están configuradas, se muestra advertencia en logs
-// =========================================================================
+// Configuración VAPID
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:soporte@sodie.ai';
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    VAPID_SUBJECT,
-    VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY
-  );
-} else {
-  console.warn('⚠️ [PUSH] VAPID Keys no configuradas en variables de entorno. WebPush nativo desactivado.');
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 }
 
 /**
- * Endpoint para expone la clave pública VAPID al cliente para la suscripción nativa
+ * Endpoint para exponer la llave pública VAPID al cliente
  */
 router.get('/vapid-public-key', (req, res) => {
   return res.json({ publicKey: VAPID_PUBLIC_KEY });
 });
 
 /**
- * Endpoint para que el cliente guarde la suscripción nativa del navegador post-permiso
+ * Guarda o actualiza la suscripción push usando la nomenclatura push_CLIENT-#XX
  */
 router.post('/save-subscription', async (req, res) => {
   try {
-    const { userId, clientId, subscription } = req.body;
-    const activeClientId = clientId || userId;
+    const { clientId, subscription } = req.body;
+    const cleanId = String(clientId || 'CLIENT-#01').trim().toUpperCase();
+    const pushDocumentId = `push_${cleanId}`; // 👈 Formato: push_CLIENT-#1, push_CLIENT-#2...
 
     if (!subscription || !subscription.endpoint) {
       return res.status(400).json({ success: false, error: 'Suscripción inválida' });
     }
 
-    await Client.findOneAndUpdate(
-      { clientId: activeClientId },
-      { $set: { pushSubscription: subscription, pushEnabled: true } },
+    await ClientPush.findOneAndUpdate(
+      { pushId: pushDocumentId },
+      {
+        $set: {
+          pushId: pushDocumentId,
+          clientId: cleanId,
+          pushSubscription: subscription,
+          pushEnabled: true
+        }
+      },
       { upsert: true, new: true }
     );
 
-    return res.json({ success: true, message: 'Suscripción push guardada correctamente en el backend' });
+    return res.json({
+      success: true,
+      message: `Suscripción WebPush guardada exitosamente como ${pushDocumentId}`
+    });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * Helper interno para enviar notificación push vía web-push nativo
+ * Helper interno para enviar la notificación
  */
-const sendPushNotification = async (userId, title, body, data = {}) => {
-  console.log(`[PUSH INITIATED] User: ${userId} | Title: "${title}" | Body: "${body}"`);
-
+const sendPushNotification = async (clientId, title, body, data = {}) => {
   try {
-    // Buscar la suscripción nativa guardada para el cliente
-    const clientDoc = await Client.findOne({ $or: [{ clientId: userId }, { userId: userId }] });
+    const cleanId = String(clientId).trim().toUpperCase();
+    const pushDocumentId = `push_${cleanId}`;
+    
+    const pushRecord = await ClientPush.findOne({ pushId: pushDocumentId });
 
-    if (!clientDoc || !clientDoc.pushSubscription) {
-      console.warn(`⚠️ [PUSH] No se encontró suscripción push nativa para ${userId}`);
+    if (!pushRecord || !pushRecord.pushSubscription) {
+      console.warn(`⚠️ [PUSH] No se encontró el registro ${pushDocumentId} para notificar.`);
       return false;
     }
 
@@ -71,71 +74,76 @@ const sendPushNotification = async (userId, title, body, data = {}) => {
       title,
       body,
       icon: '/icon-192x192.png',
-      badge: '/badge-72x72.png',
       data
     });
 
     if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-      await webpush.sendNotification(clientDoc.pushSubscription, payload);
-      console.log(`✅ [PUSH DELIVERED] Notificación WebPush enviada con éxito a ${userId}`);
+      await webpush.sendNotification(pushRecord.pushSubscription, payload);
+      
+      // Actualizar registro de envío
+      await ClientPush.findOneAndUpdate(
+        { pushId: pushDocumentId },
+        { $set: { lastNotificationSentAt: new Date() } }
+      );
+
+      console.log(`✅ [PUSH ENVIADO] A ${pushDocumentId}`);
       return true;
     } else {
-      console.log(`📱 [PUSH SIMULATED] ${payload}`);
+      console.log(`📱 [PUSH SIMULADO] ${pushDocumentId} -> ${title}`);
       return true;
     }
   } catch (err) {
-    console.error(`💥 Error enviando WebPush a ${userId}:`, err.message);
+    console.error(`💥 Error enviando notificación push:`, err.message);
     return false;
   }
 };
 
 /**
- * POST /api/webhook-client/timer/push-24h
- * Se mantiene el nombre de la ruta para compatibilidad, pero dispara la alerta de 72 HORAS.
+ * CICLO DE 3 DÍAS (72 HORAS)
+ * Se mantiene la ruta /timer/push-24h para compatibilidad, pero dispara la alerta de los 3 días.
  */
 router.post('/timer/push-24h', async (req, res) => {
   try {
-    const { userId, timerId } = req.body;
+    const { clientId, userId, timerId } = req.body;
+    const targetId = clientId || userId || 'CLIENT-#01';
 
     await sendPushNotification(
-      userId,
-      '⏳ Ventana de 72 Horas Activa',
-      'Tu ciclo de 72 horas para actualizar tu segmentación o confirmar tu campaña está en marcha.',
-      { timerId, type: 'REQUIRE_PAYMENT_OR_EXCEL_72H', cycleHours: 72 }
+      targetId,
+      '⏳ Ciclo de 3 Días (72h) Activo',
+      'Tu ventana de 72 horas para actualizar tu segmentación o verificar tu campaña ha comenzado.',
+      { timerId, type: 'CYCLE_72H_UPDATE' }
     );
 
     return res.status(200).json({
       success: true,
-      message: 'Notificación push de ciclo de 72h enviada correctamente.'
+      message: 'Notificación push del ciclo de 3 días enviada correctamente.'
     });
   } catch (error) {
-    console.error('Error enviando push 72h:', error);
-    return res.status(500).json({ success: false, error: 'Error enviando push de 72h' });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * POST /api/webhook-client/timer/push-day7
- * Alerta final de renovación de ciclo.
+ * CICLO DE DÍA 7 (Plazo Máximo)
  */
 router.post('/timer/push-day7', async (req, res) => {
   try {
-    const { userId, timerId } = req.body;
+    const { clientId, userId, timerId } = req.body;
+    const targetId = clientId || userId || 'CLIENT-#01';
 
     await sendPushNotification(
-      userId,
-      '🚨 Fin de Ciclo (Día 7)',
-      'Tu plazo de subida y configuración ha finalizado. Actualiza tus datos para reactivar las métricas.',
-      { timerId, type: 'PAYMENT_DEADLINE_REACHED' }
+      targetId,
+      '🚨 Alerta Día 7 (Plazo Vencido)',
+      'El plazo de 7 días ha finalizado. Actualiza tus datos o realiza la validación para continuar.',
+      { timerId, type: 'DEADLINE_DAY_7' }
     );
 
     return res.status(200).json({
       success: true,
-      message: 'Notificación push de Día 7 enviada correctamente.'
+      message: 'Notificación push del Día 7 enviada correctamente.'
     });
   } catch (error) {
-    console.error('Error enviando push Día 7:', error);
-    return res.status(500).json({ success: false, error: 'Error enviando push Día 7' });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
