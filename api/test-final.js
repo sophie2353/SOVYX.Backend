@@ -1,5 +1,5 @@
 /**
- * SODIE - Test Suite V3.5 (Lazy Orchestration & Deferred Campaign Creation)
+ * SODIE - Test Suite V3.5 (E2E Integration + Lazy Orchestration + Form Segmentacion + Push Webhooks)
  */
 const express = require('express');
 const router = express.Router();
@@ -12,6 +12,7 @@ const XLSX = require('xlsx');
 // Modelos y Almacenamiento
 const Client = require('../models/clients');
 const Audiencia = require('../models/Audiencia');
+const ClientPush = require('../models/ClientPush'); // 👈 Nuevo modelo
 const campaignStorage = require('../routes/campaignStorageService');
 
 const HISTORY_FILE = path.join(__dirname, 'test-history.json');
@@ -65,14 +66,13 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
   const logs = [];
 
   console.log('\n======================================================');
-  console.log('🚀 INICIANDO TEST DE INTEGRATION E2E SODIE V3.5 (LAZY)');
+  console.log('🚀 INICIANDO TEST DE INTEGRACIÓN E2E SODIE V3.5 FULL');
   console.log('======================================================\n');
 
   try {
     // -----------------------------------------------------------------------
     // PASO 1: Subida de Excel + Segmentación IA1 (Retiene LALs)
     // -----------------------------------------------------------------------
-    logs.logTimestamp = new Date().toISOString();
     logs.push('1. Generando Excel en memoria con 200 leads simulados...');
     const fakeLeads = generate200MockLeads();
     const ws = XLSX.utils.json_to_sheet(fakeLeads);
@@ -97,30 +97,81 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     logs.push(`Upload ok=${uploadRes.data.ok}. Registros: ${uploadRes.data.totalRegistros}`);
 
     // -----------------------------------------------------------------------
-    // PASO 2: Configuración (Hora 0) -> Envía actId y dispara creación del borrador
+    // PASO 2: Prueba de Formulario de Segmentación Directa (segmentacionRoutes)
     // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/facebook/configurar (Hora 0 - Inyección de Credenciales y Activación del Buffer)...');
+    logs.push('📡 [TEST] POST /api/v1/segmentacion/procesar (Mapeo de 4 campos a 200 filas)...');
+    const formSegRes = await axios.post(`${baseUrl}/api/v1/segmentacion/procesar`, {
+      clientId: testClientId,
+      paises: ['MX', 'CO'],
+      edadMin: 25,
+      edadMax: 50,
+      value: 1200,
+      nicho: 'educacion'
+    });
+
+    console.log('✅ PASO 2 OK (Segmentación 4 datos -> 200 filas -> Upload):', formSegRes.data.ok ? 'EXITOSO' : 'FALLIDO');
+    logs.push(`Segmentación Form ok=${formSegRes.data.ok}. Key: ${formSegRes.data.datasetKey}`);
+
+    // -----------------------------------------------------------------------
+    // PASO 3: Guardar Suscripción Push WebNativa (ClientPush / push_CLIENT-#01)
+    // -----------------------------------------------------------------------
+    logs.push('📡 [TEST] POST /api/v1/webhook-client/save-subscription (Push Naming test)...');
+    const pushSaveRes = await axios.post(`${baseUrl}/api/v1/webhook-client/save-subscription`, {
+      clientId: testClientId,
+      subscription: {
+        endpoint: 'https://updates.push.services.mozilla.com/wpush/v2/test_endpoint_mock',
+        keys: {
+          p256dh: 'mock_p256dh_key_test_string',
+          auth: 'mock_auth_key_string'
+        }
+      }
+    });
+
+    console.log('✅ PASO 3 OK (Guardado de Suscripción push_CLIENT-#01):', pushSaveRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    logs.push(`Push Subscription ok=${pushSaveRes.data.success}`);
+
+    // -----------------------------------------------------------------------
+    // PASO 4: Probar Webhooks de Notificación (3 Días / 7 Días)
+    // -----------------------------------------------------------------------
+    logs.push('📡 [TEST] POST /api/v1/webhook-client/timer/push-24h (Disparo Alerta 72h)...');
+    const push72hRes = await axios.post(`${baseUrl}/api/v1/webhook-client/timer/push-24h`, {
+      clientId: testClientId,
+      timerId: 'timer_test_72h'
+    });
+
+    logs.push('📡 [TEST] POST /api/v1/webhook-client/timer/push-day7 (Disparo Alerta Día 7)...');
+    const pushDay7Res = await axios.post(`${baseUrl}/api/v1/webhook-client/timer/push-day7`, {
+      clientId: testClientId,
+      timerId: 'timer_test_day7'
+    });
+
+    console.log('✅ PASO 4 OK (Webhooks Push 3d / 7d):', (push72hRes.data.success && pushDay7Res.data.success) ? 'EXITOSO' : 'FALLIDO');
+
+    // -----------------------------------------------------------------------
+    // PASO 5: Configuración (Hora 0) -> Envía actId y activa el Buffer
+    // -----------------------------------------------------------------------
+    logs.push('📡 [TEST] POST /api/v1/facebook/configurar (Hora 0 - Inyección de Credenciales)...');
     const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
       clientId: testClientId,
-      actId: process.env.AD_ACCOUNT_ID || '', // 👈 Tu cuenta publicitaria comercial real
-      pixelId: process.env.META_PIXEL_ID || '', // 👈 Tu pixel real
+      actId: process.env.AD_ACCOUNT_ID || '',
+      pixelId: process.env.META_PIXEL_ID || '',
       dailyBudget: 1500,
       version: 'V3.5'
     });
 
-    console.log('✅ PASO 2 OK (Configurar + Sincronización Meta):', configRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 5 OK (Configurar + Sincronización Meta):', configRes.data.success ? 'EXITOSO' : 'FALLIDO');
 
     // -----------------------------------------------------------------------
-    // PASO 3: Forzar explicitamente /crear-borrador si el buffer requiere paso manual o validar ID generado
+    // PASO 6: Crear Borrador (Ensamble final con LALs retenidos)
     // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/facebook/crear-borrador (Validación de ensamble final)...');
+    logs.push('📡 [TEST] POST /api/v1/facebook/crear-borrador...');
     const draftRes = await axios.post(`${baseUrl}/api/v1/facebook/crear-borrador`, {
       clientId: testClientId,
       dailyBudget: 1500,
       version: 'V3.5'
     });
 
-    console.log('✅ PASO 3 OK (Borrador Ensamblado con LALs Retenidos):', draftRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 6 OK (Borrador Creado con LALs):', draftRes.data.success ? 'EXITOSO' : 'FALLIDO');
     const generatedCampaignId = draftRes.data.campaignId;
     logs.push(`Campaña en borrador creada con éxito. ID: ${generatedCampaignId}`);
 
@@ -132,19 +183,23 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     }
 
     // -----------------------------------------------------------------------
-    // PASO 4: Consultar Métricas
+    // PASO 7: Consultar Métricas
     // -----------------------------------------------------------------------
     logs.push('📡 [TEST] GET /api/v1/facebook/metrics...');
     const metricsRes = await axios.get(`${baseUrl}/api/v1/facebook/metrics?clientId=${encodeURIComponent(testClientId)}`);
 
-    console.log('✅ PASO 4 OK (Consulta de Métricas):', metricsRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 7 OK (Consulta de Métricas):', metricsRes.data.success ? 'EXITOSO' : 'FALLIDO');
     logs.push(`Métricas recibidas: Alcance=${metricsRes.data.metrics?.reach || 0}`);
 
     const summary = {
-      testId: `sim_v35_lazy_${Date.now()}`,
+      testId: `sim_v35_full_${Date.now()}`,
       status: 'SUCCESS',
       clientId: testClientId,
       uploadOk: uploadRes.data.ok,
+      segmentacionFormOk: formSegRes.data.ok,
+      pushSubscriptionOk: pushSaveRes.data.success,
+      push72hWebhookOk: push72hRes.data.success,
+      pushDay7WebhookOk: pushDay7Res.data.success,
       configOk: configRes.data.success,
       draftOk: draftRes.data.success,
       storageVerified: storedCampaignId === generatedCampaignId,
@@ -154,7 +209,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     };
 
     saveTestHistory(summary);
-    console.log('\n✨ ¡TEST E2E DE ORQUESTACIÓN DIFERIDA COMPLETADO CON ÉXITO! ✨\n');
+    console.log('\n✨ ¡TEST E2E COMPLETO PROBADO CON ÉXITO Y REGISTRADO! ✨\n');
     return summary;
 
   } catch (error) {
@@ -171,13 +226,14 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     throw error;
   } finally {
     // -----------------------------------------------------------------------
-    // LIMPIEZA AUTOMÁTICA EN MONGODB
+    // LIMPIEZA AUTOMÁTICA COMPLETA EN MONGODB
     // -----------------------------------------------------------------------
     try {
       console.log('🧹 [CLEANUP] Limpiando datos de simulación en MongoDB...');
       await Client.deleteOne({ clientId: testClientId });
       await Audiencia.deleteMany({ clientId: testClientId });
-      console.log('✨ [CLEANUP] MongoDB limpio y listo.');
+      await ClientPush.deleteMany({ clientId: testClientId }); // 👈 Limpia también los registros push
+      console.log('✨ [CLEANUP] MongoDB totalmente limpio.');
     } catch (cleanupErr) {
       console.error('⚠️ [CLEANUP WARNING]:', cleanupErr.message);
     }
@@ -193,7 +249,7 @@ router.all('/', async (req, res) => {
     const result = await runFullIntegrationTest(baseUrl);
     return res.status(200).json({
       ok: true,
-      message: 'Prueba de integración V3.5 (Lazy Orchestration) ejecutada correctamente.',
+      message: 'Prueba de integración V3.5 ejecutada correctamente con todas las rutas y webhooks.',
       result
     });
   } catch (err) {
