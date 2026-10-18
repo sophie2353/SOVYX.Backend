@@ -249,6 +249,14 @@ try {
   console.warn('⚠️ [ADMIN ROUTES] No se pudo cargar adminRoutes.js:', e.message);
 }
 
+// --- SEGMENTACION --- 
+// 1. Importar el módulo de segmentación predeterminada
+const segmentacionRoutes = require('../routes/segmentacionRoutes');
+
+// 2. Montar la ruta en el prefijo API v1
+app.use('/api/v1/segmentacion', segmentacionRoutes);
+
+
 // --- TEST FINAL ROUTER ---
 try {
   const testFinalRouter = require('./test-final');
