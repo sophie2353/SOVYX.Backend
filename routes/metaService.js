@@ -247,8 +247,8 @@ const metaService = {
     };
   },
 
-  // =========================================================================
-  // 4. CICLO DE 24 HORAS & ORQUESTACIÓN DE LALs
+    // =========================================================================
+  // 4. CICLO DE 72 HORAS & ORQUESTACIÓN DE LALs
   // =========================================================================
   async pausarCampana(token, campaignId) {
     if (!campaignId) return null;
@@ -268,7 +268,7 @@ const metaService = {
     return data.data?.[0] || {};
   },
 
-  async procesarCicloHora24({ 
+  async procesarCicloHora72({ 
     clientId = 'CLIENT-#01', 
     token, 
     adAccountId, 
@@ -288,7 +288,7 @@ const metaService = {
       // 1. Si no nos pasan customAudiences ya retenidas pero viene un usersPayload nuevo, las procesamos al vuelo
       let finalAudiences = customAudiences;
       if ((!finalAudiences || finalAudiences.length === 0) && usersPayload && usersPayload.length > 0) {
-        console.log('🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes al vuelo...');
+        console.log('🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes al vuelo (Ciclo 72h)...');
         const generatedLal = await this.procesarEInyectarLookalikes({
           adAccountId: cleanAccountId,
           token,
@@ -313,13 +313,14 @@ const metaService = {
         customAudiences: finalAudiences
       });
 
-      // 4. Guardar ID de campaña en storage con TTL de 24 horas
+      // 4. Guardar ID de campaña en storage con TTL ajustado a 72 horas
       const isAdmin = String(clientId).toUpperCase().includes('ADMIN') || clientId === 'CLIENT-#00';
       await campaignStorage.registrarCampaignId({
         clientId,
         campaignId: nuevaCampana.campaignId,
         version,
-        isAdmin
+        isAdmin,
+        ttlHours: 72 // 👈 Ventana exacta de 72 horas
       });
 
       return { 
@@ -327,12 +328,18 @@ const metaService = {
         act_id: cleanAccountId,
         campaignId: nuevaCampana.campaignId, 
         status: 'PAUSED',
-        campaignName: nuevaCampana.campaignName
+        campaignName: nuevaCampana.campaignName,
+        cycleHours: 72
       };
     } catch (error) {
-      console.error('💥 Error en procesarCicloHora24 (MetaServices):', error);
+      console.error('💥 Error en procesarCicloHora72 (MetaServices):', error);
       throw error;
     }
+  },
+
+  // Alias de compatibilidad por si alguna llamada conservaba el nombre anterior
+  async procesarCicloHora24(params) {
+    return this.procesarCicloHora72(params);
   },
 
   async verificarEstadoCampana(token, campaignId) {
@@ -344,5 +351,5 @@ const metaService = {
     return data.status === 'ACTIVE';
   }
 };
-
+        
 module.exports = metaService;
