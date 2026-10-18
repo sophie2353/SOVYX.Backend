@@ -12,11 +12,11 @@ const router = express.Router();
 
 // 1. Evaluadores Hora 0 (V3.5) - Límite de 3 cupos
 global.assignedEvaluadoresV35 = global.assignedEvaluadoresV35 || [];
-const MAX_CUPOS_EVALUADORES = 3;
+const MAX_CUPOS_EVALUADORES = 10;
 
 // 2. Waitlist (V4) - Límite de 50 cupos
 global.assignedWaitlistV4 = global.assignedWaitlistV4 || [];
-const MAX_CUPOS_WAITLIST_V4 = 50;
+const MAX_CUPOS_WAITLIST_V4 = 10;
 
 
 // ==========================================================================
