@@ -102,7 +102,7 @@ const sendPushNotification = async (clientId, title, body, data = {}) => {
  * CICLO DE 3 DÍAS (72 HORAS)
  * Se mantiene la ruta /timer/push-24h para compatibilidad, pero dispara la alerta de los 3 días.
  */
-router.post('/timer/push-24h', async (req, res) => {
+router.post('/timer/push-72h', async (req, res) => {
   try {
     const { clientId, userId, timerId } = req.body;
     const targetId = clientId || userId || 'CLIENT-#01';
