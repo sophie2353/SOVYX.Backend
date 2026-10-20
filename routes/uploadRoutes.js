@@ -119,8 +119,10 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       extractedTargeting.usersPayload = parsedPayload;
     }
 
-    // Determinar la cuenta publicitaria destino (Cliente vs ADMIN)
-const activeClientId = req.body.clientId || 'ADMIN';
+// Normalizar el ID del cliente usando tu función existente
+const activeClientId = normalizeClientId(req.body.clientId || req.query.clientId);
+
+// Determinar la cuenta publicitaria destino (Cliente vs ADMIN)
 const targetAdAccount = req.body.adAccountId 
   || req.body.actId 
   || process.env.AD_ACCOUNT_ID 
@@ -132,7 +134,7 @@ if (targetAdAccount && metaService && typeof metaService.procesarEInyectarLookal
   console.log(`🌱 [UPLOAD] Generando Audiencia Semilla + Lookalikes en Meta para ${activeClientId}...`);
   metaTargeting = await metaService.procesarEInyectarLookalikes({
     adAccountId: targetAdAccount,
-    token: process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN, // Siempre tu token administrativo
+    token: process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN,
     usersPayload: extractedTargeting.usersPayload,
     clientId: activeClientId
   });
