@@ -12,7 +12,7 @@ const XLSX = require('xlsx');
 // Modelos y Almacenamiento
 const Client = require('../models/clients');
 const Audiencia = require('../models/Audiencia');
-const ClientPush = require('../models/ClientPush'); // 👈 Nuevo modelo
+const ClientPush = require('../models/ClientPush');
 const campaignStorage = require('../routes/campaignStorageService');
 
 const HISTORY_FILE = path.join(__dirname, 'test-history.json');
@@ -62,11 +62,15 @@ function generate200MockLeads() {
 }
 
 async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
-  const testClientId = 'CLIENT-#01';
+  // Configuración en modo ADMIN para usar AD_ACCOUNT_ID y META_PIXEL_ID de Render
+  const testClientId = 'ADMIN';
+  const targetAdAccount = process.env.AD_ACCOUNT_ID || process.env.META_AD_ACCOUNT_ID || '';
+  const targetPixelId = process.env.META_PIXEL_ID || process.env.PIXEL_ID || '';
+
   const logs = [];
 
   console.log('\n======================================================');
-  console.log('🚀 INICIANDO TEST DE INTEGRACIÓN E2E SODIE V3.5 FULL');
+  console.log('🚀 INICIANDO TEST DE INTEGRACIÓN E2E SODIE V3.5 FULL (ADMIN)');
   console.log('======================================================\n');
 
   try {
@@ -87,6 +91,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     });
     form.append('clientId', testClientId);
     form.append('nicho', 'infoproductos');
+    if (targetAdAccount) form.append('adAccountId', targetAdAccount);
 
     logs.push('📡 [TEST] POST /api/v1/media/upload...');
     const uploadRes = await axios.post(`${baseUrl}/api/v1/media/upload`, form, {
@@ -106,14 +111,15 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
       edadMin: 25,
       edadMax: 50,
       value: 1200,
-      nicho: 'educacion'
+      nicho: 'educacion',
+      adAccountId: targetAdAccount
     });
 
     console.log('✅ PASO 2 OK (Segmentación 4 datos -> 200 filas -> Upload):', formSegRes.data.ok ? 'EXITOSO' : 'FALLIDO');
     logs.push(`Segmentación Form ok=${formSegRes.data.ok}. Key: ${formSegRes.data.datasetKey}`);
 
     // -----------------------------------------------------------------------
-    // PASO 3: Guardar Suscripción Push WebNativa (ClientPush / push_CLIENT-#01)
+    // PASO 3: Guardar Suscripción Push WebNativa (ClientPush / push_ADMIN)
     // -----------------------------------------------------------------------
     logs.push('📡 [TEST] POST /api/v1/webhook-client/save-subscription (Push Naming test)...');
     const pushSaveRes = await axios.post(`${baseUrl}/api/v1/webhook-client/save-subscription`, {
@@ -127,7 +133,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
       }
     });
 
-    console.log('✅ PASO 3 OK (Guardado de Suscripción push_CLIENT-#01):', pushSaveRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 3 OK (Guardado de Suscripción push_ADMIN):', pushSaveRes.data.success ? 'EXITOSO' : 'FALLIDO');
     logs.push(`Push Subscription ok=${pushSaveRes.data.success}`);
 
     // -----------------------------------------------------------------------
@@ -153,8 +159,8 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     logs.push('📡 [TEST] POST /api/v1/facebook/configurar (Hora 0 - Inyección de Credenciales)...');
     const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
       clientId: testClientId,
-      actId: process.env.AD_ACCOUNT_ID || '',
-      pixelId: process.env.META_PIXEL_ID || '',
+      actId: targetAdAccount,
+      pixelId: targetPixelId,
       dailyBudget: 1500,
       version: 'V3.5'
     });
@@ -178,7 +184,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     // Verificación de almacenamiento con TTL (campaignStorage)
     let storedCampaignId = null;
     if (campaignStorage && typeof campaignStorage.obtenerCampaignIdVigente === 'function') {
-      storedCampaignId = await campaignStorage.obtenerCampaignIdVigente(testClientId, false);
+      storedCampaignId = await campaignStorage.obtenerCampaignIdVigente(testClientId, true);
       logs.push(`🔍 Verificación en campaignStorage: Campaign ID activo = ${storedCampaignId}`);
     }
 
@@ -232,7 +238,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
       console.log('🧹 [CLEANUP] Limpiando datos de simulación en MongoDB...');
       await Client.deleteOne({ clientId: testClientId });
       await Audiencia.deleteMany({ clientId: testClientId });
-      await ClientPush.deleteMany({ clientId: testClientId }); // 👈 Limpia también los registros push
+      await ClientPush.deleteMany({ clientId: testClientId });
       console.log('✨ [CLEANUP] MongoDB totalmente limpio.');
     } catch (cleanupErr) {
       console.error('⚠️ [CLEANUP WARNING]:', cleanupErr.message);
