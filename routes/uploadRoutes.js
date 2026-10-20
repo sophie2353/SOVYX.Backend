@@ -121,7 +121,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
     // 4. Crear Audiencia Semilla + Lookalikes en Meta (Segmentación lista)
     let metaTargeting = null;
-    const systemToken = process.env.META_ACCESS_TOKEN || process.env.META_SYSTEM_TOKEN;
+    const systemToken = process.env.META_ACCESS_TOKEN || process.env.ADMIN_TOKEN;
 
     if (userAdAccount && systemToken && metaService && typeof metaService.procesarEInyectarLookalikes === 'function') {
       console.log(`🌱 [UPLOAD] Generando Audiencia Semilla + Lookalikes en Meta para ${activeClientId}...`);
