@@ -252,9 +252,11 @@ try {
 // --- SEGMENTACION --- 
 // 1. Importar el módulo de segmentación predeterminada
 const segmentacionRoutes = require('../routes/segmentacionRoutes');
-
-// 2. Montar la ruta en el prefijo API v1
 app.use('/api/v1/segmentacion', segmentacionRoutes);
+
+// ---- PAY WEBHOOK ----
+const payWebhookRoutes = require('../routes/pay-webhook');
+app.use('/api/v1/webhook-payment', payWebhookRoutes);
 
 
 // --- TEST FINAL ROUTER ---
