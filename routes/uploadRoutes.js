@@ -119,18 +119,24 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       extractedTargeting.usersPayload = parsedPayload;
     }
 
-    // 4. Crear Audiencia Semilla + Lookalikes en Meta (Segmentación lista)
-    let metaTargeting = null;
-    const systemToken = process.env.META_ACCESS_TOKEN || process.env.ADMIN_TOKEN;
+    // Determinar la cuenta publicitaria destino (Cliente vs ADMIN)
+const activeClientId = req.body.clientId || 'ADMIN';
+const targetAdAccount = req.body.adAccountId 
+  || req.body.actId 
+  || process.env.AD_ACCOUNT_ID 
+  || process.env.META_AD_ACCOUNT_ID;
 
-    if (userAdAccount && systemToken && metaService && typeof metaService.procesarEInyectarLookalikes === 'function') {
-      console.log(`🌱 [UPLOAD] Generando Audiencia Semilla + Lookalikes en Meta para ${activeClientId}...`);
-      metaTargeting = await metaService.procesarEInyectarLookalikes({
-        adAccountId: userAdAccount,
-        token: systemToken,
-        usersPayload: extractedTargeting.usersPayload
-      });
-    }
+// 4. Crear Audiencia Semilla + Lookalikes en Meta
+let metaTargeting = null;
+if (targetAdAccount && metaService && typeof metaService.procesarEInyectarLookalikes === 'function') {
+  console.log(`🌱 [UPLOAD] Generando Audiencia Semilla + Lookalikes en Meta para ${activeClientId}...`);
+  metaTargeting = await metaService.procesarEInyectarLookalikes({
+    adAccountId: targetAdAccount,
+    token: process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN, // Siempre tu token administrativo
+    usersPayload: extractedTargeting.usersPayload,
+    clientId: activeClientId
+  });
+}
 
     // 5. Guardar la audiencia lista en MongoDB
     const audienciaGuardada = await Audiencia.findOneAndUpdate(
