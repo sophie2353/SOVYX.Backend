@@ -23,15 +23,46 @@ function buildCampaignName(clientId = 'ADMIN') {
   return `PRUEBA - SODIE - ${cleanId}`;
 }
 
+/**
+ * Helper para resolver credenciales: Token de ADMIN + Pixel/Account según el tipo de cliente
+ */
+function getMetaCredentials({ token, clientId = 'ADMIN', pixelId = null, adAccountId = null }) {
+  const cleanClientId = String(clientId).trim().toUpperCase();
+  const isAdmin = cleanClientId.includes('ADMIN') || cleanClientId === 'CLIENT-#00';
+
+  // 1. Token: Siempre usa ADMIN_TOKEN como fallback si no se provee uno específico
+  const finalToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN || process.env.META_SYSTEM_TOKEN;
+
+  // 2. Pixel ID: Si es ADMIN usa META_PIXEL_ID, si es CLIENT usa el pixelId proporcionado por el cliente
+  const finalPixelId = isAdmin 
+    ? (pixelId || process.env.META_PIXEL_ID) 
+    : pixelId;
+
+  // 3. Ad Account ID: Si es ADMIN usa META_AD_ACCOUNT_ID, si es CLIENT usa el adAccountId proporcionado
+  const rawAccountId = isAdmin 
+    ? (adAccountId || process.env.META_AD_ACCOUNT_ID) 
+    : adAccountId;
+    
+  const finalAdAccountId = rawAccountId ? rawAccountId.replace(/^act_/, '') : null;
+
+  return {
+    token: finalToken,
+    pixelId: finalPixelId,
+    adAccountId: finalAdAccountId,
+    isAdmin
+  };
+}
+
 const metaService = {
   // =========================================================================
   // 1. BUSCAR BORRADORES EXISTENTES
   // =========================================================================
   async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
-    if (!adAccountId) return null;
+    const creds = getMetaCredentials({ token, clientId, adAccountId });
+    if (!creds.adAccountId) return null;
+    
     const targetName = buildCampaignName(clientId);
-    const cleanAccountId = adAccountId.replace(/^act_/, '');
-    const url = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns?fields=id,name,status&access_token=${token}`;
+    const url = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/campaigns?fields=id,name,status&access_token=${creds.token}`;
     
     const res = await fetch(url);
     const data = await res.json();
@@ -43,9 +74,11 @@ const metaService = {
   // =========================================================================
   // 2. CREACIÓN DE AUDIENCIA SEMILLA Y LOOKALIKES (RETENIDOS O GENERADOS)
   // =========================================================================
-  async crearAudienciaSemillaConValor(adAccountId, token, name) {
-    const cleanAccountId = adAccountId.replace(/^act_/, '');
-    const url = `${GRAPH_BASE_URL}/act_${cleanAccountId}/customaudiences`;
+  async crearAudienciaSemillaConValor(adAccountId, token, name, clientId = 'ADMIN') {
+    const creds = getMetaCredentials({ token, clientId, adAccountId });
+    if (!creds.adAccountId) throw new Error('⚠️ Falta el adAccountId para crear audiencia semilla.');
+
+    const url = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/customaudiences`;
     
     const res = await fetch(url, {
       method: 'POST',
@@ -56,7 +89,7 @@ const metaService = {
         description: 'Semilla inyectada desde IA1 SODIE (Value-Based)',
         customer_file_source: 'USER_PROVIDED_ONLY',
         is_value_based: true,
-        access_token: token
+        access_token: creds.token
       })
     });
     
@@ -66,18 +99,17 @@ const metaService = {
   },
 
   async inyectarUsuariosSemilla(audienceId, usersPayload, token) {
+    const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
     // Schema estandarizado para Meta Graph API
     const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY', 'VALUE'];
 
     // Mapeo dinámico centrado en: Country, Value, Edad y Nicho
     const formattedData = usersPayload.map(u => {
-      // Garantizar extracción limpia de los 4 datos clave
       const country = (u.country || u.pais || 'US').toString().trim().toUpperCase();
       const rawValue = u.value !== undefined ? u.value : (u.valor !== undefined ? u.valor : 1000);
       const valueNum = typeof rawValue === 'number' ? rawValue : parseFloat(rawValue || 1000);
       
-      // Datos sintéticos simulados y cifrados SHA-256 para pasar la validación estricta de Meta
       const emailSimulado = u.email || `lead_${country.toLowerCase()}_${Date.now()}@sodie-leads.com`;
       const phoneSimulado = u.phone || `+1555${Math.floor(100000 + Math.random() * 900000)}`;
       const fnSimulado = u.firstName || u.nombre || 'Customer';
@@ -88,8 +120,8 @@ const metaService = {
         hashData(phoneSimulado),
         hashData(fnSimulado),
         hashData(lnSimulado),
-        hashData(country),      // 👈 Country extraído de tus 4 datos
-        valueNum > 0 ? valueNum : 1000 // 👈 Value de público objetivo
+        hashData(country),
+        valueNum > 0 ? valueNum : 1000
       ];
     }).filter(row => row[0] && row[1]);
 
@@ -102,7 +134,7 @@ const metaService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         payload: { schema, data: formattedData },
-        access_token: token
+        access_token: activeToken
       })
     });
 
@@ -111,9 +143,9 @@ const metaService = {
     return data;
   },
 
-  async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token) {
-    const cleanAccountId = adAccountId.replace(/^act_/, '');
-    const url = `${GRAPH_BASE_URL}/act_${cleanAccountId}/customaudiences`;
+  async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token, clientId = 'ADMIN') {
+    const creds = getMetaCredentials({ token, clientId, adAccountId });
+    const url = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/customaudiences`;
 
     const res = await fetch(url, {
       method: 'POST',
@@ -129,7 +161,7 @@ const metaService = {
             geo_locations: { countries: [countryCode.toUpperCase()] }
           }
         }),
-        access_token: token
+        access_token: creds.token
       })
     });
 
@@ -138,14 +170,16 @@ const metaService = {
     return data.id;
   },
 
-  async procesarEInyectarLookalikes({ adAccountId, token, usersPayload }) {
+  async procesarEInyectarLookalikes({ adAccountId, token, usersPayload, clientId = 'ADMIN' }) {
     if (!usersPayload || !usersPayload.length) {
-      throw new Error('⚠️ No hay registros en el Excel para procesar segmentación.');
+      throw new Error('⚠️ No hay registros de usuarios para procesar segmentación.');
     }
+
+    const creds = getMetaCredentials({ token, clientId, adAccountId });
 
     const countriesFound = [...new Set(
       usersPayload
-        .map(u => (u.country || '').trim().toUpperCase())
+        .map(u => (u.country || u.pais || '').trim().toUpperCase())
         .filter(c => c.length === 2)
     )];
 
@@ -153,19 +187,20 @@ const metaService = {
 
     // 1. Crear Audiencia Semilla
     const seedAudienceId = await this.crearAudienciaSemillaConValor(
-      adAccountId, 
-      token, 
-      `SODIE_Seed_Value_${Date.now()}`
+      creds.adAccountId, 
+      creds.token, 
+      `SODIE_Seed_Value_${Date.now()}`,
+      clientId
     );
 
     // 2. Inyectar registros cifrados SHA-256
-    await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, token);
+    await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, creds.token);
 
     // 3. Generar Lookalikes 1% por cada país detectado
     const lookalikeIds = [];
     for (const country of countriesFound) {
       try {
-        const lalId = await this.crearLookalike1PorCiento(adAccountId, seedAudienceId, country, token);
+        const lalId = await this.crearLookalike1PorCiento(creds.adAccountId, seedAudienceId, country, creds.token, clientId);
         lookalikeIds.push(lalId);
       } catch (err) {
         console.error(`Error creando Lookalike 1% para país ${country}:`, err.message);
@@ -190,15 +225,17 @@ const metaService = {
     dailyBudget = 1000, 
     customAudiences = [] 
   }) {
-    if (!actId) {
-      throw new Error('⚠️ Imposible crear campaña: Falta el actId de la cuenta publicitaria.');
+    // Resolver credenciales según ADMIN o CLIENT
+    const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId: actId });
+
+    if (!creds.adAccountId) {
+      throw new Error(`⚠️ Imposible crear campaña para ${clientId}: Falta el adAccountId de la cuenta publicitaria.`);
     }
 
-    const cleanAccountId = actId.replace(/^act_/, '');
     const campaignName = buildCampaignName(clientId);
 
-    // 1. Crear Campaña (JSON Limpio - evita Error #200 e Invalid Parameter)
-    const campaignUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/campaigns`;
+    // 1. Crear Campaña
+    const campaignUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/campaigns`;
     const campaignRes = await fetch(campaignUrl, { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -206,8 +243,8 @@ const metaService = {
         name: campaignName,
         objective: 'OUTCOME_SALES',
         status: 'PAUSED',
-        special_ad_categories: [], // Array vacío explícito
-        access_token: token
+        special_ad_categories: [],
+        access_token: creds.token
       })
     });
 
@@ -216,7 +253,7 @@ const metaService = {
     const campaignId = campaignData.id;
 
     // 2. Crear AdSet e inyectar la segmentación/Lookalikes retenidos
-    const adSetUrl = `${GRAPH_BASE_URL}/act_${cleanAccountId}/adsets`;
+    const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
       campaign_id: campaignId,
@@ -225,11 +262,14 @@ const metaService = {
       optimization_goal: 'VALUE',
       targeting: { custom_audiences: customAudiences },
       status: 'PAUSED',
-      access_token: token
+      access_token: creds.token
     };
 
-    if (pixelId) {
-      adSetBody.promoted_object = { pixel_id: pixelId, custom_event_type: 'PURCHASE' };
+    // Asignar el Pixel (de ADMIN o de CLIENT según corresponda)
+    if (creds.pixelId) {
+      adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
+    } else {
+      console.warn(`⚠️ [MetaServices] Creando campaña para ${clientId} sin pixelId asociado.`);
     }
 
     const adSetRes = await fetch(adSetUrl, {
@@ -254,7 +294,8 @@ const metaService = {
 
     return {
       success: true,
-      act_id: cleanAccountId,
+      act_id: creds.adAccountId,
+      pixel_id: creds.pixelId,
       campaignId,
       adSetId: adSetData.id || null,
       status: 'PAUSED',
@@ -262,22 +303,24 @@ const metaService = {
     };
   },
 
-    // =========================================================================
+  // =========================================================================
   // 4. CICLO DE 72 HORAS & ORQUESTACIÓN DE LALs
   // =========================================================================
   async pausarCampana(token, campaignId) {
     if (!campaignId) return null;
-    const res = await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${token}`, {
+    const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
+    const res = await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${activeToken}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'PAUSED', access_token: token })
+      body: JSON.stringify({ status: 'PAUSED', access_token: activeToken })
     });
     return res.json();
   },
 
   async obtenerMetricas(token, campaignId) {
     if (!campaignId) return {};
-    const url = `${GRAPH_BASE_URL}/${campaignId}/insights?fields=impressions,clicks,cpc,ctr,spend,reach,action_values,actions&access_token=${token}`;
+    const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
+    const url = `${GRAPH_BASE_URL}/${campaignId}/insights?fields=impressions,clicks,cpc,ctr,spend,reach,action_values,actions&access_token=${activeToken}`;
     const res = await fetch(url);
     const data = await res.json();
     return data.data?.[0] || {};
@@ -294,53 +337,55 @@ const metaService = {
     version = 'V3.5'
   }) {
     try {
-      if (!adAccountId) {
-        throw new Error('⚠️ [MetaServices] Se requiere un adAccountId válido para ejecutar la inyección en Meta.');
+      // Validar y abstraer credenciales
+      const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId });
+
+      if (!creds.adAccountId) {
+        throw new Error(`⚠️ [MetaServices] Se requiere un adAccountId válido para ejecutar la inyección en Meta para ${clientId}.`);
       }
 
-      const cleanAccountId = adAccountId.replace(/^act_/, '');
-
-      // 1. Si no nos pasan customAudiences ya retenidas pero viene un usersPayload nuevo, las procesamos al vuelo
+      // 1. Si no hay customAudiences pero hay payload, procesar al vuelo
       let finalAudiences = customAudiences;
       if ((!finalAudiences || finalAudiences.length === 0) && usersPayload && usersPayload.length > 0) {
-        console.log('🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes al vuelo (Ciclo 72h)...');
+        console.log(`🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes al vuelo para ${clientId}...`);
         const generatedLal = await this.procesarEInyectarLookalikes({
-          adAccountId: cleanAccountId,
-          token,
-          usersPayload
+          adAccountId: creds.adAccountId,
+          token: creds.token,
+          usersPayload,
+          clientId
         });
         finalAudiences = generatedLal.custom_audiences;
       }
 
       // 2. Desactivar o pausar borrador anterior
-      const borradorExistente = await this.buscarBorrador(cleanAccountId, token, clientId);
+      const borradorExistente = await this.buscarBorrador(creds.adAccountId, creds.token, clientId);
       if (borradorExistente) {
-        await this.pausarCampana(token, borradorExistente.id);
+        await this.pausarCampana(creds.token, borradorExistente.id);
       }
 
-      // 3. Inyectar audiencias retenidas + ActID + Pixel para armar borrador
+      // 3. Crear nueva campaña
       const nuevaCampana = await this.crearCampanaVentas({
-        actId: cleanAccountId,
-        token,
-        pixelId,
+        actId: creds.adAccountId,
+        token: creds.token,
+        pixelId: creds.pixelId,
         clientId,
         dailyBudget,
         customAudiences: finalAudiences
       });
 
-      // 4. Guardar ID de campaña en storage con TTL ajustado a 72 horas
-      const isAdmin = String(clientId).toUpperCase().includes('ADMIN') || clientId === 'CLIENT-#00';
+      // 4. Guardar ID de campaña en storage
       await campaignStorage.registrarCampaignId({
         clientId,
         campaignId: nuevaCampana.campaignId,
         version,
-        isAdmin,
-        ttlHours: 72 // 👈 Ventana exacta de 72 horas
+        isAdmin: creds.isAdmin,
+        ttlHours: 72
       });
 
       return { 
         success: true, 
-        act_id: cleanAccountId,
+        act_id: creds.adAccountId,
+        pixel_id: creds.pixelId,
         campaignId: nuevaCampana.campaignId, 
         status: 'PAUSED',
         campaignName: nuevaCampana.campaignName,
@@ -352,14 +397,14 @@ const metaService = {
     }
   },
 
-  // Alias de compatibilidad por si alguna llamada conservaba el nombre anterior
   async procesarCicloHora24(params) {
     return this.procesarCicloHora72(params);
   },
 
   async verificarEstadoCampana(token, campaignId) {
     if (!campaignId) return false;
-    const url = `${GRAPH_BASE_URL}/${campaignId}?fields=status,name&access_token=${token}`;
+    const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
+    const url = `${GRAPH_BASE_URL}/${campaignId}?fields=status,name&access_token=${activeToken}`;
     const res = await fetch(url);
     const data = await res.json();
     if (data.error) throw new Error(`Meta API Error: ${data.error.message}`);
