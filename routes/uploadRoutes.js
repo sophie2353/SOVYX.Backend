@@ -79,6 +79,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const { sessionId, clientId, nicho, token, adAccountId } = req.body;
     if (!req.file) return res.status(400).json({ error: 'Archivo Excel/CSV no recibido' });
 
+    // Única declaración limpia de activeClientId
     const activeClientId = normalizeClientId(clientId);
     const session = sessionId || `sess_${activeClientId}_${Date.now()}`;
     const nichoObjetivo = nicho || 'infoproductos';
@@ -119,26 +120,23 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       extractedTargeting.usersPayload = parsedPayload;
     }
 
-// Normalizar el ID del cliente usando tu función existente
-const activeClientId = normalizeClientId(req.body.clientId || req.query.clientId);
+    // Determinar la cuenta publicitaria destino (Cliente vs ADMIN)
+    const targetAdAccount = adAccountId 
+      || req.body.actId 
+      || process.env.AD_ACCOUNT_ID 
+      || process.env.META_AD_ACCOUNT_ID;
 
-// Determinar la cuenta publicitaria destino (Cliente vs ADMIN)
-const targetAdAccount = req.body.adAccountId 
-  || req.body.actId 
-  || process.env.AD_ACCOUNT_ID 
-  || process.env.META_AD_ACCOUNT_ID;
-
-// 4. Crear Audiencia Semilla + Lookalikes en Meta
-let metaTargeting = null;
-if (targetAdAccount && metaService && typeof metaService.procesarEInyectarLookalikes === 'function') {
-  console.log(`🌱 [UPLOAD] Generando Audiencia Semilla + Lookalikes en Meta para ${activeClientId}...`);
-  metaTargeting = await metaService.procesarEInyectarLookalikes({
-    adAccountId: targetAdAccount,
-    token: process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN,
-    usersPayload: extractedTargeting.usersPayload,
-    clientId: activeClientId
-  });
-}
+    // 4. Crear Audiencia Semilla + Lookalikes en Meta
+    let metaTargeting = null;
+    if (targetAdAccount && metaService && typeof metaService.procesarEInyectarLookalikes === 'function') {
+      console.log(`🌱 [UPLOAD] Generando Audiencia Semilla + Lookalikes en Meta para ${activeClientId}...`);
+      metaTargeting = await metaService.procesarEInyectarLookalikes({
+        adAccountId: targetAdAccount,
+        token: process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN,
+        usersPayload: extractedTargeting.usersPayload,
+        clientId: activeClientId
+      });
+    }
 
     // 5. Guardar la audiencia lista en MongoDB
     const audienciaGuardada = await Audiencia.findOneAndUpdate(
