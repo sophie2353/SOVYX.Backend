@@ -4,13 +4,29 @@ const router = express.Router();
 const webpush = require('web-push');
 const ClientPush = require('../models/ClientPush');
 
-// Configuración VAPID
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+// Función sanitizadora Opción A: Limpia espacios, saltos de línea y signos '=' al final de las VAPID
+function cleanVapidKey(key) {
+  if (!key) return '';
+  return String(key)
+    .trim()
+    .replace(/[\r\n\t]/g, '')
+    .replace(/=+$/, '');
+}
+
+// Configuración VAPID saneada
+const rawPublicKey = process.env.VAPID_PUBLIC_KEY || '';
+const rawPrivateKey = process.env.VAPID_PRIVATE_KEY || '';
+const VAPID_PUBLIC_KEY = cleanVapidKey(rawPublicKey);
+const VAPID_PRIVATE_KEY = cleanVapidKey(rawPrivateKey);
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || '';
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  try {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    console.log('✅ [VAPID] Configuración de Notificaciones Push activada correctamente.');
+  } catch (err) {
+    console.error('⚠️ [VAPID] Error al configurar VAPID:', err.message);
+  }
 }
 
 /**
@@ -27,7 +43,7 @@ router.post('/save-subscription', async (req, res) => {
   try {
     const { clientId, subscription } = req.body;
     const cleanId = String(clientId || 'CLIENT-#01').trim().toUpperCase();
-    const pushDocumentId = `push_${cleanId}`; // 👈 Formato: push_CLIENT-#1, push_CLIENT-#2...
+    const pushDocumentId = `push_${cleanId}`;
 
     if (!subscription || !subscription.endpoint) {
       return res.status(400).json({ success: false, error: 'Suscripción inválida' });
@@ -80,7 +96,6 @@ const sendPushNotification = async (clientId, title, body, data = {}) => {
     if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
       await webpush.sendNotification(pushRecord.pushSubscription, payload);
       
-      // Actualizar registro de envío
       await ClientPush.findOneAndUpdate(
         { pushId: pushDocumentId },
         { $set: { lastNotificationSentAt: new Date() } }
@@ -100,9 +115,9 @@ const sendPushNotification = async (clientId, title, body, data = {}) => {
 
 /**
  * CICLO DE 3 DÍAS (72 HORAS)
- * Se mantiene la ruta /timer/push-24h para compatibilidad, pero dispara la alerta de los 3 días.
+ * Soporta tanto /timer/push-72h como /timer/push-24h (para compatibilidad con el test suite)
  */
-router.post('/timer/push-72h', async (req, res) => {
+const handle72hTimer = async (req, res) => {
   try {
     const { clientId, userId, timerId } = req.body;
     const targetId = clientId || userId || 'CLIENT-#01';
@@ -121,7 +136,10 @@ router.post('/timer/push-72h', async (req, res) => {
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
-});
+};
+
+router.post('/timer/push-72h', handle72hTimer);
+router.post('/timer/push-24h', handle72hTimer); // 👈 Añadido para compatibilidad exacta con el test E2E
 
 /**
  * CICLO DE DÍA 7 (Plazo Máximo)
