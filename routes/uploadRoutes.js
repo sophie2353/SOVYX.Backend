@@ -7,13 +7,6 @@ const XLSX = require('xlsx');
 const Audiencia = require('../models/Audiencia');
 const Client = require('../models/clients');
 
-let metaService = null;
-try {
-  metaService = require('./metaService');
-} catch (err) {
-  console.warn('⚠️ [UPLOAD] metaService no encontrado.');
-}
-
 let ia1Instance = null;
 try {
   const IA1 = require('../modules/sovyxIA1Segmenter');
@@ -76,10 +69,9 @@ function extraerCamposTexto(buffer) {
 
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
-    const { sessionId, clientId, nicho, token, adAccountId } = req.body;
+    const { sessionId, clientId, nicho } = req.body;
     if (!req.file) return res.status(400).json({ error: 'Archivo Excel/CSV no recibido' });
 
-    // Única declaración limpia de activeClientId
     const activeClientId = normalizeClientId(clientId);
     const session = sessionId || `sess_${activeClientId}_${Date.now()}`;
     const nichoObjetivo = nicho || 'infoproductos';
@@ -120,25 +112,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       extractedTargeting.usersPayload = parsedPayload;
     }
 
-    // Determinar la cuenta publicitaria destino (Cliente vs ADMIN)
-    const targetAdAccount = adAccountId 
-      || req.body.actId 
-      || process.env.AD_ACCOUNT_ID 
-      || process.env.META_AD_ACCOUNT_ID;
+    // ❌ SECCIÓN 4 ELIMINADA: Ya no se llama a metaService aquí. Todo va directo a Audiencias en Mongo.
 
-    // 4. Crear Audiencia Semilla + Lookalikes en Meta
-    let metaTargeting = null;
-    if (targetAdAccount && metaService && typeof metaService.procesarEInyectarLookalikes === 'function') {
-      console.log(`🌱 [UPLOAD] Generando Audiencia Semilla + Lookalikes en Meta para ${activeClientId}...`);
-      metaTargeting = await metaService.procesarEInyectarLookalikes({
-        adAccountId: targetAdAccount,
-        token: process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN,
-        usersPayload: extractedTargeting.usersPayload,
-        clientId: activeClientId
-      });
-    }
-
-    // 5. Guardar la audiencia lista en MongoDB
+    // 3. Guardar la audiencia lista en MongoDB (con el usersPayload listo para ser consumido por facebookRoutes)
     const audienciaGuardada = await Audiencia.findOneAndUpdate(
       { sessionId: session },
       {
@@ -148,10 +124,11 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         fileName: req.file.originalname,
         segmentacion: {
           ...extractedTargeting,
-          custom_audiences: metaTargeting?.custom_audiences || []
+          usersPayload: extractedTargeting.usersPayload,
+          custom_audiences: []
         },
         totalRegistros: parsedPayload.length,
-        estado: metaTargeting ? 'SEGMENTADA_Y_LISTA' : 'PENDIENTE_CONEXION_META'
+        estado: 'PENDIENTE_CONEXION_META'
       },
       { upsert: true, new: true }
     );
@@ -162,8 +139,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       audienciaId: audienciaGuardada._id,
       totalRegistros: parsedPayload.length,
       targeting: extractedTargeting,
-      customAudiences: metaTargeting?.custom_audiences || [],
-      message: 'Excel procesado con IA1 y Audiencia Semilla inyectada en Meta. Listo para crear borrador.'
+      message: 'Excel procesado con IA1 y guardado en Audiencias. Listo para que FacebookRoutes cree el borrador en Meta.'
     });
 
   } catch (error) {
