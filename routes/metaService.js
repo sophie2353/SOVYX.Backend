@@ -24,32 +24,55 @@ function buildCampaignName(clientId = 'ADMIN') {
 }
 
 /**
- * Helper para resolver credenciales: Token de ADMIN + Pixel/Account según el tipo de cliente
+ * Helper para resolver credenciales: Soporta ADMIN y clientes dinámicos de CLIENT-#01 al #10+
  */
 function getMetaCredentials({ token, clientId = 'ADMIN', pixelId = null, adAccountId = null }) {
   const cleanClientId = String(clientId).trim().toUpperCase();
-  const isAdmin = cleanClientId.includes('ADMIN') || cleanClientId === 'CLIENT-#00';
+  const isAdmin = cleanClientId.includes('ADMIN') || cleanClientId === 'CLIENT-#00' || !cleanClientId;
 
-  // 1. Token: Siempre usa ADMIN_TOKEN como fallback si no se provee uno específico
+  // 1. Token: Siempre usa el System User Token central de ADMIN como fallback
   const finalToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN || process.env.META_SYSTEM_TOKEN;
 
-  // 2. Pixel ID: Si es ADMIN usa META_PIXEL_ID, si es CLIENT usa el pixelId proporcionado por el cliente
+  // 2. Pixel ID: Si es ADMIN usa el de entorno, si es cliente usa el pixelId específico enviado
   const finalPixelId = isAdmin 
     ? (pixelId || process.env.META_PIXEL_ID) 
-    : pixelId;
+    : (pixelId || null);
 
-  // 3. Ad Account ID: Si es ADMIN usa META_AD_ACCOUNT_ID, si es CLIENT usa el adAccountId proporcionado
+  // 3. Ad Account ID: Si es ADMIN usa el de entorno, si es cliente usa el adAccountId enviado
   const rawAccountId = isAdmin 
     ? (adAccountId || process.env.META_AD_ACCOUNT_ID) 
     : adAccountId;
     
-  const finalAdAccountId = rawAccountId ? rawAccountId.replace(/^act_/, '') : null;
+  const finalAdAccountId = rawAccountId ? String(rawAccountId).replace(/^act_/, '').trim() : null;
 
   return {
     token: finalToken,
     pixelId: finalPixelId,
     adAccountId: finalAdAccountId,
     isAdmin
+  };
+}
+
+/**
+ * Helper interno para parsear e interceptar el Error #100 de Meta LTV
+ */
+function formatMetaError(dataError) {
+  const code = dataError.code;
+  const msg = dataError.message || '';
+  const userMsg = dataError.error_user_msg || '';
+
+  if (code === 100 && (msg.includes('Customer Value') || userMsg.includes('value') || msg.includes('value'))) {
+    return {
+      isLtvError: true,
+      errorCode: 'VALUE_TERMS_REQUIRED',
+      message: 'La cuenta publicitaria no ha activado los Términos de Valor de Cliente (LTV) en Meta.',
+      instructions: 'Debes activar la segmentación por Value subiendo una lista de prueba CSV en el panel de tu cuenta publicitaria, marcar "Sí incluye valor de cliente", aceptar los términos de Meta e intentar nuevamente.'
+    };
+  }
+
+  return {
+    isLtvError: false,
+    message: `Meta API Error [Code ${code}]: ${msg}`
   };
 }
 
@@ -94,17 +117,24 @@ const metaService = {
     });
     
     const data = await res.json();
-    if (data.error) throw new Error(`Meta API Error (Custom Audience): ${data.error.message}`);
+    if (data.error) {
+      const parsedErr = formatMetaError(data.error);
+      if (parsedErr.isLtvError) {
+        const err = new Error(parsedErr.message);
+        err.errorCode = parsedErr.errorCode;
+        err.instructions = parsedErr.instructions;
+        throw err;
+      }
+      throw new Error(parsedErr.message);
+    }
     return data.id;
   },
 
   async inyectarUsuariosSemilla(audienceId, usersPayload, token) {
     const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
-    // Schema estandarizado para Meta Graph API
     const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY', 'VALUE'];
 
-    // Mapeo dinámico centrado en: Country, Value, Edad y Nicho
     const formattedData = usersPayload.map(u => {
       const country = (u.country || u.pais || 'US').toString().trim().toUpperCase();
       const rawValue = u.value !== undefined ? u.value : (u.valor !== undefined ? u.valor : 1000);
@@ -139,7 +169,16 @@ const metaService = {
     });
 
     const data = await res.json();
-    if (data.error) throw new Error(`Meta API Error (User Ingestion): ${data.error.message}`);
+    if (data.error) {
+      const parsedErr = formatMetaError(data.error);
+      if (parsedErr.isLtvError) {
+        const err = new Error(parsedErr.message);
+        err.errorCode = parsedErr.errorCode;
+        err.instructions = parsedErr.instructions;
+        throw err;
+      }
+      throw new Error(parsedErr.message);
+    }
     return data;
   },
 
@@ -215,7 +254,7 @@ const metaService = {
   },
 
   // =========================================================================
-  // 3. CREACIÓN DE CAMPAÑA + ADSET (RECIBE LAL DE RETENCIÓN + ACT_ID + PIXEL)
+  // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
   async crearCampanaVentas({ 
     actId, 
@@ -225,7 +264,6 @@ const metaService = {
     dailyBudget = 1000, 
     customAudiences = [] 
   }) {
-    // Resolver credenciales según ADMIN o CLIENT
     const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId: actId });
 
     if (!creds.adAccountId) {
@@ -252,7 +290,7 @@ const metaService = {
     if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
     const campaignId = campaignData.id;
 
-    // 2. Crear AdSet e inyectar la segmentación/Lookalikes retenidos
+    // 2. Crear AdSet
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
@@ -265,7 +303,6 @@ const metaService = {
       access_token: creds.token
     };
 
-    // Asignar el Pixel (de ADMIN o de CLIENT según corresponda)
     if (creds.pixelId) {
       adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
     } else {
@@ -280,7 +317,6 @@ const metaService = {
     
     const adSetData = await adSetRes.json();
     
-    // Fallback si la cuenta aún no reúne volumen para 'VALUE'
     if (adSetData.error && adSetData.error.message.includes('VALUE')) {
       adSetBody.optimization_goal = 'OFFSITE_CONVERSIONS';
       const fallbackRes = await fetch(adSetUrl, {
@@ -337,14 +373,12 @@ const metaService = {
     version = 'V3.5'
   }) {
     try {
-      // Validar y abstraer credenciales
       const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId });
 
       if (!creds.adAccountId) {
         throw new Error(`⚠️ [MetaServices] Se requiere un adAccountId válido para ejecutar la inyección en Meta para ${clientId}.`);
       }
 
-      // 1. Si no hay customAudiences pero hay payload, procesar al vuelo
       let finalAudiences = customAudiences;
       if ((!finalAudiences || finalAudiences.length === 0) && usersPayload && usersPayload.length > 0) {
         console.log(`🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes al vuelo para ${clientId}...`);
@@ -357,13 +391,11 @@ const metaService = {
         finalAudiences = generatedLal.custom_audiences;
       }
 
-      // 2. Desactivar o pausar borrador anterior
       const borradorExistente = await this.buscarBorrador(creds.adAccountId, creds.token, clientId);
       if (borradorExistente) {
         await this.pausarCampana(creds.token, borradorExistente.id);
       }
 
-      // 3. Crear nueva campaña
       const nuevaCampana = await this.crearCampanaVentas({
         actId: creds.adAccountId,
         token: creds.token,
@@ -373,7 +405,6 @@ const metaService = {
         customAudiences: finalAudiences
       });
 
-      // 4. Guardar ID de campaña en storage
       await campaignStorage.registrarCampaignId({
         clientId,
         campaignId: nuevaCampana.campaignId,
@@ -411,5 +442,5 @@ const metaService = {
     return data.status === 'ACTIVE';
   }
 };
-        
+
 module.exports = metaService;
