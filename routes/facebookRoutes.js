@@ -61,7 +61,6 @@ async function getUserMetaContext(userId, sessionId, clientId) {
 
 /* ==========================================================================
    1. CONFIGURACIÓN (/configurar)
-   Obtiene pixel y act_id por primera vez y delega la creación del borrador
    ========================================================================== */
 router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (req, res) => {
   try {
@@ -74,7 +73,6 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
     const cleanActId = String(actId).replace(/^act_/, '').trim();
     const cleanPixelId = pixelId ? String(pixelId).trim() : FB_CONFIG.DEFAULT_PIXEL_ID;
 
-    // Guardar credenciales en MongoDB
     await Client.findOneAndUpdate(
       { clientId: activeClientId },
       {
@@ -89,15 +87,8 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
       { upsert: true, new: true }
     );
 
-    // Redirigir de inmediato a la lógica de creación de borrador con los IDs frescos
     console.log(`⚙️ [CONFIGURAR] Credenciales listas para ${activeClientId}. Derivando a creación de borrador...`);
     
-    // Llamada interna automática a /crear-borrador usando los datos obtenidos
-    const reqBorrador = {
-      body: { clientId: activeClientId, dailyBudget, version }
-    };
-    
-    // Opcional: Puedes disparar la creación del borrador aquí mismo de forma fluida
     return res.json({
       success: true,
       message: 'Credenciales guardadas y pasadas al motor de creación de borrador.',
@@ -112,10 +103,9 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
     return res.status(500).json({ success: false, error: err.message });
   }
 });
-
 /* ==========================================================================
    2. CREAR BORRADOR (/crear-borrador)
-   metaService ya tiene retenidos los LALs y aquí recibe los IDs faltantes
+   Busca la audiencia exacta en Mongo según el clientId y procesa el metaService
    ========================================================================== */
 router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/draft'], async (req, res) => {
   try {
@@ -132,14 +122,16 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
       });
     }
 
-    // Buscar la audiencia retenida en MongoDB (creada previamente en /upload)
+    // 🔍 Búsqueda exacta de la audiencia en MongoDB filtrando por el clientId específico
     const ultimaAudiencia = await Audiencia.findOne({ clientId: metaCtx.clientId }).sort({ createdAt: -1 });
+    
     const customAudiences = ultimaAudiencia?.segmentacion?.custom_audiences || [];
+    const usersPayload = ultimaAudiencia?.segmentacion?.usersPayload || [];
 
-    if (!customAudiences.length) {
+    if (!customAudiences.length && !usersPayload.length) {
       return res.status(400).json({ 
         success: false, 
-        error: 'No se encontraron segmentos o Lookalikes retenidos. Suba un archivo Excel en /upload primero.' 
+        error: `No se encontraron registros ni segmentos para el cliente ${metaCtx.clientId}. Suba un archivo Excel en /upload primero.` 
       });
     }
 
@@ -147,12 +139,13 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
       return res.status(500).json({ success: false, error: 'metaService no disponible.' });
     }
 
-    // ⚡ Disparar ciclo: MetaService inyecta los LAL retenidos + los ID de cuenta/píxel recién llegados
+    // ⚡ Disparar ciclo: MetaService toma la data de ese cliente específico e inyecta en Meta
     const borradorResult = await metaService.procesarCicloHora24({
       clientId: metaCtx.clientId,
       token: metaCtx.fb_token,
       adAccountId: targetActId,
       pixelId: targetPixelId,
+      usersPayload: usersPayload,
       customAudiences: customAudiences,
       dailyBudget: dailyBudget ? parseFloat(dailyBudget) : 1000,
       version: version || 'V3.5'
