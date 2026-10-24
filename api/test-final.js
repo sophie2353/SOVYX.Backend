@@ -62,7 +62,7 @@ function generate200MockLeads() {
 }
 
 async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
-  // Configuración en modo ADMIN para usar AD_ACCOUNT_ID y META_PIXEL_ID de Render
+  // Configuración en modo ADMIN para usar AD_ACCOUNT_ID y META_PIXEL_ID de entorno
   const testClientId = 'ADMIN';
   const targetAdAccount = process.env.AD_ACCOUNT_ID || process.env.META_AD_ACCOUNT_ID || '';
   const targetPixelId = process.env.META_PIXEL_ID || process.env.PIXEL_ID || '';
@@ -75,7 +75,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
 
   try {
     // -----------------------------------------------------------------------
-    // PASO 1: Subida de Excel + Segmentación IA1 (Retiene LALs)
+    // PASO 1: Subida de Excel -> Procesamiento IA1 -> Mongo Audiencias
     // -----------------------------------------------------------------------
     logs.push('1. Generando Excel en memoria con 200 leads simulados...');
     const fakeLeads = generate200MockLeads();
@@ -91,20 +91,19 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     });
     form.append('clientId', testClientId);
     form.append('nicho', 'infoproductos');
-    if (targetAdAccount) form.append('adAccountId', targetAdAccount);
 
     logs.push('📡 [TEST] POST /api/v1/media/upload...');
     const uploadRes = await axios.post(`${baseUrl}/api/v1/media/upload`, form, {
       headers: form.getHeaders()
     });
 
-    console.log('✅ PASO 1 OK (Upload + LAL Retenidos):', uploadRes.data.ok ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Upload ok=${uploadRes.data.ok}. Registros: ${uploadRes.data.totalRegistros}`);
+    console.log('✅ PASO 1 OK (Upload + Guardado en Mongo):', uploadRes.data.ok ? 'EXITOSO' : 'FALLIDO');
+    logs.push(`Upload ok=${uploadRes.data.ok}. Registros guardados: ${uploadRes.data.totalRegistros}`);
 
     // -----------------------------------------------------------------------
     // PASO 2: Prueba de Formulario de Segmentación Directa (segmentacionRoutes)
     // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/segmentacion/procesar (Mapeo de 4 campos a 200 filas)...');
+    logs.push('📡 [TEST] POST /api/v1/segmentacion/procesar (Mapeo de 4 campos a dataset de Mongo)...');
     const formSegRes = await axios.post(`${baseUrl}/api/v1/segmentacion/procesar`, {
       clientId: testClientId,
       paises: ['MX', 'CO'],
@@ -115,13 +114,13 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
       adAccountId: targetAdAccount
     });
 
-    console.log('✅ PASO 2 OK (Segmentación 4 datos -> 200 filas -> Upload):', formSegRes.data.ok ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Segmentación Form ok=${formSegRes.data.ok}. Key: ${formSegRes.data.datasetKey}`);
+    console.log('✅ PASO 2 OK (Segmentación Formulario -> Audiencias Mongo):', formSegRes.data.ok ? 'EXITOSO' : 'FALLIDO');
+    logs.push(`Segmentación Form ok=${formSegRes.data.ok}. Key: ${formSegRes.data.datasetKey || 'OK'}`);
 
     // -----------------------------------------------------------------------
     // PASO 3: Guardar Suscripción Push WebNativa (ClientPush / push_ADMIN)
     // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/webhook-client/save-subscription (Push Naming test)...');
+    logs.push('📡 [TEST] POST /api/v1/webhook-client/save-subscription...');
     const pushSaveRes = await axios.post(`${baseUrl}/api/v1/webhook-client/save-subscription`, {
       clientId: testClientId,
       subscription: {
@@ -154,9 +153,9 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     console.log('✅ PASO 4 OK (Webhooks Push 3d / 7d):', (push72hRes.data.success && pushDay7Res.data.success) ? 'EXITOSO' : 'FALLIDO');
 
     // -----------------------------------------------------------------------
-    // PASO 5: Configuración (Hora 0) -> Envía actId y activa el Buffer
+    // PASO 5: Configuración de Credenciales (Hora 0)
     // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/facebook/configurar (Hora 0 - Inyección de Credenciales)...');
+    logs.push('📡 [TEST] POST /api/v1/facebook/configurar (Inyección de Credenciales)...');
     const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
       clientId: testClientId,
       actId: targetAdAccount,
@@ -165,21 +164,23 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
       version: 'V3.5'
     });
 
-    console.log('✅ PASO 5 OK (Configurar + Sincronización Meta):', configRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 5 OK (Configurar Credenciales Meta):', configRes.data.success ? 'EXITOSO' : 'FALLIDO');
 
     // -----------------------------------------------------------------------
-    // PASO 6: Crear Borrador (Ensamble final con LALs retenidos)
+    // PASO 6: Crear Borrador en Meta (Lazy Orchestration desde Mongo)
     // -----------------------------------------------------------------------
     logs.push('📡 [TEST] POST /api/v1/facebook/crear-borrador...');
     const draftRes = await axios.post(`${baseUrl}/api/v1/facebook/crear-borrador`, {
       clientId: testClientId,
+      actId: targetAdAccount,
+      pixelId: targetPixelId,
       dailyBudget: 1500,
       version: 'V3.5'
     });
 
-    console.log('✅ PASO 6 OK (Borrador Creado con LALs):', draftRes.data.success ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 6 OK (Borrador e Inyección LTV en Meta):', draftRes.data.success ? 'EXITOSO' : 'FALLIDO');
     const generatedCampaignId = draftRes.data.campaignId;
-    logs.push(`Campaña en borrador creada con éxito. ID: ${generatedCampaignId}`);
+    logs.push(`Campaña en borrador creada con éxito en Meta. ID: ${generatedCampaignId}`);
 
     // Verificación de almacenamiento con TTL (campaignStorage)
     let storedCampaignId = null;
