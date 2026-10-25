@@ -258,7 +258,7 @@ const metaService = {
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
-    async crearCampanaVentas({ 
+ async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
@@ -311,16 +311,16 @@ const metaService = {
     }).filter(Boolean);
 
     // 3. Crear el AdSet aplicando el presupuesto dinámico del cliente
+    // Crear el AdSet apuntando al Lookalike de Valor pero usando conversiones estándar para evitar el bloqueo del BM
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
-      name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
+      name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value-Based)`,
       campaign_id: campaignId,
-      daily_budget: finalDailyBudget, // 👈 Presupuesto dinámico adaptado al cliente
+      daily_budget: finalDailyBudget,
       billing_event: 'IMPRESSIONS',
-      optimization_goal: 'VALUE',
-      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+      optimization_goal: 'OFFSITE_CONVERSIONS', // 👈 Esquiva la restricción de cuentas no verificadas
       targeting: { 
-        custom_audiences: formattedAudiences 
+        custom_audiences: formattedAudiences // 👈 ¡Aquí vive la magia del Lookalike con el LOOKALIKE_VALUE inyectado!
       },
       status: 'PAUSED',
       access_token: creds.token
@@ -341,7 +341,7 @@ const metaService = {
     const adSetData = await adSetRes.json();
     
     if (adSetData.error) {
-      console.error('❌ [Línea AdSet] Error detallado de Meta:', JSON.stringify(adSetData.error, null, 2));
+      console.error('❌ [Línea AdSet Final] Error detallado de Meta:', JSON.stringify(adSetData.error, null, 2));
       throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
     }
 
