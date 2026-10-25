@@ -291,6 +291,7 @@ const metaService = {
         objective: 'OUTCOME_SALES',
         status: 'PAUSED',
         is_adset_budget_sharing_enabled: false, // Cada AdSet maneja su parte de forma independiente
+        special_ad_categories: ['NONE'],
         access_token: creds.token
       })
     });
