@@ -154,7 +154,6 @@ const metaService = {
         hashData(fnSimulado),
         hashData(lnSimulado),
         country,
-        valueNum > 0 ? valueNum : 1000 // <--- ¡Aquí viajan tus 10K - 20K $ al mes enlazados a cada lead!
       ];
     }).filter(row => row[0] && row[1]);
 
