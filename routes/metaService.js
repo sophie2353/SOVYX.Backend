@@ -318,6 +318,7 @@ const metaService = {
       daily_budget: finalDailyBudget, // 👈 Presupuesto dinámico adaptado al cliente
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'VALUE',
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       targeting: { 
         custom_audiences: formattedAudiences 
       },
