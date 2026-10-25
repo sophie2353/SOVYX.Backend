@@ -135,7 +135,7 @@ const metaService = {
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
     
     // 💡 Aquí está el secreto: El campo oficial de Meta para el valor en la API es 'LTV'
-    const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY', 'LTV'];
+    const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY'];
 
     const formattedData = usersPayload.map(u => {
       const country = (u.country || u.pais || 'US').toString().trim().toUpperCase();
