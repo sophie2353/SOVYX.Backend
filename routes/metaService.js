@@ -318,6 +318,7 @@ const metaService = {
       daily_budget: finalDailyBudget,
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'OFFSITE_CONVERSIONS',
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       // Eliminamos cualquier bid_strategy o bid_amount para que use la puja por defecto de Meta
       targeting: { 
         custom_audiences: formattedAudiences 
