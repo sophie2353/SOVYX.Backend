@@ -121,7 +121,7 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     // PASO 3: Guardar Suscripción Push WebNativa (ClientPush / push_ADMIN)
     // -----------------------------------------------------------------------
     logs.push('📡 [TEST] POST /api/webhook-client/save-subscription...');
-    const pushSaveRes = await axios.post(`${baseUrl}/api/v1/webhook-client/save-subscription`, {
+    const pushSaveRes = await axios.post(`${baseUrl}/api/webhook-client/save-subscription`, {
       clientId: testClientId,
       subscription: {
         endpoint: 'https://updates.push.services.mozilla.com/wpush/v2/test_endpoint_mock',
@@ -139,13 +139,13 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     // PASO 4: Probar Webhooks de Notificación (3 Días / 7 Días)
     // -----------------------------------------------------------------------
     logs.push('📡 [TEST] POST /api/webhook-client/timer/push-24h (Disparo Alerta 72h)...');
-    const push72hRes = await axios.post(`${baseUrl}/api/v1/webhook-client/timer/push-24h`, {
+    const push72hRes = await axios.post(`${baseUrl}/api/webhook-client/timer/push-24h`, {
       clientId: testClientId,
       timerId: 'timer_test_72h'
     });
 
     logs.push('📡 [TEST] POST /api/webhook-client/timer/push-day7 (Disparo Alerta Día 7)...');
-    const pushDay7Res = await axios.post(`${baseUrl}/api/v1/webhook-client/timer/push-day7`, {
+    const pushDay7Res = await axios.post(`${baseUrl}/api/webhook-client/timer/push-day7`, {
       clientId: testClientId,
       timerId: 'timer_test_day7'
     });
