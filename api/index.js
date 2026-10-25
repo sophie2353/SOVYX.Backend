@@ -98,7 +98,7 @@ if (MONGO_URI) {
 }
 
 // ============================================
-// 3. RUTAS Y MÓDULOS DEL SISTEMA
+// 3. RUTAS Y MÓDULOS DEL SISTEMA (ORGANIZADOS)
 // ============================================
 
 // --- CONFIGURACIÓN & AUTENTICACIÓN ADMIN ---
@@ -108,31 +108,18 @@ app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
 
   if (!password || typeof password !== 'string') {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Se requiere una contraseña válida.' 
-    });
+    return res.status(400).json({ success: false, message: 'Se requiere una contraseña válida.' });
   }
 
   if (!ADMIN_KEY) {
-    console.error('🔴 [SECURITY WARNING] No hay ADMIN_KEY configurada en el entorno.');
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Error de configuración en el servidor.' 
-    });
+    return res.status(500).json({ success: false, message: 'Error de configuración en el servidor.' });
   }
 
   if (password === ADMIN_KEY) {
-    return res.json({ 
-      success: true, 
-      message: 'Acceso autorizado' 
-    });
+    return res.json({ success: true, message: 'Acceso autorizado' });
   }
 
-  return res.status(401).json({ 
-    success: false, 
-    message: 'Contraseña incorrecta' 
-  });
+  return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
 });
 
 app.post('/api/v1/auth/biometrics/challenge', (req, res) => {
@@ -143,7 +130,8 @@ app.post('/api/v1/auth/biometrics/register', (req, res) => {
   res.json({ success: true, message: 'Biometría registrada correctamente' });
 });
 
-// --- WEBHOOKS & FIRMA DE CONTRATOS ---
+// --- 1. WEBHOOKS & FIRMA DE CONTRATOS (/api/webhook, /api/v1/webhook) ---
+// Incluye: /api/webhook/contrato-waitlist-firmado, /api/webhook/contrato-firmado
 try {
   const webhookRoutes = require('../routes/webhook');
   safeUse(['/api/webhook', '/api/v1/webhook'], webhookRoutes);
@@ -151,7 +139,8 @@ try {
   console.warn('⚠️ [WEBHOOK ROUTES] No se pudo cargar webhook.js:', e.message);
 }
 
-// --- FACEBOOK & META ROUTES ---
+// --- 2. FACEBOOK & META ROUTES (/api/facebook, /api/v1/facebook) ---
+// Incluye: /api/facebook/activar-campana, /configurar, /crear-borrador, etc.
 try {
   const facebookRoutes = require('../routes/facebookRoutes');
   safeUse(['/api/facebook', '/api/v1/facebook', '/facebook'], facebookRoutes);
@@ -159,35 +148,34 @@ try {
   console.warn('⚠️ [FB ROUTES] No se pudo cargar facebookRoutes.js:', e.message);
 }
 
-// --- WAITLIST / V4 ROUTES ---
+// --- 3. WAITLIST / V4 ROUTES (/api/waitlist, /api/v1/waitlist, /api/v1/registro) ---
+// Incluye: /api/waitlist/confirm-waitlist, /api/v1/registro
 try {
   const waitlistRoutes = require('../routes/waitlist');
-  safeUse(['/api/waitlist', '/api/v1/waitlist', '/api/lista-espera', '/waitlist'], waitlistRoutes);
+  safeUse(['/api/waitlist', '/api/v1/waitlist', '/api/v1/registro', '/api/lista-espera', '/waitlist'], waitlistRoutes);
 } catch (e) {
   console.warn('⚠️ [WAITLIST ROUTES] No se pudo cargar waitlist.js:', e.message);
 }
 
-// --- CHAT IA2 & NÚCLEO IA2 ---
+// --- 4. CHAT IA2 & NÚCLEO IA2 ---
 try {
   const ia2Module = require('../modules/ia2-conversar') || require('../routes/ia2Routes');
   safeUse(['/api/ia2', '/api/v1/ia2', '/api/v1/chat', '/api/chat'], ia2Module);
 } catch (e) {
-  console.warn('⚠️ [IA2 MODULE] Activando fallback:', e.message);
   app.post(['/api/v1/chat/message', '/api/chat', '/api/ia2/conversar'], (req, res) => {
     res.json({ success: true, reply: 'Sistema SODIE IA2 Activo.', status: 'ACTIVE' });
   });
 }
 
-// --- MÓDULO IA3 ANALYZER ---
+// --- 5. MÓDULO IA3 ANALYZER ---
 try {
   const ia3AnalyzerModule = require('../modules/ia3-analyzer') || require('../routes/ia3Routes');
   safeUse(['/api/ia3', '/api/v1/ia3'], ia3AnalyzerModule);
 } catch (e) {
-  console.warn('⚠️ [IA3 ANALYZER] Activando fallback:', e.message);
   app.all(['/api/ia3*', '/api/v1/ia3*'], (req, res) => res.json({ success: true, message: 'IA3 Activo' }));
 }
 
-// --- CLIENT ID & MEDIA UPLOADS ---
+// --- 6. CLIENT ID & MEDIA UPLOADS ---
 try {
   const clientIDRoutes = require('../routes/clientIDRoutes');
   safeUse('/api/v1/clients', clientIDRoutes);
@@ -195,17 +183,16 @@ try {
   console.warn('⚠️ [CLIENT ID] clientIDRoutes.js no cargado:', e.message);
 }
 
-// Carga limpia y directa de las rutas de subida y procesamiento de audiencia
-// --- UPLOAD & MEDIA ROUTES V3.5 ---
+// --- 7. UPLOAD & MEDIA ROUTES V3.5 ---
 try {
   const uploadRoutes = require('../routes/uploadRoutes');
   safeUse(['/api/v1/media', '/api/media', '/media'], uploadRoutes);
-  console.log('✅ [ROUTES] uploadRoutes montado correctamente.');
 } catch (e) {
   console.warn('⚠️ [UPLOAD ROUTES] No se pudo cargar uploadRoutes.js:', e.message);
 }
 
-// --- WEBHOOK CLIENT ---
+// --- 8. WEBHOOK CLIENT & PUSH NOTIFICATIONS (/api/webhook-client) ---
+// Incluye: /api/webhook-client/vapid-public-key, /save-subscription, /timer/push-72h, /timer/push-day7
 try {
   const webhookClientRoutes = require('../routes/webhook-client');
   safeUse('/api/webhook-client', webhookClientRoutes);
@@ -213,7 +200,7 @@ try {
   console.warn('⚠️ [WEBHOOK CLIENT] No se pudo cargar webhook-client.js:', e.message);
 }
 
-// --- METRICS ROUTES ---
+// --- 9. METRICS ROUTES ---
 try {
   const metricsRoutes = require('../routes/metricsRoutes');
   safeUse('/api', metricsRoutes);
@@ -221,7 +208,40 @@ try {
   console.warn('⚠️ [METRICS ROUTES] No se pudo cargar metricsRoutes.js:', e.message);
 }
 
-// --- ENDPOINTS OFICIALES ---
+// --- 10. CLIENT ROUTES (/api/client) ---
+// Incluye: /api/client/register
+try {
+  const clientRoutes = require('../routes/clientRoutes');
+  safeUse('/api/client', clientRoutes);
+} catch (e) {
+  console.warn('⚠️ [CLIENT ROUTES] No se pudo cargar clientRoutes.js:', e.message);
+}
+
+// --- 11. ADMIN ROUTES (/api/admin) ---
+try {
+  const adminRoutes = require('../routes/adminRoutes');
+  safeUse('/api/admin', adminRoutes);
+} catch (e) {
+  console.warn('⚠️ [ADMIN ROUTES] No se pudo cargar adminRoutes.js:', e.message);
+}
+
+// --- 12. SEGMENTACION ROUTES (/api/v1/segmentacion/procesar) ---
+try {
+  const segmentacionRoutes = require('../routes/segmentacionRoutes');
+  safeUse('/api/v1/segmentacion', segmentacionRoutes);
+} catch (e) {
+  console.warn('⚠️ [SEGMENTACION ROUTES] No se pudo cargar segmentacionRoutes.js:', e.message);
+}
+
+// --- 13. PAY WEBHOOK (/api/v1/webhook-payment) ---
+try {
+  const payWebhookRoutes = require('../routes/pay-webhook');
+  safeUse('/api/v1/webhook-payment', payWebhookRoutes);
+} catch (e) {
+  console.warn('⚠️ [PAY WEBHOOK] No se pudo cargar pay-webhook.js:', e.message);
+}
+
+// --- 14. ENDPOINT SLOTS DISPONIBLES ---
 app.get('/api/clientes/disponibles', async (req, res) => {
   const maxSovyxSlots = config.sovyx?.totalSlots || 3;
   res.json({
@@ -233,38 +253,12 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   });
 });
 
-// --- CLIENT ROUTES ---
+// --- 15. TEST ROUTE (Ruta del Test E2E) ---
 try {
-  const clientRoutes = require('../routes/clientRoutes');
-  safeUse('/api/client', clientRoutes);
+  const testRoutes = require('./test-final'); // o test-final según tengas nombrado tu archivo
+  safeUse('/api/admin/test-final', testRoutes);
 } catch (e) {
-  console.warn('⚠️ [CLIENT ROUTES] No se pudo cargar clientRoutes.js:', e.message);
-}
-
-// --- ADMIN ROUTES ---
-try {
-  const adminRoutes = require('../routes/adminRoutes');
-  safeUse('/api/admin', adminRoutes);
-} catch (e) {
-  console.warn('⚠️ [ADMIN ROUTES] No se pudo cargar adminRoutes.js:', e.message);
-}
-
-// --- SEGMENTACION --- 
-// 1. Importar el módulo de segmentación predeterminada
-const segmentacionRoutes = require('../routes/segmentacionRoutes');
-app.use('/api/v1/segmentacion', segmentacionRoutes);
-
-// ---- PAY WEBHOOK ----
-const payWebhookRoutes = require('../routes/pay-webhook');
-app.use('/api/v1/webhook-payment', payWebhookRoutes);
-
-
-// --- TEST FINAL ROUTER ---
-try {
-  const testFinalRouter = require('./test-final');
-  safeUse('/api/admin/test-final', testFinalRouter);
-} catch (e) {
-  console.warn('⚠️ [TEST FINAL] No se pudo cargar test-final.js:', e.message);
+  console.warn('⚠️ [TEST ROUTES] No se pudo cargar la ruta de test:', e.message);
 }
 
 app.get('/api/health', (req, res) => res.json({ 
