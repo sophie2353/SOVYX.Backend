@@ -185,7 +185,7 @@ const metaService = {
     return data;
   },
 
-  async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token, clientId = 'ADMIN') {
+    async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token, clientId = 'ADMIN') {
     const creds = getMetaCredentials({ token, clientId, adAccountId });
     const url = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/customaudiences`;
 
@@ -197,7 +197,6 @@ const metaService = {
         subtype: 'LOOKALIKE',
         origin_audience_id: seedAudienceId,
         lookalike_spec: JSON.stringify({
-          type: 'value_driven',
           ratio: 0.01,
           location_spec: {
             geo_locations: { countries: [countryCode.toUpperCase()] }
@@ -235,7 +234,7 @@ const metaService = {
       clientId
     );
 
-    // 2. Inyectar registros cifrados SHA-256
+    // 2. Inyectar registros cifrados SHA-256 con LOOKALIKE_VALUE
     await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, creds.token);
 
     // 3. Generar Lookalikes 1% por cada país detectado
@@ -284,7 +283,7 @@ const metaService = {
         name: campaignName,
         objective: 'OUTCOME_SALES',
         status: 'PAUSED',
-        special_ad_categories: [],
+        special_ad_categories: ['NONE'], // 👈 Ajustado con ['NONE'] para evitar el error de parámetro inválido
         access_token: creds.token
       })
     });
