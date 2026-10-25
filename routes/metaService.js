@@ -258,12 +258,12 @@ const metaService = {
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
-   async crearCampanaVentas({ 
+    async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
     clientId = 'ADMIN', 
-    dailyBudget = 1000, 
+    dailyBudget, // 💡 Viene dinámico desde la petición del cliente (en dólares o centavos)
     customAudiences = [] 
   }) {
     const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId: actId });
@@ -274,6 +274,13 @@ const metaService = {
 
     const campaignName = buildCampaignName(clientId);
 
+    // 💡 Definimos el presupuesto dinámico: si pasan un valor, lo usamos; 
+    // si viene en dólares (ej. 39), lo pasamos a centavos (3900). Si ya viene en centavos o es ADMIN, se respeta.
+    const rawBudget = dailyBudget !== undefined ? dailyBudget : (clientId === 'ADMIN' ? 1000 : 3900);
+    const finalDailyBudget = rawBudget < 100 ? rawBudget * 100 : rawBudget; 
+
+    console.log(`📊 [SODIE Engine] Configurando campaña para [${clientId}] con presupuesto diario de: $${finalDailyBudget / 100} USD`);
+
     // 1. Crear Campaña
     const campaignUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/campaigns`;
     const campaignRes = await fetch(campaignUrl, { 
@@ -283,7 +290,7 @@ const metaService = {
         name: campaignName,
         objective: 'OUTCOME_SALES',
         status: 'PAUSED',
-        special_ad_categories: [],
+        is_adset_budget_sharing_enabled: false, // Cada AdSet maneja su parte de forma independiente
         access_token: creds.token
       })
     });
@@ -295,19 +302,19 @@ const metaService = {
     }
     const campaignId = campaignData.id;
 
-    // 2. Mapeo blindado de las audiencias Lookalike con valor
+    // 2. Normalizar las audiencias Lookalike con valor
     const formattedAudiences = (customAudiences || []).map(aud => {
       if (typeof aud === 'string') return { id: aud };
       if (aud && aud.id) return { id: aud.id };
       return null;
     }).filter(Boolean);
 
-    // 3. Crear AdSet
+    // 3. Crear el AdSet aplicando el presupuesto dinámico del cliente
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
       campaign_id: campaignId,
-      daily_budget: dailyBudget,
+      daily_budget: finalDailyBudget, // 👈 Presupuesto dinámico adaptado al cliente
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'VALUE',
       targeting: { 
@@ -331,10 +338,9 @@ const metaService = {
     
     const adSetData = await adSetRes.json();
     
-    // Si Meta rechaza el AdSet, imprimimos el JSON exacto del error para saber qué parámetro falló
     if (adSetData.error) {
       console.error('❌ [Línea AdSet] Error detallado de Meta:', JSON.stringify(adSetData.error, null, 2));
-      throw new Error(`Meta API AdSet Error: [Code ${adSetData.error.code}] ${adSetData.error.message} - Subcode: ${adSetData.error.error_subcode || 'N/A'}`);
+      throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
     }
 
     return {
@@ -344,7 +350,8 @@ const metaService = {
       campaignId,
       adSetId: adSetData.id || null,
       status: 'PAUSED',
-      campaignName
+      campaignName,
+      daily_budget_usd: finalDailyBudget / 100
     };
   },
 
