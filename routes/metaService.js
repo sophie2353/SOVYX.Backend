@@ -130,12 +130,12 @@ const metaService = {
     return data.id;
   },
 
-    async inyectarUsuariosSemilla(audienceId, usersPayload, token) {
+  async inyectarUsuariosSemilla(audienceId, usersPayload, token) {
     const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
     
-    // 💡 Aquí está el secreto: El campo oficial de Meta para el valor en la API es 'LTV'
-    const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY'];
+    // 💡 ¡El campo oficial exacto que pedía Meta para el valor en la API!
+    const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY', 'LOOKALIKE_VALUE'];
 
     const formattedData = usersPayload.map(u => {
       const country = (u.country || u.pais || 'US').toString().trim().toUpperCase();
@@ -147,18 +147,19 @@ const metaService = {
       const fnSimulado = u.firstName || u.nombre || 'Customer';
       const lnSimulado = u.lastName || u.apellido || 'Target';
 
-      // 💡 Retornamos los datos PII cifrados + el valor monetario real en la posición de LTV
+      // 💡 Retornamos los datos PII cifrados + el país + el valor real de LTV
       return [
         hashData(emailSimulado),
         hashData(phoneSimulado),
         hashData(fnSimulado),
         hashData(lnSimulado),
         country,
+        valueNum > 0 ? valueNum : 10000 // <--- ¡Aquí viaja el valor exacto para segmentar a los que quieres!
       ];
     }).filter(row => row[0] && row[1]);
 
     if (!formattedData.length) {
-      throw new Error('⚠️ No se encontraron registros válidos para la inyección.');
+      throw new Error('⚠️ No se encontraron registros válidos para la inyección de valor.');
     }
 
     const res = await fetch(url, {
