@@ -258,7 +258,7 @@ const metaService = {
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
-  async crearCampanaVentas({ 
+   async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
@@ -283,16 +283,26 @@ const metaService = {
         name: campaignName,
         objective: 'OUTCOME_SALES',
         status: 'PAUSED',
-        special_ad_categories: ['NONE'], // 👈 Ajustado con ['NONE'] para evitar el error de parámetro inválido
+        special_ad_categories: [],
         access_token: creds.token
       })
     });
 
     const campaignData = await campaignRes.json();
-    if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
+    if (campaignData.error) {
+      console.error('❌ [Línea Campaña] Error devuelto por Meta:', JSON.stringify(campaignData.error, null, 2));
+      throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
+    }
     const campaignId = campaignData.id;
 
-    // 2. Crear AdSet
+    // 2. Mapeo blindado de las audiencias Lookalike con valor
+    const formattedAudiences = (customAudiences || []).map(aud => {
+      if (typeof aud === 'string') return { id: aud };
+      if (aud && aud.id) return { id: aud.id };
+      return null;
+    }).filter(Boolean);
+
+    // 3. Crear AdSet
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
@@ -300,7 +310,9 @@ const metaService = {
       daily_budget: dailyBudget,
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'VALUE',
-      targeting: { custom_audiences: customAudiences },
+      targeting: { 
+        custom_audiences: formattedAudiences 
+      },
       status: 'PAUSED',
       access_token: creds.token
     };
@@ -319,15 +331,10 @@ const metaService = {
     
     const adSetData = await adSetRes.json();
     
-    if (adSetData.error && adSetData.error.message.includes('VALUE')) {
-      adSetBody.optimization_goal = 'OFFSITE_CONVERSIONS';
-      const fallbackRes = await fetch(adSetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adSetBody)
-      });
-      const fallbackData = await fallbackRes.json();
-      adSetData.id = fallbackData.id;
+    // Si Meta rechaza el AdSet, imprimimos el JSON exacto del error para saber qué parámetro falló
+    if (adSetData.error) {
+      console.error('❌ [Línea AdSet] Error detallado de Meta:', JSON.stringify(adSetData.error, null, 2));
+      throw new Error(`Meta API AdSet Error: [Code ${adSetData.error.code}] ${adSetData.error.message} - Subcode: ${adSetData.error.error_subcode || 'N/A'}`);
     }
 
     return {
