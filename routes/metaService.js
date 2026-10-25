@@ -310,17 +310,17 @@ const metaService = {
       return null;
     }).filter(Boolean);
 
-    // 3. Crear el AdSet aplicando el presupuesto dinámico del cliente
-    // Crear el AdSet apuntando al Lookalike de Valor pero usando conversiones estándar para evitar el bloqueo del BM
+    // 3. Crear el AdSet limpio, blindado y sin restricciones de puja que exijan valores de ROAS o bid caps
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
-      name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value-Based)`,
+      name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
       campaign_id: campaignId,
       daily_budget: finalDailyBudget,
       billing_event: 'IMPRESSIONS',
-      optimization_goal: 'OFFSITE_CONVERSIONS', // 👈 Esquiva la restricción de cuentas no verificadas
+      optimization_goal: 'OFFSITE_CONVERSIONS',
+      // Eliminamos cualquier bid_strategy o bid_amount para que use la puja por defecto de Meta
       targeting: { 
-        custom_audiences: formattedAudiences // 👈 ¡Aquí vive la magia del Lookalike con el LOOKALIKE_VALUE inyectado!
+        custom_audiences: formattedAudiences 
       },
       status: 'PAUSED',
       access_token: creds.token
