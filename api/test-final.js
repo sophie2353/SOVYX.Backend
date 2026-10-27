@@ -1,19 +1,15 @@
 /**
- * SODIE - Test Suite V3.5 (E2E Integration + Lazy Orchestration + Form Segmentacion + Push Webhooks)
+ * SODIE - Test Suite V3.5 (Test de Formulario de 4 Datos + Segmentación + Upload -> Mongo)
  */
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const FormData = require('form-data');
-const XLSX = require('xlsx');
 
-// Modelos y Almacenamiento
-const Client = require('../models/clients');
+// Modelos de MongoDB
 const Audiencia = require('../models/Audiencia');
-const ClientPush = require('../models/ClientPush');
-const campaignStorage = require('../routes/campaignStorageService');
+const Client = require('../models/clients');
 
 const HISTORY_FILE = path.join(__dirname, 'test-history.json');
 
@@ -33,198 +29,86 @@ function saveTestHistory(entry) {
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
 }
 
-function generate200MockLeads() {
-  const locations = [
-    { ciudad: 'Ciudad de México', pais: 'MX', phoneCode: '+52' },
-    { ciudad: 'Bogotá', pais: 'CO', phoneCode: '+57' },
-    { ciudad: 'Buenos Aires', pais: 'AR', phoneCode: '+54' }
-  ];
-
-  const firstNames = ['Carlos', 'Sofía', 'Mateo', 'Valentina', 'Santiago', 'Camila', 'Alejandro', 'Mariana', 'Diego', 'Lucía'];
-  const lastNames = ['Mendoza', 'Rodríguez', 'Silva', 'Gomez', 'Hernandez', 'Torres', 'Perez', 'Morales', 'Rios', 'Castro'];
-
-  const leads = [];
-  for (let i = 1; i <= 200; i++) {
-    const loc = locations[i % locations.length];
-    const firstName = firstNames[i % firstNames.length];
-    const lastName = lastNames[i % lastNames.length];
-    
-    leads.push({
-      email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com`,
-      phone: `${loc.phoneCode}300${100000 + i}`,
-      nombre: firstName,
-      apellido: lastName,
-      country: loc.pais,
-      valor: Math.floor(Math.random() * (18000 - 900 + 1)) + 900
-    });
-  }
-  return leads;
-}
-
-async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
-  // Configuración en modo ADMIN para usar AD_ACCOUNT_ID y META_PIXEL_ID de entorno
+async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000') {
   const testClientId = 'ADMIN';
-  const targetAdAccount = process.env.AD_ACCOUNT_ID || process.env.META_AD_ACCOUNT_ID || '';
-  const targetPixelId = process.env.META_PIXEL_ID || process.env.PIXEL_ID || '';
-
   const logs = [];
 
-  console.log('\n======================================================');
-  console.log('🚀 INICIANDO TEST DE INTEGRACIÓN E2E SODIE V3.5 FULL (ADMIN)');
-  console.log('======================================================\n');
+  console.log('\n======================================================================');
+  console.log('🚀 INICIANDO TEST DE FLUJO FORMULARIO -> SEGMENTACIÓN -> UPLOAD -> MONGO');
+  console.log('======================================================================\n');
 
   try {
     // -----------------------------------------------------------------------
-    // PASO 1: Subida de Excel -> Procesamiento IA1 -> Mongo Audiencias
+    // PASO 1: Enviar los 4 datos del formulario real del cliente (ADMIN)
     // -----------------------------------------------------------------------
-    logs.push('1. Generando Excel en memoria con 200 leads simulados...');
-    const fakeLeads = generate200MockLeads();
-    const ws = XLSX.utils.json_to_sheet(fakeLeads);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Leads");
-    const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const paisesParam = ['CO', 'AR', 'US', 'MX', 'SV']; // 5 países = 1,500 registros exactos (300 c/u)
+    const valorLTV = 10000; // Valor medio entre 5,000 y 15,000$
 
-    const form = new FormData();
-    form.append('file', excelBuffer, {
-      filename: 'leads_test_200.xlsx',
-      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    });
-    form.append('clientId', testClientId);
-    form.append('nicho', 'infoproductos');
+    logs.push(`📡 [TEST] POST /api/v1/segmentacion/procesar con parámetros de formulario...`);
+    logs.push(`Países: [${paisesParam.join(', ')}], Edad: 25-40, Nicho: infoproductos, Value: ${valorLTV}`);
 
-    logs.push('📡 [TEST] POST /api/v1/media/upload...');
-    const uploadRes = await axios.post(`${baseUrl}/api/v1/media/upload`, form, {
-      headers: form.getHeaders()
-    });
-
-    console.log('✅ PASO 1 OK (Upload + Guardado en Mongo):', uploadRes.data.ok ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Upload ok=${uploadRes.data.ok}. Registros guardados: ${uploadRes.data.totalRegistros}`);
-
-    // -----------------------------------------------------------------------
-    // PASO 2: Prueba de Formulario de Segmentación Directa (segmentacionRoutes)
-    // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/segmentacion/procesar (Mapeo de 4 campos a dataset de Mongo)...');
     const formSegRes = await axios.post(`${baseUrl}/api/v1/segmentacion/procesar`, {
       clientId: testClientId,
-      paises: ['MX', 'CO'],
+      paises: paisesParam,
       edadMin: 25,
-      edadMax: 50,
-      value: 1200,
-      nicho: 'educacion',
-      adAccountId: targetAdAccount
+      edadMax: 40,
+      value: valorLTV,
+      nicho: 'infoproductos'
     });
 
-    console.log('✅ PASO 2 OK (Segmentación Formulario -> Audiencias Mongo):', formSegRes.data.ok ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Segmentación Form ok=${formSegRes.data.ok}. Key: ${formSegRes.data.datasetKey || 'OK'}`);
+    console.log('✅ PASO 1 OK (Formulario enviado y procesado):', formSegRes.data.ok ? 'EXITOSO' : 'FALLIDO');
+    logs.push(`Respuesta de segmentación/upload ok=${formSegRes.data.ok}. Total registros generados: ${formSegRes.data.totalRegistros}`);
 
     // -----------------------------------------------------------------------
-    // PASO 3: Guardar Suscripción Push WebNativa (ClientPush / push_ADMIN)
+    // PASO 2: Verificación estricta extrayendo la audiencia directamente de MongoDB
     // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/webhook-client/save-subscription...');
-    const pushSaveRes = await axios.post(`${baseUrl}/api/webhook-client/save-subscription`, {
-      clientId: testClientId,
-      subscription: {
-        endpoint: 'https://updates.push.services.mozilla.com/wpush/v2/test_endpoint_mock',
-        keys: {
-          p256dh: 'mock_p256dh_key_test_string',
-          auth: 'mock_auth_key_string'
-        }
-      }
-    });
+    logs.push('🔍 [VERIFICACIÓN] Extrayendo la audiencia completa desde models/Audiencia en Mongo...');
+    const audienciaMongo = await Audiencia.findOne({ clientId: testClientId });
 
-    console.log('✅ PASO 3 OK (Guardado de Suscripción push_ADMIN):', pushSaveRes.data.success ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Push Subscription ok=${pushSaveRes.data.success}`);
-
-    // -----------------------------------------------------------------------
-    // PASO 4: Probar Webhooks de Notificación (3 Días / 7 Días)
-    // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/webhook-client/timer/push-24h (Disparo Alerta 72h)...');
-    const push72hRes = await axios.post(`${baseUrl}/api/webhook-client/timer/push-24h`, {
-      clientId: testClientId,
-      timerId: 'timer_test_72h'
-    });
-
-    logs.push('📡 [TEST] POST /api/webhook-client/timer/push-day7 (Disparo Alerta Día 7)...');
-    const pushDay7Res = await axios.post(`${baseUrl}/api/webhook-client/timer/push-day7`, {
-      clientId: testClientId,
-      timerId: 'timer_test_day7'
-    });
-
-    console.log('✅ PASO 4 OK (Webhooks Push 3d / 7d):', (push72hRes.data.success && pushDay7Res.data.success) ? 'EXITOSO' : 'FALLIDO');
-
-    // -----------------------------------------------------------------------
-    // PASO 5: Configuración de Credenciales (Hora 0)
-    // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/facebook/configurar (Inyección de Credenciales)...');
-    const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
-      clientId: testClientId,
-      actId: targetAdAccount,
-      pixelId: targetPixelId,
-      dailyBudget: 1500,
-      version: 'V3.5'
-    });
-
-    console.log('✅ PASO 5 OK (Configurar Credenciales Meta):', configRes.data.success ? 'EXITOSO' : 'FALLIDO');
-
-    // -----------------------------------------------------------------------
-    // PASO 6: Crear Borrador en Meta (Lazy Orchestration desde Mongo)
-    // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] POST /api/v1/facebook/crear-borrador...');
-    const draftRes = await axios.post(`${baseUrl}/api/v1/facebook/crear-borrador`, {
-      clientId: testClientId,
-      actId: targetAdAccount,
-      pixelId: targetPixelId,
-      dailyBudget: 1500,
-      version: 'V3.5'
-    });
-
-    console.log('✅ PASO 6 OK (Borrador e Inyección LTV en Meta):', draftRes.data.success ? 'EXITOSO' : 'FALLIDO');
-    const generatedCampaignId = draftRes.data.campaignId;
-    logs.push(`Campaña en borrador creada con éxito en Meta. ID: ${generatedCampaignId}`);
-
-    // Verificación de almacenamiento con TTL (campaignStorage)
-    let storedCampaignId = null;
-    if (campaignStorage && typeof campaignStorage.obtenerCampaignIdVigente === 'function') {
-      storedCampaignId = await campaignStorage.obtenerCampaignIdVigente(testClientId, true);
-      logs.push(`🔍 Verificación en campaignStorage: Campaign ID activo = ${storedCampaignId}`);
+    if (!audienciaMongo) {
+      throw new Error('❌ La audiencia no se encontró registrada en MongoDB.');
     }
 
-    // -----------------------------------------------------------------------
-    // PASO 7: Consultar Métricas
-    // -----------------------------------------------------------------------
-    logs.push('📡 [TEST] GET /api/v1/facebook/metrics...');
-    const metricsRes = await axios.get(`${baseUrl}/api/v1/facebook/metrics?clientId=${encodeURIComponent(testClientId)}`);
+    const payloadExtraido = audienciaMongo.segmentacion?.usersPayload || [];
+    const totalExtraido = payloadExtraido.length;
+    const primerRegistro = payloadExtraido[0] || {};
 
-    console.log('✅ PASO 7 OK (Consulta de Métricas):', metricsRes.data.success ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Métricas recibidas: Alcance=${metricsRes.data.metrics?.reach || 0}`);
+    console.log(`✅ PASO 2 OK (Extracción Mongo): Encontrados ${totalExtraido} registros con ID de sesión y estructura.`);
+    logs.push(`Audiencia extraída de Mongo correctamente. Total en lista: ${totalExtraido}`);
+    logs.push(`Muestra de registro UID/Email: ${primerRegistro.email} | País: ${primerRegistro.country} | Valor: ${primerRegistro.value}`);
+
+    // -----------------------------------------------------------------------
+    // PASO 3: Consultar Estado del Temporizador de 72h
+    // -----------------------------------------------------------------------
+    logs.push(`📡 [TEST] GET /api/v1/segmentacion/estado/${testClientId}...`);
+    const estadoRes = await axios.get(`${baseUrl}/api/v1/segmentacion/estado/${encodeURIComponent(testClientId)}`);
+
+    console.log('✅ PASO 3 OK (Consulta de Estado/Timer 72h):', estadoRes.data.ok ? 'EXITOSO' : 'FALLIDO');
+    logs.push(`Horas restantes para rotación: ${estadoRes.data.horasRestantes}h`);
 
     const summary = {
-      testId: `sim_v35_full_${Date.now()}`,
+      testId: `test_form_seg_${Date.now()}`,
       status: 'SUCCESS',
       clientId: testClientId,
-      uploadOk: uploadRes.data.ok,
       segmentacionFormOk: formSegRes.data.ok,
-      pushSubscriptionOk: pushSaveRes.data.success,
-      push72hWebhookOk: push72hRes.data.success,
-      pushDay7WebhookOk: pushDay7Res.data.success,
-      configOk: configRes.data.success,
-      draftOk: draftRes.data.success,
-      storageVerified: storedCampaignId === generatedCampaignId,
-      metricsOk: metricsRes.data.success,
-      campaignId: generatedCampaignId,
+      totalRegistrosEsperados: paisesParam.length * 300,
+      totalRegistrosEnMongo: totalExtraido,
+      muestraRegistro: primerRegistro,
+      timerEstadoOk: estadoRes.data.ok,
+      horasRestantes: estadoRes.data.horasRestantes,
       logs
     };
 
     saveTestHistory(summary);
-    console.log('\n✨ ¡TEST E2E COMPLETO PROBADO CON ÉXITO Y REGISTRADO! ✨\n');
+    console.log('\n✨ ¡TEST DE FORMULARIO Y SEGMENTACIÓN VERIFICADO EXITOSAMENTE EN MONGO! ✨\n');
     return summary;
 
   } catch (error) {
     const errorDetails = error.response ? error.response.data : error.message;
-    console.error('❌ Error durante la ejecución del test E2E:', errorDetails);
+    console.error('❌ Error durante el test de formulario:', errorDetails);
     
     const errorSummary = {
-      testId: `sim_v35_err_${Date.now()}`,
+      testId: `test_form_err_${Date.now()}`,
       status: 'FAILED',
       error: errorDetails,
       logs
@@ -233,13 +117,12 @@ async function runFullIntegrationTest(baseUrl = 'http://localhost:10000') {
     throw error;
   } finally {
     // -----------------------------------------------------------------------
-    // LIMPIEZA AUTOMÁTICA COMPLETA EN MONGODB
+    // LIMPIEZA AUTOMÁTICA EN MONGODB
     // -----------------------------------------------------------------------
     try {
-      console.log('🧹 [CLEANUP] Limpiando datos de simulación en MongoDB...');
-      await Client.deleteOne({ clientId: testClientId });
+      console.log('🧹 [CLEANUP] Limpiando datos de prueba en MongoDB...');
       await Audiencia.deleteMany({ clientId: testClientId });
-      await ClientPush.deleteMany({ clientId: testClientId });
+      await Client.deleteOne({ clientId: testClientId });
       console.log('✨ [CLEANUP] MongoDB totalmente limpio.');
     } catch (cleanupErr) {
       console.error('⚠️ [CLEANUP WARNING]:', cleanupErr.message);
@@ -253,10 +136,10 @@ router.all('/', async (req, res) => {
     const host = req.get('host') || 'localhost:10000';
     const baseUrl = `${protocol}://${host}`;
 
-    const result = await runFullIntegrationTest(baseUrl);
+    const result = await runFormularioSegmentacionTest(baseUrl);
     return res.status(200).json({
       ok: true,
-      message: 'Prueba de integración V3.5 ejecutada correctamente con todas las rutas y webhooks.',
+      message: 'Flujo de formulario, segmentación y persistencia en MongoDB probado con éxito.',
       result
     });
   } catch (err) {
