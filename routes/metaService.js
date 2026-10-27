@@ -109,7 +109,7 @@ const metaService = {
       body: JSON.stringify({
         name: name,
         subtype: 'CUSTOM',
-        description: 'Semilla inyectada desde IA1 SODIE (Value-Based)',
+        description: 'Semilla inyectada desde SODIE (Value-Based)',
         customer_file_source: 'USER_PROVIDED_ONLY',
         is_value_based: true,
         access_token: creds.token
@@ -313,7 +313,7 @@ const metaService = {
     // 3. Crear el AdSet limpio, blindado y sin restricciones de puja que exijan valores de ROAS o bid caps
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
-      name: `${campaignName} - AdSet Sales Purchase (LAL 1% Value)`,
+      name: `${campaignName} - AdSet (LAL 1% Value)`,
       campaign_id: campaignId,
       daily_budget: finalDailyBudget,
       billing_event: 'IMPRESSIONS',
