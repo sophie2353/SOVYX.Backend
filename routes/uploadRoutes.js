@@ -1,4 +1,5 @@
 // routes/uploadRoutes.js
+
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -28,7 +29,7 @@ const upload = multer({
 function normalizeClientId(rawId) {
   if (!rawId) return 'CLIENT-#01';
   const clean = String(rawId).trim().toUpperCase();
-  if (clean.includes('ADMIN')) return 'ADMIN';
+  if (clean.includes('ADMIN') || clean === 'ADMIN') return 'ADMIN';
   const match = clean.match(/\d+/);
   const numId = match ? match[0].padStart(2, '0') : '01';
   return `CLIENT-#${numId}`;
@@ -67,78 +68,89 @@ function extraerCamposTexto(buffer) {
   }).filter(item => item.email || item.phone || item.firstName || item.value > 0);
 }
 
+/**
+ * Función centralizada y exportable para procesar y guardar audiencias en MongoDB
+ * (Usada tanto por el endpoint de archivo como por segmentacionRoutes directamente)
+ */
+async function procesarYGuardarAudiencia({ sessionId, clientId, nicho, usersPayload, fileName = 'dataset.xlsx' }) {
+  const activeClientId = normalizeClientId(clientId);
+  const session = sessionId || `sess_${activeClientId}_${Date.now()}`;
+  const nichoObjetivo = nicho || 'infoproductos';
+
+  let extractedTargeting;
+  if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
+    const dummyCsv = usersPayload.map(u => `${u.email},${u.phone},${u.country},${u.value}`).join('\n');
+    extractedTargeting = await ia1Instance.segmentarCsv(dummyCsv, { nicho: nichoObjetivo });
+  } else if (ia1Instance && typeof ia1Instance.generarSegmentacion === 'function') {
+    extractedTargeting = ia1Instance.generarSegmentacion(nichoObjetivo, false, { 
+      usersPayload: usersPayload 
+    });
+  } else {
+    const paisesUnicos = [...new Set(usersPayload.map(u => u.country || 'US'))];
+    extractedTargeting = {
+      nicho: nichoObjetivo,
+      age_min: usersPayload[0]?.age_min || 22,
+      age_max: usersPayload[0]?.age_max || 55,
+      country: paisesUnicos[0] || 'US',
+      countriesFound: paisesUnicos,
+      usersPayload: usersPayload
+    };
+  }
+
+  if (!extractedTargeting.usersPayload || extractedTargeting.usersPayload.length === 0) {
+    extractedTargeting.usersPayload = usersPayload;
+  }
+
+  // Guardar la audiencia lista en MongoDB
+  const audienciaGuardada = await Audiencia.findOneAndUpdate(
+    { sessionId: session },
+    {
+      sessionId: session,
+      clientId: activeClientId,
+      fileUrl: `memory://${fileName}`,
+      fileName: fileName,
+      segmentacion: {
+        ...extractedTargeting,
+        usersPayload: extractedTargeting.usersPayload,
+        custom_audiences: []
+      },
+      totalRegistros: usersPayload.length,
+      estado: 'PENDIENTE_CONEXION_META'
+    },
+    { upsert: true, new: true }
+  );
+
+  return {
+    ok: true,
+    clientId: activeClientId,
+    audienciaId: audienciaGuardada._id,
+    totalRegistros: usersPayload.length,
+    targeting: extractedTargeting
+  };
+}
+
+// Endpoint tradicional para subida de archivos (Excel / CSV)
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     const { sessionId, clientId, nicho } = req.body;
     if (!req.file) return res.status(400).json({ error: 'Archivo Excel/CSV no recibido' });
 
-    const activeClientId = normalizeClientId(clientId);
-    const session = sessionId || `sess_${activeClientId}_${Date.now()}`;
-    const nichoObjetivo = nicho || 'infoproductos';
-
-    // 1. Extraer los datos limpios del Excel
     const parsedPayload = extraerCamposTexto(req.file.buffer);
-
     if (!parsedPayload || parsedPayload.length === 0) {
       return res.status(400).json({ error: 'No se encontraron registros válidos con emails o teléfonos procesables.' });
     }
 
-    let fileContent = req.file.buffer.toString('utf-8');
-    if (fileContent.charCodeAt(0) === 0xFEFF) {
-      fileContent = fileContent.slice(1);
-    }
-
-    // 2. Procesar la segmentación con IA1
-    let extractedTargeting;
-    if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
-      extractedTargeting = await ia1Instance.segmentarCsv(fileContent, { nicho: nichoObjetivo });
-    } else if (ia1Instance && typeof ia1Instance.generarSegmentacion === 'function') {
-      extractedTargeting = ia1Instance.generarSegmentacion(nichoObjetivo, false, { 
-        rawCsv: fileContent,
-        usersPayload: parsedPayload 
-      });
-    } else {
-      extractedTargeting = {
-        nicho: nichoObjetivo,
-        age_min: 22,
-        age_max: 55,
-        country: 'US',
-        countriesFound: ['US'],
-        usersPayload: parsedPayload
-      };
-    }
-
-    if (!extractedTargeting.usersPayload || extractedTargeting.usersPayload.length === 0) {
-      extractedTargeting.usersPayload = parsedPayload;
-    }
-
-    // ❌ SECCIÓN 4 ELIMINADA: Ya no se llama a metaService aquí. Todo va directo a Audiencias en Mongo.
-
-    // 3. Guardar la audiencia lista en MongoDB (con el usersPayload listo para ser consumido por facebookRoutes)
-    const audienciaGuardada = await Audiencia.findOneAndUpdate(
-      { sessionId: session },
-      {
-        sessionId: session,
-        clientId: activeClientId,
-        fileUrl: `memory://${req.file.originalname}`,
-        fileName: req.file.originalname,
-        segmentacion: {
-          ...extractedTargeting,
-          usersPayload: extractedTargeting.usersPayload,
-          custom_audiences: []
-        },
-        totalRegistros: parsedPayload.length,
-        estado: 'PENDIENTE_CONEXION_META'
-      },
-      { upsert: true, new: true }
-    );
+    const resultado = await procesarYGuardarAudiencia({
+      sessionId,
+      clientId,
+      nicho,
+      usersPayload: parsedPayload,
+      fileName: req.file.originalname
+    });
 
     return res.json({ 
       ok: true, 
-      clientId: activeClientId,
-      audienciaId: audienciaGuardada._id,
-      totalRegistros: parsedPayload.length,
-      targeting: extractedTargeting,
+      ...resultado,
       message: 'Excel procesado con IA1 y guardado en Audiencias. Listo para que FacebookRoutes cree el borrador en Meta.'
     });
 
@@ -160,4 +172,7 @@ router.get('/test-debug', async (req, res) => {
   });
 });
 
+// Exportamos tanto el router como la función procesadora para uso interno directo
 module.exports = router;
+module.exports.procesarYGuardarAudiencia = procesarYGuardarAudiencia;
+module.exports.normalizeClientId = normalizeClientId;
