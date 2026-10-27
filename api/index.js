@@ -46,20 +46,30 @@ function safeUse(pathOrMiddleware, possibleMiddleware) {
 // ============================================
 // CONFIGURACIÓN DE CIBERSEGURIDAD
 // ============================================
+const rateLimit = require('express-rate-limit');
+
+// 1. Escudo de cabeceras HTTP
 app.use(helmet({
   crossOriginResourcePolicy: false,
   contentSecurityPolicy: false,
   xssFilter: true,
   noSniff: true,
-  hideweredBy: true
+  hidePoweredBy: true
 }));
 
+// 2. Control de acceso por origen estricto
 app.use(cors({
-  origin: '*',
+  origin: 'https://tu-dominio-oficial.com', // Solo tu dominio pasa
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
+// 3. Límite de velocidad anti-bots y fuerza bruta
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100
+});
+app.use('/api/', limiter);
 // ============================================
 // 1. MIDDLEWARES PRINCIPALES Y RECURSOS ESTÁTICOS
 // ============================================
