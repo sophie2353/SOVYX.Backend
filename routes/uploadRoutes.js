@@ -1,5 +1,4 @@
 // routes/uploadRoutes.js
-
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -101,21 +100,23 @@ async function procesarYGuardarAudiencia({ sessionId, clientId, nicho, usersPayl
     extractedTargeting.usersPayload = usersPayload;
   }
 
-  // Guardar la audiencia lista en MongoDB
+  // ⚡ UNIFICADO: Actualizamos o creamos buscando por clientId para que todo esté en el mismo documento
   const audienciaGuardada = await Audiencia.findOneAndUpdate(
-    { sessionId: session },
+    { clientId: activeClientId },
     {
-      sessionId: session,
-      clientId: activeClientId,
-      fileUrl: `memory://${fileName}`,
-      fileName: fileName,
-      segmentacion: {
-        ...extractedTargeting,
-        usersPayload: extractedTargeting.usersPayload,
-        custom_audiences: []
-      },
-      totalRegistros: usersPayload.length,
-      estado: 'PENDIENTE_CONEXION_META'
+      $set: {
+        sessionId: session,
+        clientId: activeClientId,
+        fileUrl: `memory://${fileName}`,
+        fileName: fileName,
+        segmentacion: {
+          ...extractedTargeting,
+          usersPayload: extractedTargeting.usersPayload,
+          custom_audiences: []
+        },
+        totalRegistros: usersPayload.length,
+        estado: 'PENDIENTE_CONEXION_META'
+      }
     },
     { upsert: true, new: true }
   );
