@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 const helmet = require('helmet');
+const translatorMiddleware = require('./middleware/translator');
 
 const app = express();
 
@@ -41,6 +42,7 @@ function safeUse(pathOrMiddleware, possibleMiddleware) {
   }
 }
 
+
 // ============================================
 // CONFIGURACIÓN DE CIBERSEGURIDAD
 // ============================================
@@ -49,7 +51,7 @@ app.use(helmet({
   contentSecurityPolicy: false,
   xssFilter: true,
   noSniff: true,
-  hidePoweredBy: true
+  hideweredBy: true
 }));
 
 app.use(cors({
@@ -79,6 +81,8 @@ app.use((req, res, next) => {
   next();
 });
 
+// Se lo aplicas a TODAS tus rutas de una sola vez con una sola línea:
+app.use(translatorMiddleware); 
 // ============================================
 // 2. CONEXIÓN A BASE DE DATOS (MongoDB)
 // ============================================
