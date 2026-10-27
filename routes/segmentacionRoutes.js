@@ -1,76 +1,70 @@
 /**
  * SODIE - Pre-procesador de Segmentación (routes/segmentacionRoutes.js)
- * Adapta 200 filas predeterminadas según los 4 datos del frontend y las envía a /upload
+ * Genera 300 filas por país y se conecta directamente con la lógica de upload/MongoDB.
  */
+
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const Audiencia = require('../models/Audiencia');
+const { procesarYGuardarAudiencia, normalizeClientId } = require('./uploadRoutes');
 
 /**
- * Plantilla base de 200 contactos predeterminados
- */
-function construir200FilasBase() {
-  const nombres = ['Carlos', 'Sofía', 'Mateo', 'Valentina', 'Santiago', 'Camila', 'Alejandro', 'Mariana', 'Diego', 'Lucía'];
-  const apellidos = ['Mendoza', 'Rodríguez', 'Silva', 'Gomez', 'Hernandez', 'Torres', 'Perez', 'Morales', 'Rios', 'Castro'];
-  
-  const base = [];
-  for (let i = 1; i <= 200; i++) {
-    const fn = nombres[i % nombres.length];
-    const ln = apellidos[i % apellidos.length];
-    base.push({
-      email: `${fn.toLowerCase()}.${ln.toLowerCase()}${i}@sodie-leads.com`,
-      phone: `+1555${100000 + i}`,
-      firstName: fn,
-      lastName: ln
-    });
-  }
-  return base;
-}
-
-const TEMPLATE_200_FILAS = construir200FilasBase();
-
-/**
- * Mapea las 200 filas fijas con los 4 datos específicos del frontend
+ * Genera un dataset dinámico calculando 300 filas por cada país recibido.
  */
 function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho }) {
   const listaPaises = Array.isArray(paises) 
-    ? paises 
+    ? paises.map(p => String(p).trim().toUpperCase())
     : String(paises || 'US').split(',').map(p => p.trim().toUpperCase());
 
   const valorBase = parseFloat(value) || 1000;
+  const nombres = ['Carlos', 'Sofía', 'Mateo', 'Valentina', 'Santiago', 'Camila', 'Alejandro', 'Mariana', 'Diego', 'Lucía'];
+  const apellidos = ['Mendoza', 'Rodríguez', 'Silva', 'Gomez', 'Hernandez', 'Torres', 'Perez', 'Morales', 'Rios', 'Castro'];
 
-  return TEMPLATE_200_FILAS.map((fila, index) => {
-    const paisAsignado = listaPaises[index % listaPaises.length] || 'US';
-    const delta = (Math.random() * 0.3) - 0.15;
-    const valorCalculado = Math.round(valorBase * (1 + delta));
+  const datasetCompleto = [];
+  let contadorGlobal = 1;
 
-    return {
-      ...fila,
-      country: paisAsignado,
-      value: valorCalculado > 0 ? valorCalculado : 100,
-      age_min: parseInt(edadMin) || 22,
-      age_max: parseInt(edadMax) || 55,
-      nicho: nicho || 'infoproductos',
-      clientId: clientId
-    };
+  // Generar exactamente 300 filas por cada país especificado
+  listaPaises.forEach(pais => {
+    for (let i = 1; i <= 300; i++) {
+      const fn = nombres[contadorGlobal % nombres.length];
+      const ln = apellidos[contadorGlobal % apellidos.length];
+      const delta = (Math.random() * 0.3) - 0.15;
+      const valorCalculado = Math.round(valorBase * (1 + delta));
+
+      datasetCompleto.push({
+        email: `${fn.toLowerCase()}.${ln.toLowerCase()}${contadorGlobal}@sodie-leads.com`,
+        phone: `+1555${100000 + contadorGlobal}`,
+        firstName: fn.toLowerCase(),
+        lastName: ln.toLowerCase(),
+        country: pais,
+        zip: '00000',
+        value: valorCalculado > 0 ? valorCalculado : 100,
+        age_min: parseInt(edadMin) || 22,
+        age_max: parseInt(edadMax) || 55,
+        nicho: nicho || 'infoproductos',
+        clientId: clientId
+      });
+      contadorGlobal++;
+    }
   });
+
+  return datasetCompleto;
 }
 
 /* ==========================================================================
    POST /api/v1/segmentacion/procesar
-   Mapea los 200 registros y los despacha hacia /upload (uploadRoutes)
+   Mapea 300 filas por país y las despacha directamente al motor de almacenamiento
    ========================================================================== */
 router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
   try {
     const { clientId, paises, edadMin, edadMax, value, nicho, token, adAccountId, pixelId } = req.body;
 
-    const activeClientId = clientId ? String(clientId).trim().toUpperCase() : 'CLIENT-#01';
-    const claveColeccion = `Datos_${activeClientId}`; // ej: Datos_CLIENT-#01
+    const activeClientId = normalizeClientId(clientId);
+    const claveColeccion = `Datos_${activeClientId}`;
     const session = `sess_form_${activeClientId}_${Date.now()}`;
 
-    // 1. Mapear los 200 registros predeterminados con los 4 parámetros del cliente
-    const payload200Ajustado = mapearDatasetCliente({
+    // 1. Mapear 300 registros por cada país recibido
+    const payloadAjustado = mapearDatasetCliente({
       clientId: activeClientId,
       paises,
       value,
@@ -79,7 +73,9 @@ router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
       nicho
     });
 
-    // 2. Guardar/Actualizar los 4 datos y la marca de tiempo de 72h en MongoDB
+    const totalRegistrosGenerados = payloadAjustado.length;
+
+    // 2. Guardar parámetros y temporizador de 72h en MongoDB (Modelo Audiencia)
     const ahora = new Date();
     const proximaRotacion = new Date(ahora.getTime() + (72 * 60 * 60 * 1000)); // +72 Horas
 
@@ -104,41 +100,27 @@ router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // 3. DESPACHAR DERECHO A uploadRoutes (/api/v1/media/upload)
-    const protocol = req.protocol || 'http';
-    const host = req.get('host') || 'api.sodie.app';
-    const uploadEndpoint = `${protocol}://${host}/api/v1/media/upload`;
+    // 3. CONEXIÓN DIRECTA CON UPLOAD (Sin llamadas HTTP internas redundantes)
+    console.log(`🚀 [SEGMENTACION] Despachando ${totalRegistrosGenerados} registros directamente a motor Upload para ${activeClientId}...`);
 
-    console.log(`🚀 [SEGMENTACION] Despachando dataset de 200 registros para ${activeClientId} hacia ${uploadEndpoint}...`);
-
-    let uploadResponse = null;
-    try {
-      // Se envía el payload pre-procesado a uploadRoutes para que este le aplique la IA1 y llame a metaService
-      const uploadRes = await axios.post(uploadEndpoint, {
-        sessionId: session,
-        clientId: activeClientId,
-        nicho: nicho || 'infoproductos',
-        usersPayload: payload200Ajustado,
-        token,
-        adAccountId,
-        pixelId
-      });
-      uploadResponse = uploadRes.data;
-    } catch (uploadErr) {
-      console.warn('⚠️ [SEGMENTACION] Advertencia al contactar uploadRoutes via HTTP interno:', uploadErr.message);
-      uploadResponse = { note: 'Fallback interno registrado en DB. uploadRoutes procesará en siguiente llamada.' };
-    }
+    const uploadResponse = await procesarYGuardarAudiencia({
+      sessionId: session,
+      clientId: activeClientId,
+      nicho: nicho || 'infoproductos',
+      usersPayload: payloadAjustado,
+      fileName: `dataset_automatico_${activeClientId}.json`
+    });
 
     return res.json({
       ok: true,
       success: true,
       clientId: activeClientId,
       datasetKey: claveColeccion,
-      totalRegistros: 200,
+      totalRegistros: totalRegistrosGenerados,
       rotationTimerHours: 72,
       nextRotationAt: proximaRotacion,
       uploadResult: uploadResponse,
-      message: `200 registros predeterminados enviados con éxito a uploadRoutes -> IA1 -> metaService.`
+      message: `${totalRegistrosGenerados} registros (300 por país) generados y guardados con éxito en MongoDB.`
     });
 
   } catch (error) {
@@ -149,7 +131,6 @@ router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
 
 /* ==========================================================================
    GET /api/v1/segmentacion/estado/:clientId
-   Permite al frontend consultar el temporizador de 72 horas por cliente
    ========================================================================== */
 router.get('/estado/:clientId', async (req, res) => {
   try {
