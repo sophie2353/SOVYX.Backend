@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const translatorMiddleware = require('./middleware/translator');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Configuración & Logging Centralizado
 const config = require('../config/tokens');
