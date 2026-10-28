@@ -60,7 +60,7 @@ app.use(helmet({
 
 // 2. Control de acceso por origen estricto
 app.use(cors({
-  origin: 'https://tu-dominio-oficial.com', // Solo tu dominio pasa
+  origin: 'https://api.sodie.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
