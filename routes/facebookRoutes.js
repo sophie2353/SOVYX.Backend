@@ -22,7 +22,7 @@ try {
 const FB_CONFIG = {
   ADMIN_TOKEN: process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN || '',
   DEFAULT_ACT_ID: process.env.AD_ACCOUNT_ID || '',
-  DEFAULT_PIXEL_ID: process.env.META_PIXEL_ID || null
+  META_PIXEL_ID: process.env.META_PIXEL_ID || null
 };
 
 function normalizeClientId(rawId) {
@@ -42,7 +42,7 @@ async function getUserMetaContext(userId, sessionId, clientId) {
 
   const act_id = clientDoc?.meta?.act_id || FB_CONFIG.DEFAULT_ACT_ID;
   const fb_token = FB_CONFIG.ADMIN_TOKEN;
-  const pixel_id = clientDoc?.meta?.pixel_id || FB_CONFIG.DEFAULT_PIXEL_ID;
+  const pixel_id = clientDoc?.meta?.pixel_id || FB_CONFIG.META_PIXEL_ID;
 
   const isAdmin = activeClientId.includes('ADMIN') || activeClientId === 'CLIENT-#00';
   const lastCampaignId = await campaignStorage.obtenerCampaignIdVigente(activeClientId, isAdmin) 
@@ -64,7 +64,7 @@ async function getUserMetaContext(userId, sessionId, clientId) {
    ========================================================================== */
 router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (req, res) => {
   try {
-    const { clientId, actId, pixelId, dailyBudget, version } = req.body;
+    const { userId, sessionId,clientId, dailyBudget, version, actId, websiteUrl } = req.body;
     if (!actId) {
       return res.status(400).json({ success: false, error: 'El ID de la cuenta publicitaria (actId) es obligatorio.' });
     }
@@ -107,48 +107,63 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
    2. CREAR BORRADOR (/crear-borrador)
    Busca la audiencia exacta en Mongo según el clientId y procesa el metaService
    ========================================================================== */
+/* ==========================================================================
+   2. CREAR BORRADOR (/crear-borrador)
+   ========================================================================== */
 router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/draft'], async (req, res) => {
   try {
-    const { userId, sessionId, clientId, dailyBudget, version, actId, pixelId } = req.body;
+    // Solo recibimos websiteUrl de body (si es la primera vez que lo envían)
+    const { userId, sessionId,clientId, dailyBudget, version, actId, websiteUrl } = req.body;
+    
     const metaCtx = await getUserMetaContext(userId, sessionId, clientId);
-
     const targetActId = actId ? String(actId).replace(/^act_/, '').trim() : metaCtx.act_id;
-    const targetPixelId = pixelId ? String(pixelId).trim() : metaCtx.pixel_id;
 
     if (!targetActId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Falta el act_id. Configure las credenciales o envíelas en la petición.' 
-      });
+      return res.status(400).json({ success: false, error: 'Falta el act_id.' });
     }
 
-    // 🔍 Búsqueda exacta de la audiencia en MongoDB filtrando por el clientId específico
+    // 🌐 LÓGICA DEL SITIO WEB: Usar el enviado, o el guardado en la nube
+    let finalWebsiteUrl = websiteUrl || metaCtx.clientDoc?.meta?.websiteUrl || 'https://tu-sitio-default.com';
+    
+    // Si enviaron uno nuevo desde el frontend que no teníamos, lo guardamos para siempre
+    if (websiteUrl && websiteUrl !== metaCtx.clientDoc?.meta?.websiteUrl) {
+      await Client.findOneAndUpdate(
+        { clientId: metaCtx.clientId },
+        { $set: { 'meta.websiteUrl': finalWebsiteUrl } }
+      );
+    }
+
+    // 🔍 LÓGICA DE AUDIENCIA Y EDADES (Extraído directo de la nube)
     const ultimaAudiencia = await Audiencia.findOne({ clientId: metaCtx.clientId }).sort({ createdAt: -1 });
     
     const customAudiences = ultimaAudiencia?.segmentacion?.custom_audiences || [];
     const usersPayload = ultimaAudiencia?.segmentacion?.usersPayload || [];
+    
+    // 💡 Extraemos las edades directamente de la nube (ajusta la ruta según cómo lo guardes en tu Schema)
+    const minAge = ultimaAudiencia?.segmentacion?.edad_minima || 25; 
+    const maxAge = ultimaAudiencia?.segmentacion?.edad_maxima || 65;
 
     if (!customAudiences.length && !usersPayload.length) {
-      return res.status(400).json({ 
-        success: false, 
-        error: `No se encontraron registros ni segmentos para el cliente ${metaCtx.clientId}. Suba un archivo Excel en /upload primero.` 
-      });
+      return res.status(400).json({ success: false, error: `No se encontraron registros para ${metaCtx.clientId}.` });
     }
 
     if (!metaService || typeof metaService.procesarCicloHora24 !== 'function') {
       return res.status(500).json({ success: false, error: 'metaService no disponible.' });
     }
 
-    // ⚡ Disparar ciclo: MetaService toma la data de ese cliente específico e inyecta en Meta
+    // ⚡ Disparar ciclo: MetaService inyecta
     const borradorResult = await metaService.procesarCicloHora24({
       clientId: metaCtx.clientId,
       token: metaCtx.fb_token,
       adAccountId: targetActId,
-      pixelId: targetPixelId,
+      pixelId: metaCtx.pixel_id, // Pasamos el default del config, MetaService decidirá qué hacer
       usersPayload: usersPayload,
       customAudiences: customAudiences,
       dailyBudget: dailyBudget ? parseFloat(dailyBudget) : 1000,
-      version: version || 'V3.5'
+      version: version || 'V3.5',
+      minAge: minAge,            // Viene de la nube
+      maxAge: maxAge,            // Viene de la nube
+      websiteUrl: finalWebsiteUrl // Viene del frontend (1ra vez) o de la nube
     });
 
     const campaignId = borradorResult.campaignId;
@@ -162,9 +177,8 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
       success: true,
       clientId: metaCtx.clientId,
       campaignId,
-      act_id: targetActId,
       status: 'PAUSED',
-      redirectUrl: `/confirmacion.html?step=activar_campana&clientId=${encodeURIComponent(metaCtx.clientId)}&campaignId=${campaignId}&actId=${targetActId}`
+      redirectUrl: `/confirmacion.html?step=activar_campana&clientId=${encodeURIComponent(metaCtx.clientId)}&campaignId=${campaignId}`
     });
 
   } catch (err) {
