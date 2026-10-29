@@ -258,17 +258,21 @@ const metaService = {
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
-async crearCampanaVentas({ 
+const fs = require('fs/promises'); // Para leer la imagen local
+const path = require('path');      // Para construir la ruta correcta
+
+// Asegúrate de tener GRAPH_BASE_URL, getMetaCredentials y buildCampaignName definidos arriba.
+
+async function crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
     clientId = 'ADMIN', 
     dailyBudget, 
     customAudiences = [],
-    minAge = 25, // Nuevo
-    maxAge = 45, // Nuevo
-    websiteUrl = 'https://tu-sitio-placeholder.com', // 💡 Nuevo
-    imageHash = '<HASH_DE_IMAGEN_COMODIN>' // 💡 Sube una imagen comodín 1 sola vez y pon su hash aquí
+    minAge = 25, 
+    maxAge = 65, 
+    websiteUrl = 'https://sodie/hash.app'
   }) {
     const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId: actId });
 
@@ -282,7 +286,9 @@ async crearCampanaVentas({
 
     console.log(`📊 [SODIE Engine] Configurando campaña para [${clientId}] con presupuesto diario de: $${finalDailyBudget / 100} USD`);
 
-    // 1. Crear Campaña
+    // ---------------------------------------------------------
+    // 1. CREAR CAMPAÑA
+    // ---------------------------------------------------------
     const campaignUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/campaigns`;
     const campaignRes = await fetch(campaignUrl, { 
       method: 'POST',
@@ -301,7 +307,9 @@ async crearCampanaVentas({
     if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
     const campaignId = campaignData.id;
 
-    // 1.5. [NUEVO] Extraer Page ID e Instagram ID de la cuenta publicitaria
+    // ---------------------------------------------------------
+    // 2. EXTRAER PAGE ID E INSTAGRAM ID
+    // ---------------------------------------------------------
     const accountDetailsUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}?fields=promote_pages{id,instagram_business_account}&access_token=${creds.token}`;
     const accountRes = await fetch(accountDetailsUrl);
     const accountData = await accountRes.json();
@@ -316,14 +324,42 @@ async crearCampanaVentas({
       throw new Error(`⚠️ No se encontró una Fanpage vinculada a la cuenta ${creds.adAccountId}`);
     }
 
-    // 2. Normalizar las audiencias Lookalike
+    // ---------------------------------------------------------
+    // 3. SUBIR IMAGEN LOCAL Y OBTENER HASH
+    // ---------------------------------------------------------
+    // Ajusta la ruta relativa según dónde esté tu archivo metaService.js
+    // process.cwd() apunta a la raíz de tu proyecto backend.
+    const imagePath = path.join(process.cwd(), 'public', 'sodie-placeholder.jpg'); 
+    
+    // Leemos el archivo físico y lo convertimos a Blob para el FormData
+    const imageBuffer = await fs.readFile(imagePath);
+    const imgBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
+    
+    const form = new FormData();
+    form.append('filename', imgBlob, 'sodie_placeholder.jpg');
+    form.append('access_token', creds.token);
+
+    const uploadUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adimages`;
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'POST',
+      body: form
+    });
+
+    const uploadData = await uploadRes.json();
+    if (uploadData.error) throw new Error(`Meta API Error subiendo imagen: ${uploadData.error.message}`);
+    
+    // Hash generado por Meta
+    const imageHash = uploadData.images['sodie_placeholder.jpg'].hash;
+
+    // ---------------------------------------------------------
+    // 4. CREAR AD SET (CON EDAD Y AUDIENCIAS)
+    // ---------------------------------------------------------
     const formattedAudiences = (customAudiences || []).map(aud => {
       if (typeof aud === 'string') return { id: aud };
       if (aud && aud.id) return { id: aud.id };
       return null;
     }).filter(Boolean);
 
-    // 3. Crear AdSet (AQUÍ AGREGAMOS LA EDAD COMO NÚMERO ENTERO)
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet (LAL 1% Value)`,
@@ -334,7 +370,7 @@ async crearCampanaVentas({
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       targeting: { 
         custom_audiences: formattedAudiences,
-        age_min: parseInt(minAge, 10), // 🔥 Casteo estricto para evitar que Meta ponga 18
+        age_min: parseInt(minAge, 10), // Casteo estricto
         age_max: parseInt(maxAge, 10)
       },
       status: 'PAUSED',
@@ -354,7 +390,9 @@ async crearCampanaVentas({
     const adSetData = await adSetRes.json();
     if (adSetData.error) throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
 
-    // 4. [NUEVO] Crear el Ad Creative (El placeholder con URL e Instagram pre-conectado)
+    // ---------------------------------------------------------
+    // 5. CREAR AD CREATIVE (DISEÑO BASE)
+    // ---------------------------------------------------------
     const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
     const creativeRes = await fetch(creativeUrl, {
       method: 'POST',
@@ -365,9 +403,9 @@ async crearCampanaVentas({
           page_id: pageId,
           instagram_actor_id: instagramId,
           link_data: {
-            image_hash: imageHash, // Necesario para que Meta acepte la petición
+            image_hash: imageHash, // Inyectamos el hash que obtuvimos en el paso 3
             link: websiteUrl,
-            message: 'Tu anuncio va aquí. Selecciona "Usar publicación existente" arriba.',
+            message: 'Tu anuncio va aquí. Selecciona "Usar publicación existente" en la configuración.',
             call_to_action: {
               type: 'LEARN_MORE',
               value: { link: websiteUrl }
@@ -381,16 +419,18 @@ async crearCampanaVentas({
     const creativeData = await creativeRes.json();
     if (creativeData.error) throw new Error(`Meta API Creative Error: ${creativeData.error.message}`);
 
-    // 5. [NUEVO] Ensamblar el Anuncio final en el AdSet
+    // ---------------------------------------------------------
+    // 6. CREAR AD (ANUNCIO FINAL EN EL BORRADOR)
+    // ---------------------------------------------------------
     const adUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/ads`;
     const adRes = await fetch(adUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: 'Anuncio Borrador',
+        name: 'Anuncio Borrador SODIE',
         adset_id: adSetData.id,
         creative: { creative_id: creativeData.id },
-        status: 'PAUSED',
+        status: 'PAUSED', // Listo pero apagado, esperando edición del cliente
         access_token: creds.token
       })
     });
