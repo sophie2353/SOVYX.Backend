@@ -310,12 +310,14 @@ async function crearCampanaVentas({
     // ---------------------------------------------------------
     // 2. EXTRAER PAGE ID E INSTAGRAM ID
     // ---------------------------------------------------------
-    const accountDetailsUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}?fields=promote_pages{id,instagram_business_account}&access_token=${creds.token}`;
+    // 🔥 Añadimos pixels{id} a la URL
+    const accountDetailsUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}?fields=promote_pages{id,instagram_business_account},pixels{id}&access_token=${creds.token}`;
     const accountRes = await fetch(accountDetailsUrl);
     const accountData = await accountRes.json();
     
     let pageId = null;
     let instagramId = null;
+    let finalPixelId = null;
     
     if (accountData.promote_pages && accountData.promote_pages.data.length > 0) {
       pageId = accountData.promote_pages.data[0].id;
@@ -324,6 +326,20 @@ async function crearCampanaVentas({
       throw new Error(`⚠️ No se encontró una Fanpage vinculada a la cuenta ${creds.adAccountId}`);
     }
 
+    // 🔥 LÓGICA DEL PIXEL: Determinar si es SODIE Admin o un Cliente
+    const safeClientId = String(clientId).toUpperCase();
+    if (safeClientId.includes('ADMIN') || safeClientId === 'CLIENT-#00') {
+      finalPixelId = creds.pixelId; // Tu píxel de entorno
+      console.log(`🎯 [SODIE Engine] Usando Píxel Matriz (ADMIN): ${finalPixelId}`);
+    } else {
+      // Extraemos el píxel del cliente
+      if (accountData.pixels && accountData.pixels.data.length > 0) {
+        finalPixelId = accountData.pixels.data[0].id;
+        console.log(`🎯 [SODIE Engine] Usando Píxel del Cliente extraído de Meta: ${finalPixelId}`);
+      } else {
+        console.warn(`⚠️ La cuenta publicitaria ${creds.adAccountId} no tiene un Píxel asociado.`);
+      }
+    }
     // ---------------------------------------------------------
     // 3. SUBIR IMAGEN LOCAL Y OBTENER HASH
     // ---------------------------------------------------------
@@ -354,7 +370,7 @@ async function crearCampanaVentas({
     // ---------------------------------------------------------
     // 4. CREAR AD SET (CON EDAD Y AUDIENCIAS)
     // ---------------------------------------------------------
-    const formattedAudiences = (customAudiences || []).map(aud => {
+   const formattedAudiences = (customAudiences || []).map(aud => {
       if (typeof aud === 'string') return { id: aud };
       if (aud && aud.id) return { id: aud.id };
       return null;
@@ -370,15 +386,16 @@ async function crearCampanaVentas({
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       targeting: { 
         custom_audiences: formattedAudiences,
-        age_min: parseInt(minAge, 10), // Casteo estricto
+        age_min: parseInt(minAge, 10), // 🔥 Casteo estricto de los datos de MongoDB
         age_max: parseInt(maxAge, 10)
       },
       status: 'PAUSED',
       access_token: creds.token
     };
 
-    if (creds.pixelId) {
-      adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
+    // 🔥 Usamos finalPixelId (el del Admin o el del Cliente)
+    if (finalPixelId) {
+      adSetBody.promoted_object = { pixel_id: finalPixelId, custom_event_type: 'PURCHASE' };
     }
 
     const adSetRes = await fetch(adSetUrl, {
@@ -389,7 +406,6 @@ async function crearCampanaVentas({
     
     const adSetData = await adSetRes.json();
     if (adSetData.error) throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
-
     // ---------------------------------------------------------
     // 5. CREAR AD CREATIVE (DISEÑO BASE)
     // ---------------------------------------------------------
