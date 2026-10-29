@@ -3,7 +3,6 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
-const metaServices = require('./metaService');
 const Client = require('../models/clients');
 
 // Cargar configuración global/tokens
@@ -37,111 +36,7 @@ router.post('/login', (req, res) => {
 });
 
 /* ==========================================================================
-   2. ENDPOINT: CANJEAR SHORT TOKEN A LONG TOKEN (90 DÍAS)
-   ========================================================================== */
-router.post('/fb-exchange-token', async (req, res) => {
-  try {
-    const { shortLivedToken } = req.body;
-    const appId = process.env.APP_ID || config.meta?.appId;
-    const appSecret = process.env.APP_SECRET || config.meta?.appSecret;
-
-    if (!shortLivedToken) {
-      return res.status(400).json({ success: false, error: 'Se requiere el shortLivedToken' });
-    }
-
-    const graphUrl = `https://graph.facebook.com/v26.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortLivedToken}`;
-    
-    const response = await fetch(graphUrl);
-    const data = await response.json();
-
-    if (data.access_token) {
-      return res.json({
-        success: true,
-        longLivedToken: data.access_token,
-        expiresIn: data.expires_in
-      });
-    } else {
-      return res.status(400).json({
-        success: false,
-        error: data.error?.message || 'Error al canjear el token con Meta'
-      });
-    }
-  } catch (error) {
-    console.error('💥 Error intercambiando token FB en adminRoutes:', error);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-/* ==========================================================================
-   3. ENDPOINT: ACTIVAR CAMPAÑA E INYECTAR EN METASERVICES
-   ========================================================================== */
-router.post(['/campaigns/activate', '/activar-campana'], async (req, res) => {
-  try {
-    const { token } = req.body;
-
-    const rawActId = config.meta?.adAccountId || process.env.AD_ACCOUNT_ID || '';
-    const pixelId = config.meta?.pixelId || process.env.PIXEL_ID || '';
-
-    const cleanActId = rawActId.replace(/^act_/, '');
-    const fullActId = `act_${cleanActId}`;
-    const effectiveToken = token || process.env.ACCESS_TOKEN;
-
-    const clientId = 'ADMIN-SUPERUSER';
-    let borradorResult = null;
-
-    if (metaServices && typeof metaServices.procesarCicloHora24 === 'function') {
-      borradorResult = await metaServices.procesarCicloHora24({
-        clientId: clientId,
-        token: effectiveToken,
-        adAccountId: fullActId,
-        pixelId: pixelId,
-        usersPayload: [],
-        dailyBudget: 1000
-      });
-    } else if (metaServices && typeof metaServices.activarBorrador === 'function') {
-      borradorResult = await metaServices.activarBorrador({
-        actId: fullActId,
-        pixelId: pixelId,
-        token: effectiveToken
-      });
-    }
-
-    const campaignId = borradorResult?.campaignId || 'DRAFT_CREATED';
-
-    try {
-      await Client.findOneAndUpdate(
-        { clientId: clientId },
-        { $set: { 'meta.lastCampaignId': campaignId, 'meta.status': 'PAUSED', 'meta.updatedAt': new Date() } },
-        { upsert: true }
-      );
-    } catch (dbErr) {
-      console.warn('⚠️ No se pudo guardar en BD, continuando flujo:', dbErr.message);
-    }
-
-    let metaAdsUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${cleanActId}`;
-    if (pixelId) metaAdsUrl = `&pixel_id=${pixelId}`;
-
-    return res.json({
-      success: true,
-      clientId: clientId,
-      act_id: cleanActId,
-      campaignId: campaignId,
-      status: 'PAUSED',
-      metaAdsUrl: metaAdsUrl,
-      redirectUrl: `/confirmacion.html?step=activar_campana&clientId=${encodeURIComponent(clientId)}&campaignId=${campaignId}&actId=${cleanActId}`
-    });
-
-  } catch (error) {
-    console.error('💥 Error al activar campaña en Admin:', error);
-    // 🟢 AQUÍ ESTABA EL PARÉNTESIS FALTANTE QUE CAUSABA EL ERROR CRÍTICO
-    return res.status(500).json({
-      success: false,
-      error: 'Error interno al procesar la activación en Meta: ' + error.message
-    });
-  }
-});
-
-/* ==========================================================================
-   4. EXPORTACIÓN DE DATOS AUDIENCIA / CSV
+   2. EXPORTACIÓN DE DATOS AUDIENCIA / CSV
    ========================================================================== */
 router.get('/export/export-clientes-hora48', (req, res) => {
   res.setHeader('Content-Type', 'text/csv');
