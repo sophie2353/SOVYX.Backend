@@ -255,13 +255,13 @@ const metaService = {
         ? lookalikeIds.map(id => ({ id })) 
         : [{ id: seedAudienceId }]
     };
-  }
+  },
 
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
 // Asegúrate de tener GRAPH_BASE_URL, getMetaCredentials y buildCampaignName definidos arriba.
-async function crearCampanaVentas({ 
+async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
@@ -496,8 +496,11 @@ async function crearCampanaVentas({
     usersPayload = null,
     customAudiences = [],
     dailyBudget = 1000,
-    version = 'V3.5'
-  }) {
+    version = 'V3.5',
+    minAge,      // 🔥 NUEVO: Recibirlo
+    maxAge,      // 🔥 NUEVO: Recibirlo
+    websiteUrl   // 🔥 NUEVO: Recibirlo
+  }) {    
     try {
       const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId });
 
@@ -523,12 +526,15 @@ async function crearCampanaVentas({
       }
 
       const nuevaCampana = await this.crearCampanaVentas({
-        actId: creds.adAccountId,
-        token: creds.token,
-        pixelId: creds.pixelId,
-        clientId,
-        dailyBudget,
-        customAudiences: finalAudiences
+      actId: creds.adAccountId,
+      token: creds.token,
+      pixelId: creds.pixelId,
+      clientId,
+      dailyBudget,
+      customAudiences: finalAudiences,
+      minAge,      // 🔥 NUEVO: Pasarlo al creador final
+      maxAge,      // 🔥 NUEVO: Pasarlo al creador final
+      websiteUrl   // 🔥 NUEVO: Pasarlo al creador final
       });
 
       await campaignStorage.registrarCampaignId({
