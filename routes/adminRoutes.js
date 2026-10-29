@@ -118,7 +118,7 @@ router.post(['/campaigns/activate', '/activar-campana'], async (req, res) => {
     }
 
     let metaAdsUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${cleanActId}`;
-    if (pixelId) metaAdsUrl += `&pixel_id=${pixelId}`;
+    if (pixelId) metaAdsUrl = `&pixel_id=${pixelId}`;
 
     return res.json({
       success: true,
