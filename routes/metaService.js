@@ -253,7 +253,7 @@ const metaService = {
         ? lookalikeIds.map(id => ({ id })) 
         : [{ id: seedAudienceId }]
     };
-  },
+  }
 
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
