@@ -31,7 +31,7 @@ function saveTestHistory(entry) {
 
 async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000') {
   // Usamos 'ADMIN-TEST' para que facebookRoutes lo identifique como ADMIN pero podamos limpiar sin borrar tu config principal
-  const testClientId = 'ADMIN-TEST'; 
+  const testClientId = 'ADMIN'; 
   const logs = [];
 
   console.log('\n======================================================================');
