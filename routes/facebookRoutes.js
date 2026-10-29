@@ -64,22 +64,23 @@ async function getUserMetaContext(userId, sessionId, clientId) {
    ========================================================================== */
 router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (req, res) => {
   try {
-    const { userId, sessionId,clientId, dailyBudget, version, actId, websiteUrl } = req.body;
+    const { clientId, actId, websiteUrl } = req.body; // <-- Recibimos websiteUrl en vez de pixelId
+    
     if (!actId) {
       return res.status(400).json({ success: false, error: 'El ID de la cuenta publicitaria (actId) es obligatorio.' });
     }
 
     const activeClientId = normalizeClientId(clientId);
     const cleanActId = String(actId).replace(/^act_/, '').trim();
-    const cleanPixelId = pixelId ? String(pixelId).trim() : FB_CONFIG.DEFAULT_PIXEL_ID;
-
+    
+    // Guardamos las credenciales base y la URL en MongoDB
     await Client.findOneAndUpdate(
       { clientId: activeClientId },
       {
         $set: {
           clientId: activeClientId,
           'meta.act_id': cleanActId,
-          'meta.pixel_id': cleanPixelId,
+          'meta.websiteUrl': websiteUrl, // <-- Guardamos la URL aquí
           'meta.configuredAt': new Date(),
           'meta.status': 'CONFIGURED'
         }
@@ -87,14 +88,13 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
       { upsert: true, new: true }
     );
 
-    console.log(`⚙️ [CONFIGURAR] Credenciales listas para ${activeClientId}. Derivando a creación de borrador...`);
+    console.log(`⚙️ [CONFIGURAR] Credenciales listas para ${activeClientId}.`);
     
     return res.json({
       success: true,
       message: 'Credenciales guardadas y pasadas al motor de creación de borrador.',
       clientId: activeClientId,
       act_id: cleanActId,
-      pixel_id: cleanPixelId,
       nextStep: 'Invocar /crear-borrador con estos parámetros'
     });
 
@@ -103,10 +103,7 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
     return res.status(500).json({ success: false, error: err.message });
   }
 });
-/* ==========================================================================
-   2. CREAR BORRADOR (/crear-borrador)
-   Busca la audiencia exacta en Mongo según el clientId y procesa el metaService
-   ========================================================================== */
+
 /* ==========================================================================
    2. CREAR BORRADOR (/crear-borrador)
    ========================================================================== */
