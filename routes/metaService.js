@@ -258,13 +258,17 @@ const metaService = {
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
- async crearCampanaVentas({ 
+async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
     clientId = 'ADMIN', 
-    dailyBudget, // 💡 Viene dinámico desde la petición del cliente (en dólares o centavos)
-    customAudiences = [] 
+    dailyBudget, 
+    customAudiences = [],
+    minAge = 25, // Nuevo
+    maxAge = 45, // Nuevo
+    websiteUrl = 'https://tu-sitio-placeholder.com', // 💡 Nuevo
+    imageHash = '<HASH_DE_IMAGEN_COMODIN>' // 💡 Sube una imagen comodín 1 sola vez y pon su hash aquí
   }) {
     const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId: actId });
 
@@ -273,9 +277,6 @@ const metaService = {
     }
 
     const campaignName = buildCampaignName(clientId);
-
-    // 💡 Definimos el presupuesto dinámico: si pasan un valor, lo usamos; 
-    // si viene en dólares (ej. 39), lo pasamos a centavos (3900). Si ya viene en centavos o es ADMIN, se respeta.
     const rawBudget = dailyBudget !== undefined ? dailyBudget : (clientId === 'ADMIN' ? 1000 : 3900);
     const finalDailyBudget = rawBudget < 100 ? rawBudget * 100 : rawBudget; 
 
@@ -290,27 +291,39 @@ const metaService = {
         name: campaignName,
         objective: 'OUTCOME_SALES',
         status: 'PAUSED',
-        is_adset_budget_sharing_enabled: false, // Cada AdSet maneja su parte de forma independiente
+        is_adset_budget_sharing_enabled: false,
         special_ad_categories: ['NONE'],
         access_token: creds.token
       })
     });
 
     const campaignData = await campaignRes.json();
-    if (campaignData.error) {
-      console.error('❌ [Línea Campaña] Error devuelto por Meta:', JSON.stringify(campaignData.error, null, 2));
-      throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
-    }
+    if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
     const campaignId = campaignData.id;
 
-    // 2. Normalizar las audiencias Lookalike con valor
+    // 1.5. [NUEVO] Extraer Page ID e Instagram ID de la cuenta publicitaria
+    const accountDetailsUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}?fields=promote_pages{id,instagram_business_account}&access_token=${creds.token}`;
+    const accountRes = await fetch(accountDetailsUrl);
+    const accountData = await accountRes.json();
+    
+    let pageId = null;
+    let instagramId = null;
+    
+    if (accountData.promote_pages && accountData.promote_pages.data.length > 0) {
+      pageId = accountData.promote_pages.data[0].id;
+      instagramId = accountData.promote_pages.data[0].instagram_business_account?.id || null;
+    } else {
+      throw new Error(`⚠️ No se encontró una Fanpage vinculada a la cuenta ${creds.adAccountId}`);
+    }
+
+    // 2. Normalizar las audiencias Lookalike
     const formattedAudiences = (customAudiences || []).map(aud => {
       if (typeof aud === 'string') return { id: aud };
       if (aud && aud.id) return { id: aud.id };
       return null;
     }).filter(Boolean);
 
-    // 3. Crear el AdSet limpio, blindado y sin restricciones de puja que exijan valores de ROAS o bid caps
+    // 3. Crear AdSet (AQUÍ AGREGAMOS LA EDAD COMO NÚMERO ENTERO)
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     const adSetBody = {
       name: `${campaignName} - AdSet (LAL 1% Value)`,
@@ -319,9 +332,10 @@ const metaService = {
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'OFFSITE_CONVERSIONS',
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
-      // Eliminamos cualquier bid_strategy o bid_amount para que use la puja por defecto de Meta
       targeting: { 
-        custom_audiences: formattedAudiences 
+        custom_audiences: formattedAudiences,
+        age_min: parseInt(minAge, 10), // 🔥 Casteo estricto para evitar que Meta ponga 18
+        age_max: parseInt(maxAge, 10)
       },
       status: 'PAUSED',
       access_token: creds.token
@@ -329,8 +343,6 @@ const metaService = {
 
     if (creds.pixelId) {
       adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
-    } else {
-      console.warn(`⚠️ [MetaServices] Creando campaña para ${clientId} sin pixelId asociado.`);
     }
 
     const adSetRes = await fetch(adSetUrl, {
@@ -340,18 +352,59 @@ const metaService = {
     });
     
     const adSetData = await adSetRes.json();
+    if (adSetData.error) throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
+
+    // 4. [NUEVO] Crear el Ad Creative (El placeholder con URL e Instagram pre-conectado)
+    const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
+    const creativeRes = await fetch(creativeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Creative Placeholder - SODIE',
+        object_story_spec: {
+          page_id: pageId,
+          instagram_actor_id: instagramId,
+          link_data: {
+            image_hash: imageHash, // Necesario para que Meta acepte la petición
+            link: websiteUrl,
+            message: 'Tu anuncio va aquí. Selecciona "Usar publicación existente" arriba.',
+            call_to_action: {
+              type: 'LEARN_MORE',
+              value: { link: websiteUrl }
+            }
+          }
+        },
+        access_token: creds.token
+      })
+    });
     
-    if (adSetData.error) {
-      console.error('❌ [Línea AdSet Final] Error detallado de Meta:', JSON.stringify(adSetData.error, null, 2));
-      throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
-    }
+    const creativeData = await creativeRes.json();
+    if (creativeData.error) throw new Error(`Meta API Creative Error: ${creativeData.error.message}`);
+
+    // 5. [NUEVO] Ensamblar el Anuncio final en el AdSet
+    const adUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/ads`;
+    const adRes = await fetch(adUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Anuncio Borrador',
+        adset_id: adSetData.id,
+        creative: { creative_id: creativeData.id },
+        status: 'PAUSED',
+        access_token: creds.token
+      })
+    });
+
+    const adFinalData = await adRes.json();
+    if (adFinalData.error) throw new Error(`Meta API Ad Error: ${adFinalData.error.message}`);
 
     return {
       success: true,
       act_id: creds.adAccountId,
       pixel_id: creds.pixelId,
       campaignId,
-      adSetId: adSetData.id || null,
+      adSetId: adSetData.id,
+      adId: adFinalData.id,
       status: 'PAUSED',
       campaignName,
       daily_budget_usd: finalDailyBudget / 100
