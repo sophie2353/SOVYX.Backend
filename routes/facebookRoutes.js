@@ -13,7 +13,7 @@ try {
   metaService = require('./metaService');
 } catch (e) {
   try {
-    metaService = require('./metaServices');
+    metaService = require('./metaService');
   } catch (err) {
     console.warn('⚠️ [FB ROUTES] metaService no encontrado.');
   }
