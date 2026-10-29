@@ -308,7 +308,9 @@ async crearCampanaVentas({
     // ---------------------------------------------------------
     // 2. EXTRAER PAGE ID E INSTAGRAM ID
     // ---------------------------------------------------------
-    // 🔥 Añadimos pixels{id} a la URL
+        // ---------------------------------------------------------
+    // 2. EXTRAER PAGE ID E INSTAGRAM ID (A prueba de balas)
+    // ---------------------------------------------------------
     const accountDetailsUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}?fields=promote_pages{id,instagram_business_account},pixels{id}&access_token=${creds.token}`;
     const accountRes = await fetch(accountDetailsUrl);
     const accountData = await accountRes.json();
@@ -317,26 +319,18 @@ async crearCampanaVentas({
     let instagramId = null;
     let finalPixelId = null;
     
+    // Intentar sacar la página del cliente
     if (accountData.promote_pages && accountData.promote_pages.data.length > 0) {
       pageId = accountData.promote_pages.data[0].id;
       instagramId = accountData.promote_pages.data[0].instagram_business_account?.id || null;
-    } else {
-      throw new Error(`⚠️ No se encontró una Fanpage vinculada a la cuenta ${creds.adAccountId}`);
     }
 
-    // 🔥 LÓGICA DEL PIXEL: Determinar si es SODIE Admin o un Cliente
-    const safeClientId = String(clientId).toUpperCase();
-    if (safeClientId.includes('ADMIN') || safeClientId === 'CLIENT-#00') {
-      finalPixelId = creds.pixelId; // Tu píxel de entorno
-      console.log(`🎯 [SODIE Engine] Usando Píxel Matriz (ADMIN): ${finalPixelId}`);
-    } else {
-      // Extraemos el píxel del cliente
-      if (accountData.pixels && accountData.pixels.data.length > 0) {
-        finalPixelId = accountData.pixels.data[0].id;
-        console.log(`🎯 [SODIE Engine] Usando Píxel del Cliente extraído de Meta: ${finalPixelId}`);
-      } else {
-        console.warn(`⚠️ La cuenta publicitaria ${creds.adAccountId} no tiene un Píxel asociado.`);
-      }
+    // 🛡️ PLAN DE SEGURIDAD TOTAL: Si el cliente no tiene la página vinculada en su API, 
+    // usamos tu Fanpage matriz de SODIE por defecto para que el borrador SE CREE SÍ O SÍ, 
+    // evitando que el sistema colapse y frustre al usuario.
+    if (!pageId) {
+      console.warn(`⚠️ [SODIE Engine] La cuenta ${creds.adAccountId} no devolvió promote_pages. Usando página matriz de respaldo.`);
+      pageId = process.env.META_PAGE_ID || ''; 
     }
     // ---------------------------------------------------------
     // 3. SUBIR IMAGEN LOCAL Y OBTENER HASH
@@ -419,7 +413,7 @@ async crearCampanaVentas({
           link_data: {
             image_hash: imageHash, // Inyectamos el hash que obtuvimos en el paso 3
             link: websiteUrl,
-            message: 'Tu anuncio va aquí. Selecciona "Usar publicación existente" en la configuración.',
+            message: 'Tu anuncio va aquí. Selecciona "Usar publicación existente" en la configuración y modifica instagram / pagina de facebook.',
             call_to_action: {
               type: 'LEARN_MORE',
               value: { link: websiteUrl }
