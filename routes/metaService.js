@@ -1,6 +1,8 @@
 // routes/metaService.js
 const crypto = require('crypto');
 const campaignStorage = require('./campaignStorageService');
+const fs = require('fs/promises'); // Para leer la imagen local
+const path = require('path');      
 
 const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -258,11 +260,7 @@ const metaService = {
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
-const fs = require('fs/promises'); // Para leer la imagen local
-const path = require('path');      // Para construir la ruta correcta
-
 // Asegúrate de tener GRAPH_BASE_URL, getMetaCredentials y buildCampaignName definidos arriba.
-
 async function crearCampanaVentas({ 
     actId, 
     token, 
