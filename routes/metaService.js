@@ -337,7 +337,7 @@ async crearCampanaVentas({
     // ---------------------------------------------------------
     // Ajusta la ruta relativa según dónde esté tu archivo metaService.js
     // process.cwd() apunta a la raíz de tu proyecto backend.
-    const imagePath = path.join(process.cwd(), 'public', 'sodie-placeholder.jpg'); 
+     const imagePath = path.join(__dirname, '..', 'public', 'sodie-placeholder.jpg');
     
     // Leemos el archivo físico y lo convertimos a Blob para el FormData
     const imageBuffer = await fs.readFile(imagePath);
