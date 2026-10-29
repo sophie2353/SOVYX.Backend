@@ -1,5 +1,5 @@
 /**
- * SODIE - Test Suite V3.5 (Test de Formulario de 4 Datos + Segmentación + Upload -> Mongo)
+ * SODIE - Test Suite V3.6 (Formulario -> Segmentación -> Configurar Meta -> Crear Borrador)
  */
 const express = require('express');
 const router = express.Router();
@@ -30,23 +30,23 @@ function saveTestHistory(entry) {
 }
 
 async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000') {
-  const testClientId = 'ADMIN';
+  // Usamos 'ADMIN-TEST' para que facebookRoutes lo identifique como ADMIN pero podamos limpiar sin borrar tu config principal
+  const testClientId = 'ADMIN-TEST'; 
   const logs = [];
 
   console.log('\n======================================================================');
-  console.log('🚀 INICIANDO TEST DE FLUJO FORMULARIO -> SEGMENTACIÓN -> UPLOAD -> MONGO');
+  console.log('🚀 INICIANDO TEST DE FLUJO COMPLETO (FORMULARIO -> MONGO -> META API)');
   console.log('======================================================================\n');
 
   try {
     // -----------------------------------------------------------------------
-    // PASO 1: Enviar los 4 datos del formulario real del cliente (ADMIN)
+    // PASO 1: Procesar Segmentación (Genera Audiencia y Usuarios)
     // -----------------------------------------------------------------------
-    const paisesParam = ['CO', 'AR', 'US', 'MX', 'SV']; // 5 países = 1,500 registros exactos (300 c/u)
-    const valorLTV = 10000; // Valor medio entre 5,000 y 15,000$
+    const paisesParam = ['CO', 'AR', 'US', 'MX', 'SV']; 
+    const valorLTV = 10000; 
 
-    logs.push(`📡 [TEST] POST /api/v1/segmentacion/procesar con parámetros de formulario...`);
-    logs.push(`Países: [${paisesParam.join(', ')}], Edad: 25-40, Nicho: infoproductos, Value: ${valorLTV}`);
-
+    logs.push(`📡 [TEST] POST /api/v1/segmentacion/procesar...`);
+    
     const formSegRes = await axios.post(`${baseUrl}/api/v1/segmentacion/procesar`, {
       clientId: testClientId,
       paises: paisesParam,
@@ -56,59 +56,80 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
       nicho: 'infoproductos'
     });
 
-    console.log('✅ PASO 1 OK (Formulario enviado y procesado):', formSegRes.data.ok ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Respuesta de segmentación/upload ok=${formSegRes.data.ok}. Total registros generados: ${formSegRes.data.totalRegistros}`);
+    console.log('✅ PASO 1 OK (Segmentación):', formSegRes.data.ok ? 'EXITOSO' : 'FALLIDO');
+    logs.push(`Registros generados: ${formSegRes.data.totalRegistros}`);
 
     // -----------------------------------------------------------------------
-    // PASO 2: Verificación estricta extrayendo la audiencia directamente de MongoDB
+    // PASO 2: Verificación en MongoDB
     // -----------------------------------------------------------------------
-    logs.push('🔍 [VERIFICACIÓN] Extrayendo la audiencia completa desde models/Audiencia en Mongo...');
-    const audienciaMongo = await Audiencia.findOne({ clientId: testClientId });
+    logs.push('🔍 [VERIFICACIÓN] Extrayendo la audiencia desde MongoDB...');
+    const audienciaMongo = await Audiencia.findOne({ clientId: testClientId }).sort({ createdAt: -1 });
 
-    if (!audienciaMongo) {
-      throw new Error('❌ La audiencia no se encontró registrada en MongoDB.');
-    }
+    if (!audienciaMongo) throw new Error('❌ La audiencia no se encontró en MongoDB.');
 
     const payloadExtraido = audienciaMongo.segmentacion?.usersPayload || [];
-    const totalExtraido = payloadExtraido.length;
-    const primerRegistro = payloadExtraido[0] || {};
-
-    console.log(`✅ PASO 2 OK (Extracción Mongo): Encontrados ${totalExtraido} registros con ID de sesión y estructura.`);
-    logs.push(`Audiencia extraída de Mongo correctamente. Total en lista: ${totalExtraido}`);
-    logs.push(`Muestra de registro UID/Email: ${primerRegistro.email} | País: ${primerRegistro.country} | Valor: ${primerRegistro.value}`);
+    console.log(`✅ PASO 2 OK (MongoDB): Encontrados ${payloadExtraido.length} registros.`);
+    logs.push(`Muestra de registro: ${payloadExtraido[0]?.email} | ${payloadExtraido[0]?.country}`);
 
     // -----------------------------------------------------------------------
-    // PASO 3: Consultar Estado del Temporizador de 72h
+    // PASO 3: Consultar Estado del Temporizador
     // -----------------------------------------------------------------------
-    logs.push(`📡 [TEST] GET /api/v1/segmentacion/estado/${testClientId}...`);
     const estadoRes = await axios.get(`${baseUrl}/api/v1/segmentacion/estado/${encodeURIComponent(testClientId)}`);
+    console.log('✅ PASO 3 OK (Timer 72h):', estadoRes.data.ok ? 'EXITOSO' : 'FALLIDO');
 
-    console.log('✅ PASO 3 OK (Consulta de Estado/Timer 72h):', estadoRes.data.ok ? 'EXITOSO' : 'FALLIDO');
-    logs.push(`Horas restantes para rotación: ${estadoRes.data.horasRestantes}h`);
+    // -----------------------------------------------------------------------
+    // PASO 4: Configurar Meta Credenciales (Website y ActId)
+    // -----------------------------------------------------------------------
+    logs.push(`📡 [TEST] POST /api/v1/facebook/configurar...`);
+    const actIdPrueba = process.env.AD_ACCOUNT_ID || '123456789'; // Toma tu ID real si está en el .env
+    const websitePrueba = 'https://sodie.com/test';
 
+    const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
+      clientId: testClientId,
+      actId: actIdPrueba,
+      websiteUrl: websitePrueba
+    });
+
+    console.log('✅ PASO 4 OK (Meta Config): Credenciales guardadas en DB.', configRes.data.act_id);
+    logs.push(`Configuración guardada para Act ID: ${configRes.data.act_id} y Website: ${websitePrueba}`);
+
+    // -----------------------------------------------------------------------
+    // PASO 5: Lanzar metaService (Crear Borrador Real en Meta)
+    // -----------------------------------------------------------------------
+    console.log('⏳ PASO 5: Disparando creación de borrador (Llamando a Graph API)...');
+    logs.push(`📡 [TEST] POST /api/v1/facebook/crear-borrador... (Invocando metaService)`);
+
+    const draftRes = await axios.post(`${baseUrl}/api/v1/facebook/crear-borrador`, {
+      clientId: testClientId,
+      actId: actIdPrueba,
+      websiteUrl: websitePrueba
+    });
+
+    console.log('✅ PASO 5 OK (Meta API): Borrador creado con éxito.');
+    console.log(`🎯 Campaign ID: ${draftRes.data.campaignId}`);
+    logs.push(`Borrador finalizado. Campaign ID: ${draftRes.data.campaignId} | Status: ${draftRes.data.status}`);
+
+    // -----------------------------------------------------------------------
+    // RESUMEN EXITOSO
+    // -----------------------------------------------------------------------
     const summary = {
-      testId: `test_form_seg_${Date.now()}`,
+      testId: `test_full_${Date.now()}`,
       status: 'SUCCESS',
       clientId: testClientId,
-      segmentacionFormOk: formSegRes.data.ok,
-      totalRegistrosEsperados: paisesParam.length * 300,
-      totalRegistrosEnMongo: totalExtraido,
-      muestraRegistro: primerRegistro,
-      timerEstadoOk: estadoRes.data.ok,
-      horasRestantes: estadoRes.data.horasRestantes,
+      campaignIdGenerada: draftRes.data.campaignId,
       logs
     };
 
     saveTestHistory(summary);
-    console.log('\n✨ ¡TEST DE FORMULARIO Y SEGMENTACIÓN VERIFICADO EXITOSAMENTE EN MONGO! ✨\n');
+    console.log('\n✨ ¡TEST COMPLETO VERIFICADO! META API RESPONDIÓ CORRECTAMENTE ✨\n');
     return summary;
 
   } catch (error) {
     const errorDetails = error.response ? error.response.data : error.message;
-    console.error('❌ Error durante el test de formulario:', errorDetails);
+    console.error('\n❌ [ERROR EN EL FLUJO]:', JSON.stringify(errorDetails, null, 2));
     
     const errorSummary = {
-      testId: `test_form_err_${Date.now()}`,
+      testId: `test_full_err_${Date.now()}`,
       status: 'FAILED',
       error: errorDetails,
       logs
@@ -117,13 +138,13 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
     throw error;
   } finally {
     // -----------------------------------------------------------------------
-    // LIMPIEZA AUTOMÁTICA EN MONGODB
+    // LIMPIEZA AUTOMÁTICA
     // -----------------------------------------------------------------------
     try {
-      console.log('🧹 [CLEANUP] Limpiando datos de prueba en MongoDB...');
+      console.log('🧹 [CLEANUP] Limpiando datos de prueba (ADMIN-TEST) en MongoDB...');
       await Audiencia.deleteMany({ clientId: testClientId });
       await Client.deleteOne({ clientId: testClientId });
-      console.log('✨ [CLEANUP] MongoDB totalmente limpio.');
+      console.log('✨ [CLEANUP] Completado.');
     } catch (cleanupErr) {
       console.error('⚠️ [CLEANUP WARNING]:', cleanupErr.message);
     }
@@ -139,7 +160,7 @@ router.all('/', async (req, res) => {
     const result = await runFormularioSegmentacionTest(baseUrl);
     return res.status(200).json({
       ok: true,
-      message: 'Flujo de formulario, segmentación y persistencia en MongoDB probado con éxito.',
+      message: 'Flujo completo (Frontend -> Mongo -> Meta API) probado con éxito.',
       result
     });
   } catch (err) {
