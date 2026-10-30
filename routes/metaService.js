@@ -1,8 +1,5 @@
-// routes/metaService.js
 const crypto = require('crypto');
 const campaignStorage = require('./campaignStorageService');
-const fs = require('fs/promises'); // Para leer la imagen local
-const path = require('path');      
 
 const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -32,15 +29,12 @@ function getMetaCredentials({ token, clientId = 'ADMIN', pixelId = null, adAccou
   const cleanClientId = String(clientId).trim().toUpperCase();
   const isAdmin = cleanClientId.includes('ADMIN') || cleanClientId === 'CLIENT-#00' || !cleanClientId;
 
-  // 1. Token: Siempre usa el System User Token central de ADMIN como fallback
   const finalToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN || process.env.META_SYSTEM_TOKEN;
 
-  // 2. Pixel ID: Si es ADMIN usa el de entorno, si es cliente usa el pixelId específico enviado
   const finalPixelId = isAdmin 
     ? (pixelId || process.env.META_PIXEL_ID) 
     : (pixelId || null);
 
-  // 3. Ad Account ID: Si es ADMIN usa el de entorno, si es cliente usa el adAccountId enviado
   const rawAccountId = isAdmin 
     ? (adAccountId || process.env.META_AD_ACCOUNT_ID) 
     : adAccountId;
@@ -136,7 +130,6 @@ const metaService = {
     const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
     
-    // 💡 ¡El campo oficial exacto que pedía Meta para el valor en la API!
     const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY', 'LOOKALIKE_VALUE'];
 
     const formattedData = usersPayload.map(u => {
@@ -149,14 +142,13 @@ const metaService = {
       const fnSimulado = u.firstName || u.nombre || 'Customer';
       const lnSimulado = u.lastName || u.apellido || 'Target';
 
-      // 💡 Retornamos los datos PII cifrados + el país + el valor real de LTV
       return [
         hashData(emailSimulado),
         hashData(phoneSimulado),
         hashData(fnSimulado),
         hashData(lnSimulado),
         country,
-        valueNum > 0 ? valueNum : 10000 // <--- ¡Aquí viaja el valor exacto para segmentar a los que quieres!
+        valueNum > 0 ? valueNum : 10000 
       ];
     }).filter(row => row[0] && row[1]);
 
@@ -187,7 +179,7 @@ const metaService = {
     return data;
   },
 
-    async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token, clientId = 'ADMIN') {
+  async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token, clientId = 'ADMIN') {
     const creds = getMetaCredentials({ token, clientId, adAccountId });
     const url = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/customaudiences`;
 
@@ -228,7 +220,6 @@ const metaService = {
 
     if (!countriesFound.length) countriesFound.push('US');
 
-    // 1. Crear Audiencia Semilla
     const seedAudienceId = await this.crearAudienciaSemillaConValor(
       creds.adAccountId, 
       creds.token, 
@@ -236,10 +227,8 @@ const metaService = {
       clientId
     );
 
-    // 2. Inyectar registros cifrados SHA-256 con LOOKALIKE_VALUE
     await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, creds.token);
 
-    // 3. Generar Lookalikes 1% por cada país detectado
     const lookalikeIds = [];
     for (const country of countriesFound) {
       try {
@@ -260,8 +249,7 @@ const metaService = {
   // =========================================================================
   // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
   // =========================================================================
-// Asegúrate de tener GRAPH_BASE_URL, getMetaCredentials y buildCampaignName definidos arriba.
-async crearCampanaVentas({ 
+  async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
@@ -270,7 +258,7 @@ async crearCampanaVentas({
     customAudiences = [],
     minAge = 25, 
     maxAge = 65, 
-    websiteUrl = 'https://sodie/hash.app'
+    websiteUrl = 'https://sodie.app'
   }) {
     const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId: actId });
 
@@ -306,9 +294,6 @@ async crearCampanaVentas({
     const campaignId = campaignData.id;
 
     // ---------------------------------------------------------
-    // 2. EXTRAER PAGE ID E INSTAGRAM ID
-    // ---------------------------------------------------------
-        // ---------------------------------------------------------
     // 2. EXTRAER PAGE ID E INSTAGRAM ID (A prueba de balas)
     // ---------------------------------------------------------
     const accountDetailsUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}?fields=promote_pages{id,instagram_business_account},pixels{id}&access_token=${creds.token}`;
@@ -317,27 +302,23 @@ async crearCampanaVentas({
     
     let pageId = null;
     let instagramId = null;
-    let finalPixelId = null;
+    let finalPixelId = null; // A este nivel solo sacamos la page y el ig, el pixel se pasa via creds
     
-    // Intentar sacar la página del cliente
     if (accountData.promote_pages && accountData.promote_pages.data.length > 0) {
       pageId = accountData.promote_pages.data[0].id;
       instagramId = accountData.promote_pages.data[0].instagram_business_account?.id || null;
     }
 
-    //  PLAN DE SEGURIDAD TOTAL: Si el cliente no tiene la página vinculada en su API, 
-    // usamos tu Fanpage matriz de SODIE por defecto para que el borrador SE CREE SÍ O SÍ, 
-    // evitando que el sistema colapse y frustre al usuario.
     if (!pageId) {
       console.warn(`⚠️ [SODIE Engine] La cuenta ${creds.adAccountId} no devolvió promote_pages. Usando página matriz de respaldo.`);
       pageId = process.env.META_PAGE_ID || ''; 
     }
+
     // ---------------------------------------------------------
-    // 3. SUBIR IMAGEN LOCAL Y OBTENER HASH
+    // 3. SUBIR IMAGEN DESDE INTERNET (LA SOLUCIÓN NUCLEAR)
     // ---------------------------------------------------------
     console.log(`[SODIE] Obteniendo imagen comodín directamente de la nube...`);
     
-    // Descarga un comodín genérico (fondo oscuro, texto verde menta tipo SODIE)
     const imgRes = await fetch('https://placehold.co/1080x1080/1a1a1a/34d399/png?text=Borrador+SODIE');
     const imageBuffer = await imgRes.arrayBuffer();
     const imgBlob = new Blob([imageBuffer], { type: 'image/png' });
@@ -355,10 +336,9 @@ async crearCampanaVentas({
     const uploadData = await uploadRes.json();
     if (uploadData.error) throw new Error(`Meta API Error subiendo imagen: ${uploadData.error.message}`);
     
-    // Hash generado por Meta
     const imageHash = uploadData.images['sodie_placeholder.png'].hash;
 
-      // ---------------------------------------------------------
+    // ---------------------------------------------------------
     // 4. CREAR AD SET (Conjunto de Anuncios)
     // ---------------------------------------------------------
     const formattedAudiences = (customAudiences || []).map(aud => {
@@ -369,13 +349,9 @@ async crearCampanaVentas({
 
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     
-    // 🔥 Toma los países de Mongo, o usa el respaldo si no existen/están vacíos
-    const paisesFinales = (tuVariableDePaisesMongo && tuVariableDePaisesMongo.length > 0) 
-      ? tuVariableDePaisesMongo 
-      : ['US', 'VE', 'ES', 'MX'];
-
+    // Si no tienes variable en mongo para países, forzamos estos por defecto
     const targetingData = {
-      geo_locations: { countries: paisesFinales }, 
+      geo_locations: { countries: ['US', 'VE', 'ES', 'MX'] }, 
       age_min: parseInt(minAge, 10) || 18, 
       age_max: parseInt(maxAge, 10) || 65
     };
@@ -396,8 +372,8 @@ async crearCampanaVentas({
       access_token: creds.token
     };
 
-    if (finalPixelId) {
-      adSetBody.promoted_object = { pixel_id: finalPixelId, custom_event_type: 'PURCHASE' };
+    if (creds.pixelId) {
+      adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
     }
 
     const adSetRes = await fetch(adSetUrl, {
@@ -436,7 +412,7 @@ async crearCampanaVentas({
     }
 
     const creativeBody = {
-      name: 'Creative Placeholder - SODIE',
+      name: 'Creative - SODIE',
       object_story_spec: objectStorySpec,
       access_token: creds.token
     };
@@ -483,7 +459,7 @@ async crearCampanaVentas({
     return {
       success: true,
       act_id: creds.adAccountId,
-      pixel_id: finalPixelId || creds.pixelId,
+      pixel_id: creds.pixelId,
       campaignId,
       adSetId: adSetData.id,
       adId: adFinalData.id,
@@ -491,7 +467,8 @@ async crearCampanaVentas({
       campaignName,
       daily_budget_usd: finalDailyBudget / 100
     };
- },
+  },
+  
   // =========================================================================
   // 4. CICLO DE 72 HORAS & ORQUESTACIÓN DE LALs
   // =========================================================================
@@ -524,9 +501,9 @@ async crearCampanaVentas({
     customAudiences = [],
     dailyBudget = 1000,
     version = 'V3.5',
-    minAge,      // 🔥 NUEVO: Recibirlo
-    maxAge,      // 🔥 NUEVO: Recibirlo
-    websiteUrl   // 🔥 NUEVO: Recibirlo
+    minAge,      
+    maxAge,      
+    websiteUrl   
   }) {    
     try {
       const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId });
@@ -553,15 +530,15 @@ async crearCampanaVentas({
       }
 
       const nuevaCampana = await this.crearCampanaVentas({
-      actId: creds.adAccountId,
-      token: creds.token,
-      pixelId: creds.pixelId,
-      clientId,
-      dailyBudget,
-      customAudiences: finalAudiences,
-      minAge,      // 🔥 NUEVO: Pasarlo al creador final
-      maxAge,      // 🔥 NUEVO: Pasarlo al creador final
-      websiteUrl   // 🔥 NUEVO: Pasarlo al creador final
+        actId: creds.adAccountId,
+        token: creds.token,
+        pixelId: creds.pixelId,
+        clientId,
+        dailyBudget,
+        customAudiences: finalAudiences,
+        minAge,      
+        maxAge,      
+        websiteUrl   
       });
 
       await campaignStorage.registrarCampaignId({
