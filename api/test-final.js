@@ -7,14 +7,7 @@ const path = require('path');
 router.get(['/', '/test-final', '/api/test-final', 'api/admin/test-final'], async (req, res) => {
 const BASE = process.cwd(); // En Render esto es: /opt/render/project/src
 console.log('🤠 Iniciando cacería de la imagen desde /api/test-final...');
-  
-  const express = require('express');
-const router = express.Router();
-const fsPromises = require('fs/promises');
-const path = require('path');
 
-router.get(['/', '/test-final', '/api/test-final'], async (req, res) => {
-  // Como el test está en 'api', subimos un nivel ('..') y entramos a 'routes'
   const rutaExacta = path.join(__dirname, '..', 'routes', 'sodie-placeholder.jpg');
 
   try {
