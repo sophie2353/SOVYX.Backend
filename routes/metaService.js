@@ -357,16 +357,33 @@ async crearCampanaVentas({
     
     // Hash generado por Meta
     const imageHash = uploadData.images['sodie_placeholder.png'].hash;
+
+      // ---------------------------------------------------------
+    // 4. CREAR AD SET (Conjunto de Anuncios)
     // ---------------------------------------------------------
-    // 4. CREAR AD SET (CON EDAD Y AUDIENCIAS)
-    // ---------------------------------------------------------
-   const formattedAudiences = (customAudiences || []).map(aud => {
+    const formattedAudiences = (customAudiences || []).map(aud => {
       if (typeof aud === 'string') return { id: aud };
       if (aud && aud.id) return { id: aud.id };
       return null;
     }).filter(Boolean);
 
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
+    
+    // 🔥 Toma los países de Mongo, o usa el respaldo si no existen/están vacíos
+    const paisesFinales = (tuVariableDePaisesMongo && tuVariableDePaisesMongo.length > 0) 
+      ? tuVariableDePaisesMongo 
+      : ['US', 'VE', 'ES', 'MX'];
+
+    const targetingData = {
+      geo_locations: { countries: paisesFinales }, 
+      age_min: parseInt(minAge, 10) || 18, 
+      age_max: parseInt(maxAge, 10) || 65
+    };
+
+    if (formattedAudiences.length > 0) {
+      targetingData.custom_audiences = formattedAudiences;
+    }
+
     const adSetBody = {
       name: `${campaignName} - AdSet (LAL 1% Value)`,
       campaign_id: campaignId,
@@ -374,16 +391,11 @@ async crearCampanaVentas({
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'OFFSITE_CONVERSIONS',
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
-      targeting: { 
-        custom_audiences: formattedAudiences,
-        age_min: parseInt(minAge, 10), // 🔥 Casteo estricto de los datos de MongoDB
-        age_max: parseInt(maxAge, 10)
-      },
+      targeting: targetingData,
       status: 'PAUSED',
       access_token: creds.token
     };
 
-    // 🔥 Usamos finalPixelId (el del Admin o el del Cliente)
     if (finalPixelId) {
       adSetBody.promoted_object = { pixel_id: finalPixelId, custom_event_type: 'PURCHASE' };
     }
@@ -395,59 +407,83 @@ async crearCampanaVentas({
     });
     
     const adSetData = await adSetRes.json();
-    if (adSetData.error) throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
+    if (adSetData.error) {
+      console.error("💥 [DEBUG ADSET] Error de Meta:", JSON.stringify(adSetData.error, null, 2));
+      console.error("💥 [DEBUG ADSET] Payload enviado:", JSON.stringify(adSetBody, null, 2));
+      throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
+    }
+
     // ---------------------------------------------------------
     // 5. CREAR AD CREATIVE (DISEÑO BASE)
     // ---------------------------------------------------------
     const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
+    
+    const objectStorySpec = {
+      page_id: pageId,
+      link_data: {
+        image_hash: imageHash,
+        link: websiteUrl,
+        message: 'Tu anuncio va aquí. Selecciona "Usar publicación existente" en la configuración y modifica instagram / pagina de facebook.',
+        call_to_action: {
+          type: 'LEARN_MORE',
+          value: { link: websiteUrl }
+        }
+      }
+    };
+
+    if (instagramId) {
+      objectStorySpec.instagram_actor_id = instagramId;
+    }
+
+    const creativeBody = {
+      name: 'Creative Placeholder - SODIE',
+      object_story_spec: objectStorySpec,
+      access_token: creds.token
+    };
+
     const creativeRes = await fetch(creativeUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Creative Placeholder - SODIE',
-        object_story_spec: {
-          page_id: pageId,
-          instagram_actor_id: instagramId,
-          link_data: {
-            image_hash: imageHash, // Inyectamos el hash que obtuvimos en el paso 3
-            link: websiteUrl,
-            message: 'Tu anuncio va aquí. Selecciona "Usar publicación existente" en la configuración y modifica instagram / pagina de facebook.',
-            call_to_action: {
-              type: 'LEARN_MORE',
-              value: { link: websiteUrl }
-            }
-          }
-        },
-        access_token: creds.token
-      })
+      body: JSON.stringify(creativeBody)
     });
     
     const creativeData = await creativeRes.json();
-    if (creativeData.error) throw new Error(`Meta API Creative Error: ${creativeData.error.message}`);
+    if (creativeData.error) {
+      console.error("💥 [DEBUG CREATIVE] Error de Meta:", JSON.stringify(creativeData.error, null, 2));
+      console.error("💥 [DEBUG CREATIVE] Payload enviado:", JSON.stringify(creativeBody, null, 2));
+      throw new Error(`Meta API Creative Error: ${creativeData.error.message}`);
+    }
 
     // ---------------------------------------------------------
     // 6. CREAR AD (ANUNCIO FINAL EN EL BORRADOR)
     // ---------------------------------------------------------
     const adUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/ads`;
+    
+    const adBody = {
+      name: 'Anuncio Borrador SODIE',
+      adset_id: adSetData.id,
+      creative: { creative_id: creativeData.id },
+      status: 'PAUSED',
+      access_token: creds.token
+    };
+
     const adRes = await fetch(adUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Anuncio Borrador SODIE',
-        adset_id: adSetData.id,
-        creative: { creative_id: creativeData.id },
-        status: 'PAUSED', // Listo pero apagado, esperando edición del cliente
-        access_token: creds.token
-      })
+      body: JSON.stringify(adBody)
     });
 
     const adFinalData = await adRes.json();
-    if (adFinalData.error) throw new Error(`Meta API Ad Error: ${adFinalData.error.message}`);
+    if (adFinalData.error) {
+      console.error("💥 [DEBUG AD] Error de Meta:", JSON.stringify(adFinalData.error, null, 2));
+      console.error("💥 [DEBUG AD] Payload enviado:", JSON.stringify(adBody, null, 2));
+      throw new Error(`Meta API Ad Error: ${adFinalData.error.message}`);
+    }
 
     return {
       success: true,
       act_id: creds.adAccountId,
-      pixel_id: creds.pixelId,
+      pixel_id: finalPixelId || creds.pixelId,
       campaignId,
       adSetId: adSetData.id,
       adId: adFinalData.id,
@@ -455,8 +491,7 @@ async crearCampanaVentas({
       campaignName,
       daily_budget_usd: finalDailyBudget / 100
     };
-  },
-
+ },
   // =========================================================================
   // 4. CICLO DE 72 HORAS & ORQUESTACIÓN DE LALs
   // =========================================================================
