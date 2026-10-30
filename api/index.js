@@ -283,8 +283,8 @@ try {
 // ---- 16. test para encontrar la imagen 
 
 try {
-  const testRoutes = require('./imagen-test'); // o test-final según tengas nombrado tu archivo
-  safeUse('/api/prueba', testRoutes);
+  const testRoutes = require('./imagen'); // o test-final según tengas nombrado tu archivo
+  safeUse('/api/', testRoutes);
 } catch (e) {
   console.warn('⚠️ [TEST ROUTES] No se pudo cargar la ruta de test:', e.message);
 }
