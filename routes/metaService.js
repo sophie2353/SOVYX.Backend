@@ -349,9 +349,9 @@ const metaService = {
 
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     
-    // Si no tienes variable en mongo para países, forzamos estos por defecto
+    // Cumplimos el requisito de Meta. Tu Lookalike filtrará el tráfico real.
     const targetingData = {
-      geo_locations: { countries: ['US', 'VE', 'ES', 'MX'] }, 
+      geo_locations: { countries: ['US', 'VE', 'ES', 'MX', 'CO', 'AR', 'CL', 'PE'] }, 
       age_min: parseInt(minAge, 10) || 18, 
       age_max: parseInt(maxAge, 10) || 65
     };
@@ -369,6 +369,9 @@ const metaService = {
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       targeting: targetingData,
       status: 'PAUSED',
+      // PARCHE EUROPEO: Obligatorio para evitar el error 100 de la captura
+      dsa_beneficiary: "SODIE Client", 
+      dsa_payor: "SODIE Client",
       access_token: creds.token
     };
 
