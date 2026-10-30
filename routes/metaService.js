@@ -7,6 +7,30 @@ const path = require('path');
 const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
+// Función cazadora de imágenes (No falla nunca)
+async function getPlaceholderBuffer() {
+  const rutas = [
+    path.join(__dirname, 'sodie-placeholder.jpg'), // Busca en routes
+    path.join(__dirname, '..', 'public', 'sodie-placeholder.jpg'), // Busca en public subiendo de routes
+    path.join(process.cwd(), 'public', 'sodie-placeholder.jpg'), // Busca en public desde la raíz
+    path.join(process.cwd(), 'routes', 'sodie-placeholder.jpg') // Busca en routes desde la raíz
+  ];
+
+  for (const ruta of rutas) {
+    try {
+      // Intenta leer el archivo
+      const buffer = await fs.readFile(ruta);
+      console.log(`✅ [SODIE] ¡Imagen encontrada mágicamente en!: ${ruta}`);
+      return buffer;
+    } catch (e) {
+      // Si no está ahí, pasa a la siguiente ruta en silencio
+    }
+  }
+  
+  // Si llega hasta aquí, Git de verdad te odia y no subió el archivo.
+  throw new Error('💀 La imagen comodín no existe en el servidor. Git no la está subiendo a Render.');
+}
+
 /**
  * Cifrado obligatorio SHA-256 para Meta Graph API
  */
@@ -337,10 +361,11 @@ async crearCampanaVentas({
     // ---------------------------------------------------------
     // Ajusta la ruta relativa según dónde esté tu archivo metaService.js
     // process.cwd() apunta a la raíz de tu proyecto backend.
-     const imagePath = path.join(__dirname,'sodie-placeholder.jpg');
-    
-    // Leemos el archivo físico y lo convertimos a Blob para el FormData
-    const imageBuffer = await fs.readFile(imagePath);
+         // ---------------------------------------------------------
+    // 3. SUBIR IMAGEN LOCAL Y OBTENER HASH (El Inmortal)
+    // ---------------------------------------------------------
+    // Llamamos a nuestra función cazadora que nos devuelve el archivo listo
+    const imageBuffer = await getPlaceholderBuffer();
     const imgBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
     
     const form = new FormData();
@@ -358,7 +383,6 @@ async crearCampanaVentas({
     
     // Hash generado por Meta
     const imageHash = uploadData.images['sodie_placeholder.jpg'].hash;
-
     // ---------------------------------------------------------
     // 4. CREAR AD SET (CON EDAD Y AUDIENCIAS)
     // ---------------------------------------------------------
