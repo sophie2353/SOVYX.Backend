@@ -7,30 +7,6 @@ const path = require('path');
 const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
-// Función cazadora de imágenes (No falla nunca)
-async function getPlaceholderBuffer() {
-  const rutas = [
-    path.join(__dirname, 'sodie-placeholder.jpg'), // Busca en routes
-    path.join(__dirname, '..', 'public', 'sodie-placeholder.jpg'), // Busca en public subiendo de routes
-    path.join(process.cwd(), 'public', 'sodie-placeholder.jpg'), // Busca en public desde la raíz
-    path.join(process.cwd(), 'routes', 'sodie-placeholder.jpg') // Busca en routes desde la raíz
-  ];
-
-  for (const ruta of rutas) {
-    try {
-      // Intenta leer el archivo
-      const buffer = await fs.readFile(ruta);
-      console.log(`✅ [SODIE] ¡Imagen encontrada mágicamente en!: ${ruta}`);
-      return buffer;
-    } catch (e) {
-      // Si no está ahí, pasa a la siguiente ruta en silencio
-    }
-  }
-  
-  // Si llega hasta aquí, Git de verdad te odia y no subió el archivo.
-  throw new Error('💀 La imagen comodín no existe en el servidor. Git no la está subiendo a Render.');
-}
-
 /**
  * Cifrado obligatorio SHA-256 para Meta Graph API
  */
@@ -349,7 +325,7 @@ async crearCampanaVentas({
       instagramId = accountData.promote_pages.data[0].instagram_business_account?.id || null;
     }
 
-    // 🛡️ PLAN DE SEGURIDAD TOTAL: Si el cliente no tiene la página vinculada en su API, 
+    //  PLAN DE SEGURIDAD TOTAL: Si el cliente no tiene la página vinculada en su API, 
     // usamos tu Fanpage matriz de SODIE por defecto para que el borrador SE CREE SÍ O SÍ, 
     // evitando que el sistema colapse y frustre al usuario.
     if (!pageId) {
@@ -359,17 +335,15 @@ async crearCampanaVentas({
     // ---------------------------------------------------------
     // 3. SUBIR IMAGEN LOCAL Y OBTENER HASH
     // ---------------------------------------------------------
-    // Ajusta la ruta relativa según dónde esté tu archivo metaService.js
-    // process.cwd() apunta a la raíz de tu proyecto backend.
-         // ---------------------------------------------------------
-    // 3. SUBIR IMAGEN LOCAL Y OBTENER HASH (El Inmortal)
-    // ---------------------------------------------------------
-    // Llamamos a nuestra función cazadora que nos devuelve el archivo listo
-    const imageBuffer = await getPlaceholderBuffer();
-    const imgBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
+    console.log(`[SODIE] Obteniendo imagen comodín directamente de la nube...`);
+    
+    // Descarga un comodín genérico (fondo oscuro, texto verde menta tipo SODIE)
+    const imgRes = await fetch('https://placehold.co/1080x1080/1a1a1a/34d399/png?text=Borrador+SODIE');
+    const imageBuffer = await imgRes.arrayBuffer();
+    const imgBlob = new Blob([imageBuffer], { type: 'image/png' });
     
     const form = new FormData();
-    form.append('filename', imgBlob, 'sodie_placeholder.jpg');
+    form.append('filename', imgBlob, 'sodie_placeholder.png');
     form.append('access_token', creds.token);
 
     const uploadUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adimages`;
@@ -382,7 +356,7 @@ async crearCampanaVentas({
     if (uploadData.error) throw new Error(`Meta API Error subiendo imagen: ${uploadData.error.message}`);
     
     // Hash generado por Meta
-    const imageHash = uploadData.images['sodie_placeholder.jpg'].hash;
+    const imageHash = uploadData.images['sodie_placeholder.png'].hash;
     // ---------------------------------------------------------
     // 4. CREAR AD SET (CON EDAD Y AUDIENCIAS)
     // ---------------------------------------------------------
