@@ -19,7 +19,7 @@ function hashData(value) {
  */
 function buildCampaignName(clientId = 'ADMIN') {
   const cleanId = String(clientId).trim().toUpperCase();
-  return `PRUEBA - SODIE - ${cleanId}`;
+  return `SODIE - ${cleanId}`;
 }
 
 /**
