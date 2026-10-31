@@ -229,20 +229,20 @@ const metaService = {
 
     await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, creds.token);
 
-    const lookalikeIds = [];
+    const lookalikeData = [];
     for (const country of countriesFound) {
       try {
         const lalId = await this.crearLookalike1PorCiento(creds.adAccountId, seedAudienceId, country, creds.token, clientId);
-        lookalikeIds.push(lalId);
+        lookalikeData.push({ id: lalId, country: country });
       } catch (err) {
         console.error(`Error creando Lookalike 1% para país ${country}:`, err.message);
       }
     }
 
     return {
-      custom_audiences: lookalikeIds.length > 0 
-        ? lookalikeIds.map(id => ({ id })) 
-        : [{ id: seedAudienceId }]
+      custom_audiences: lookalikeData.length > 0 
+        ? lookalikeData 
+        : [{ id: seedAudienceId, country: 'US' }]
     };
   },
 
@@ -270,10 +270,10 @@ const metaService = {
     const rawBudget = dailyBudget !== undefined ? dailyBudget : (clientId === 'ADMIN' ? 1000 : 3900);
     const finalDailyBudget = rawBudget < 100 ? rawBudget * 100 : rawBudget; 
 
-    console.log(`📊 [SODIE Engine] Configurando campaña para [${clientId}] con presupuesto diario de: $${finalDailyBudget / 100} USD`);
+    console.log(`📊 [SODIE Engine] Configurando campaña para [${clientId}] con presupuesto diario total de: $${finalDailyBudget / 100} USD`);
 
     // ---------------------------------------------------------
-    // 1. CREAR CAMPAÑA
+    // 1. CREAR CAMPAÑA (is_adset_budget_sharing_enabled = false para ABO)
     // ---------------------------------------------------------
     const campaignUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/campaigns`;
     const campaignRes = await fetch(campaignUrl, { 
@@ -283,7 +283,7 @@ const metaService = {
         name: campaignName,
         objective: 'OUTCOME_SALES',
         status: 'PAUSED',
-        is_adset_budget_sharing_enabled: false,
+        is_adset_budget_sharing_enabled: false, 
         special_ad_categories: ['NONE'],
         access_token: creds.token
       })
@@ -294,7 +294,7 @@ const metaService = {
     const campaignId = campaignData.id;
 
     // ---------------------------------------------------------
-    // 2. EXTRAER PAGE ID E INSTAGRAM ID (A prueba de balas)
+    // 2. EXTRAER PAGE ID E INSTAGRAM ID
     // ---------------------------------------------------------
     const accountDetailsUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}?fields=promote_pages{id,instagram_business_account},pixels{id}&access_token=${creds.token}`;
     const accountRes = await fetch(accountDetailsUrl);
@@ -338,119 +338,104 @@ const metaService = {
     const imageHash = uploadData.images['sodie_placeholder.png'].hash;
 
     // ---------------------------------------------------------
-    // 4. CREAR AD SET (Conjunto de Anuncios)
+    // 4, 5 y 6. CICLO POR CADA PAÍS (AD SET, CREATIVE Y AD)
     // ---------------------------------------------------------
-    const formattedAudiences = (customAudiences || []).map(aud => {
-      if (typeof aud === 'string') return { id: aud };
-      if (aud && aud.id) return { id: aud.id };
-      return null;
-    }).filter(Boolean);
+    const targets = (customAudiences && customAudiences.length > 0) 
+      ? customAudiences 
+      : [{ country: 'US', id: null }];
 
-    const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
-    
-    // PARCHE MULTI-PLATAFORMA: Obligamos a que apunte a FB e IG
-    const targetingData = {
-      geo_locations: { countries: ['US', 'ES'] }, 
-      age_min: parseInt(minAge, 10) || 18, 
-      age_max: parseInt(maxAge, 10) || 65,
-      publisher_platforms: ['facebook', 'instagram'] 
-    };
+    const budgetPerAdSet = Math.floor(finalDailyBudget / targets.length);
+    const createdAdSets = [];
+    const createdAds = [];
 
-    if (formattedAudiences.length > 0) {
-      targetingData.custom_audiences = formattedAudiences;
-    }
+    for (const target of targets) {
+      const countryCode = target.country || 'US';
+      
+      // -- PASO 4: CREAR AD SET INDIVIDUAL --
+      const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
+      
+      const targetingData = {
+        geo_locations: { countries: [countryCode] }, 
+        age_min: parseInt(minAge, 10) || 18, 
+        age_max: parseInt(maxAge, 10) || 65,
+        publisher_platforms: ['facebook', 'instagram'] 
+      };
 
-    const adSetBody = {
-      name: `${campaignName} - AdSet (LAL 1% Value)`,
-      campaign_id: campaignId,
-      daily_budget: finalDailyBudget,
-      billing_event: 'IMPRESSIONS',
-      optimization_goal: 'OFFSITE_CONVERSIONS',
-      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
-      targeting: targetingData,
-      status: 'PAUSED',
-      dsa_beneficiary: "SODIE Client", 
-      dsa_payor: "SODIE Client",
-      access_token: creds.token
-    };
-
-    if (creds.pixelId) {
-      adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
-    }
-
-    const adSetRes = await fetch(adSetUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(adSetBody)
-    });
-    
-    const adSetData = await adSetRes.json();
-    if (adSetData.error) {
-      throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
-    }
-
-    // ---------------------------------------------------------
-    // 5. CREAR AD CREATIVE (DISEÑO BASE Y VÍNCULO DE IDENTIDAD)
-    // ---------------------------------------------------------
-    const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
-    
-    const objectStorySpec = {
-      page_id: pageId, // Vincula la página de Facebook
-      link_data: {
-        image_hash: imageHash,
-        link: websiteUrl,
-        message: 'Tu anuncio va aquí. Selecciona "Usar publicación existente" en la configuración y modifica instagram / pagina de facebook.',
-        call_to_action: {
-          type: 'LEARN_MORE',
-          value: { link: websiteUrl }
-        }
+      if (target.id) {
+        targetingData.custom_audiences = [{ id: target.id }];
       }
-    };
 
-    // Si detectamos el IG vinculado, lo inyectamos de una vez
-    if (instagramId) {
-      objectStorySpec.instagram_actor_id = instagramId;
-    }
+      const adSetBody = {
+        name: `${campaignName} - AdSet LAL 1% (${countryCode})`,
+        campaign_id: campaignId,
+        daily_budget: budgetPerAdSet,
+        billing_event: 'IMPRESSIONS',
+        optimization_goal: 'OFFSITE_CONVERSIONS',
+        bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+        targeting: targetingData,
+        status: 'PAUSED',
+        dsa_beneficiary: "SODIE Client", 
+        dsa_payor: "SODIE Client",
+        access_token: creds.token
+      };
 
-    const creativeBody = {
-      name: 'Creative - SODIE',
-      object_story_spec: objectStorySpec,
-      access_token: creds.token
-    };
+      if (creds.pixelId) {
+        adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
+      }
 
-    const creativeRes = await fetch(creativeUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(creativeBody)
-    });
-    
-    const creativeData = await creativeRes.json();
-    if (creativeData.error) {
-      throw new Error(`Meta API Creative Error: ${creativeData.error.message}`);
-    }
+      const adSetRes = await fetch(adSetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adSetBody)
+      });
+      const adSetData = await adSetRes.json();
+      if (adSetData.error) throw new Error(`Meta API AdSet Error (${countryCode}): ${adSetData.error.message}`);
+      
+      createdAdSets.push(adSetData.id);
 
-    // ---------------------------------------------------------
-    // 6. CREAR AD (ANUNCIO FINAL EN EL BORRADOR)
-    // ---------------------------------------------------------
-    const adUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/ads`;
-    
-    const adBody = {
-      name: 'Anuncio Borrador SODIE',
-      adset_id: adSetData.id,
-      creative: { creative_id: creativeData.id },
-      status: 'PAUSED',
-      access_token: creds.token
-    };
+      // -- PASO 5: CREAR CREATIVE INDIVIDUAL --
+      const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
+      const objectStorySpec = {
+        page_id: pageId,
+        link_data: {
+          image_hash: imageHash,
+          link: websiteUrl,
+          message: `Tu anuncio para ${countryCode} va aquí. Selecciona "Usar publicación existente" en la configuración.`,
+          call_to_action: { type: 'LEARN_MORE', value: { link: websiteUrl } }
+        }
+      };
 
-    const adRes = await fetch(adUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(adBody)
-    });
+      if (instagramId) objectStorySpec.instagram_actor_id = instagramId;
 
-    const adFinalData = await adRes.json();
-    if (adFinalData.error) {
-      throw new Error(`Meta API Ad Error: ${adFinalData.error.message}`);
+      const creativeRes = await fetch(creativeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `Creative - SODIE - ${countryCode}`,
+          object_story_spec: objectStorySpec,
+          access_token: creds.token
+        })
+      });
+      const creativeData = await creativeRes.json();
+      if (creativeData.error) throw new Error(`Meta API Creative Error (${countryCode}): ${creativeData.error.message}`);
+
+      // -- PASO 6: CREAR AD INDIVIDUAL --
+      const adUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/ads`;
+      const adRes = await fetch(adUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `Borrador SODIE - ${countryCode}`,
+          adset_id: adSetData.id,
+          creative: { creative_id: creativeData.id },
+          status: 'PAUSED',
+          access_token: creds.token
+        })
+      });
+      const adFinalData = await adRes.json();
+      if (adFinalData.error) throw new Error(`Meta API Ad Error (${countryCode}): ${adFinalData.error.message}`);
+      
+      createdAds.push(adFinalData.id);
     }
 
     return {
@@ -458,11 +443,12 @@ const metaService = {
       act_id: creds.adAccountId,
       pixel_id: creds.pixelId,
       campaignId,
-      adSetId: adSetData.id,
-      adId: adFinalData.id,
+      adSetIds: createdAdSets,
+      adIds: createdAds,
       status: 'PAUSED',
       campaignName,
-      daily_budget_usd: finalDailyBudget / 100
+      daily_budget_usd: finalDailyBudget / 100,
+      total_adsets: createdAdSets.length
     };
   },
   
