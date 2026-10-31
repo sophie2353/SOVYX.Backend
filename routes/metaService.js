@@ -302,7 +302,6 @@ const metaService = {
     
     let pageId = null;
     let instagramId = null;
-    let finalPixelId = null; // A este nivel solo sacamos la page y el ig, el pixel se pasa via creds
     
     if (accountData.promote_pages && accountData.promote_pages.data.length > 0) {
       pageId = accountData.promote_pages.data[0].id;
@@ -315,7 +314,7 @@ const metaService = {
     }
 
     // ---------------------------------------------------------
-    // 3. SUBIR IMAGEN DESDE INTERNET (LA SOLUCIÓN NUCLEAR)
+    // 3. SUBIR IMAGEN DESDE INTERNET
     // ---------------------------------------------------------
     console.log(`[SODIE] Obteniendo imagen comodín directamente de la nube...`);
     
@@ -349,11 +348,12 @@ const metaService = {
 
     const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
     
-    // Cumplimos el requisito de Meta. Tu Lookalike filtrará el tráfico real.
+    // PARCHE MULTI-PLATAFORMA: Obligamos a que apunte a FB e IG
     const targetingData = {
-      geo_locations: { countries: ['US', 'VE', 'ES', 'MX', 'CO', 'AR', 'CL', 'PE'] }, 
+      geo_locations: { countries: ['US', 'ES'] }, 
       age_min: parseInt(minAge, 10) || 18, 
-      age_max: parseInt(maxAge, 10) || 65
+      age_max: parseInt(maxAge, 10) || 65,
+      publisher_platforms: ['facebook', 'instagram'] 
     };
 
     if (formattedAudiences.length > 0) {
@@ -369,7 +369,6 @@ const metaService = {
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       targeting: targetingData,
       status: 'PAUSED',
-      // PARCHE EUROPEO: Obligatorio para evitar el error 100 de la captura
       dsa_beneficiary: "SODIE Client", 
       dsa_payor: "SODIE Client",
       access_token: creds.token
@@ -387,18 +386,16 @@ const metaService = {
     
     const adSetData = await adSetRes.json();
     if (adSetData.error) {
-      console.error("💥 [DEBUG ADSET] Error de Meta:", JSON.stringify(adSetData.error, null, 2));
-      console.error("💥 [DEBUG ADSET] Payload enviado:", JSON.stringify(adSetBody, null, 2));
       throw new Error(`Meta API AdSet Error: ${adSetData.error.message}`);
     }
 
     // ---------------------------------------------------------
-    // 5. CREAR AD CREATIVE (DISEÑO BASE)
+    // 5. CREAR AD CREATIVE (DISEÑO BASE Y VÍNCULO DE IDENTIDAD)
     // ---------------------------------------------------------
     const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
     
     const objectStorySpec = {
-      page_id: pageId,
+      page_id: pageId, // Vincula la página de Facebook
       link_data: {
         image_hash: imageHash,
         link: websiteUrl,
@@ -410,6 +407,7 @@ const metaService = {
       }
     };
 
+    // Si detectamos el IG vinculado, lo inyectamos de una vez
     if (instagramId) {
       objectStorySpec.instagram_actor_id = instagramId;
     }
@@ -428,8 +426,6 @@ const metaService = {
     
     const creativeData = await creativeRes.json();
     if (creativeData.error) {
-      console.error("💥 [DEBUG CREATIVE] Error de Meta:", JSON.stringify(creativeData.error, null, 2));
-      console.error("💥 [DEBUG CREATIVE] Payload enviado:", JSON.stringify(creativeBody, null, 2));
       throw new Error(`Meta API Creative Error: ${creativeData.error.message}`);
     }
 
@@ -454,8 +450,6 @@ const metaService = {
 
     const adFinalData = await adRes.json();
     if (adFinalData.error) {
-      console.error("💥 [DEBUG AD] Error de Meta:", JSON.stringify(adFinalData.error, null, 2));
-      console.error("💥 [DEBUG AD] Payload enviado:", JSON.stringify(adBody, null, 2));
       throw new Error(`Meta API Ad Error: ${adFinalData.error.message}`);
     }
 
