@@ -84,7 +84,6 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
       testId: `test_full_${Date.now()}`,
       status: 'SUCCESS',
       clientId: testClientId,
-      campaignIdGenerada: draftRes.data.campaignId,
       logs
     };
 
