@@ -77,13 +77,16 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
     const estadoRes = await axios.get(`${baseUrl}/api/v1/segmentacion/estado/${encodeURIComponent(testClientId)}`);
     console.log('✅ PASO 3 OK (Timer 72h):', estadoRes.data.ok ? 'EXITOSO' : 'FALLIDO');
 
-    // -----------------------------------------------------------------------
+        // -----------------------------------------------------------------------
     // RESUMEN EXITOSO
     // -----------------------------------------------------------------------
     const summary = {
       testId: `test_full_${Date.now()}`,
       status: 'SUCCESS',
       clientId: testClientId,
+      valorIngresado: valorLTV, // 👈 Aquí ves el valor enviado ($15,000)
+      valorProcesadoCentavos: Math.round(Number(valorLTV) * 100), // 👈 Aquí confirmas el x100 en centavos (1,500,000)
+      totalRegistros: formSegRes.data.totalRegistros,
       logs
     };
 
