@@ -43,7 +43,7 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
     // PASO 1: Procesar Segmentación (Genera Audiencia y Usuarios)
     // -----------------------------------------------------------------------
     const paisesParam = ['CO', 'AR', 'US', 'MX', 'SV']; 
-    const valorLTV = 10000; 
+    const valorLTV = 15000; 
 
     logs.push(`📡 [TEST] POST /api/v1/segmentacion/procesar...`);
     
@@ -76,38 +76,6 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
     // -----------------------------------------------------------------------
     const estadoRes = await axios.get(`${baseUrl}/api/v1/segmentacion/estado/${encodeURIComponent(testClientId)}`);
     console.log('✅ PASO 3 OK (Timer 72h):', estadoRes.data.ok ? 'EXITOSO' : 'FALLIDO');
-
-    // -----------------------------------------------------------------------
-    // PASO 4: Configurar Meta Credenciales (Website y ActId)
-    // -----------------------------------------------------------------------
-    logs.push(`📡 [TEST] POST /api/v1/facebook/configurar...`);
-    const actIdPrueba = process.env.AD_ACCOUNT_ID || '123456789'; // Toma tu ID real si está en el .env
-    const websitePrueba = 'https://sodie.com/test';
-
-    const configRes = await axios.post(`${baseUrl}/api/v1/facebook/configurar`, {
-      clientId: testClientId,
-      actId: actIdPrueba,
-      websiteUrl: websitePrueba
-    });
-
-    console.log('✅ PASO 4 OK (Meta Config): Credenciales guardadas en DB.', configRes.data.act_id);
-    logs.push(`Configuración guardada para Act ID: ${configRes.data.act_id} y Website: ${websitePrueba}`);
-
-    // -----------------------------------------------------------------------
-    // PASO 5: Lanzar metaService (Crear Borrador Real en Meta)
-    // -----------------------------------------------------------------------
-    console.log('⏳ PASO 5: Disparando creación de borrador (Llamando a Graph API)...');
-    logs.push(`📡 [TEST] POST /api/v1/facebook/crear-borrador... (Invocando metaService)`);
-
-    const draftRes = await axios.post(`${baseUrl}/api/v1/facebook/crear-borrador`, {
-      clientId: testClientId,
-      actId: actIdPrueba,
-      websiteUrl: websitePrueba
-    });
-
-    console.log('✅ PASO 5 OK (Meta API): Borrador creado con éxito.');
-    console.log(`🎯 Campaign ID: ${draftRes.data.campaignId}`);
-    logs.push(`Borrador finalizado. Campaign ID: ${draftRes.data.campaignId} | Status: ${draftRes.data.status}`);
 
     // -----------------------------------------------------------------------
     // RESUMEN EXITOSO
