@@ -62,12 +62,14 @@ router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
     const activeClientId = normalizeClientId(clientId);
     const claveColeccion = `Datos_${activeClientId}`;
     const session = `sess_form_${activeClientId}_${Date.now()}`;
+    const numericValue = Number(value) || 0;
+    const valueEnCentavos = Math.round(numericValue * 100);
 
-    // 1. Mapear 300 registros por cada país recibido
+    // 2. Mapear registros pasando el valor ajustado en centavos a Meta Graph API
     const payloadAjustado = mapearDatasetCliente({
       clientId: activeClientId,
       paises,
-      value,
+      value: valueEnCentavos, // <-- Se envía en centavos (ej: 100.00 USD -> 10000 centavos)
       edadMin,
       edadMax,
       nicho
