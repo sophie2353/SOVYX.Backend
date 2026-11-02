@@ -56,9 +56,9 @@ function analizarRendimiento({ adSpend, roas, sessionId }) {
   // 3. Estructuración de respuestas
   const problemas = `Actualmente inviertes $${spend.toLocaleString()} USD/día ($${inversionMensual.toLocaleString()} USD/mes) generando $${retornoDiarioActual.toLocaleString()} USD/día con un ROAS estancado de ${roasActual}. Sin segmentación en tiempo real, estás perdiendo aproximadamente $${fugaDineroMensual.toLocaleString()} USD cada mes por fugar capital en audiencias no optimizadas.`;
 
-  const solucion = `Con SODIE eliminas la dependencia de la data segmentada tradicional. Al inyectar automáticamente tu lista de nuevos compradores cada 24 horas, tu ROAS escala semana a semana invirtiendo lo mismo:\n` +
-    `• Semana 1: ROAS ${roasSemana1} ➔ $${retornoDiarioSemana1.toLocaleString()} USD/día\n` +
-    `• Semana 2: ROAS ${roasSemana2} ➔ $${retornoDiarioSemana2.toLocaleString()} USD/día\n` +
+  const solucion = `Con SODIE eliminas la dependencia de la data segmentada tradicional. Al inyectar automáticamente tu lista de nuevos compradores objetivo cada 72 horas, tu ROAS escala semana a semana invirtiendo lo mismo:\n` +
+    `• Semana 1: ROAS ${roasSemana1} > $${retornoDiarioSemana1.toLocaleString()} USD/día\n` +
+    `• Semana 2: ROAS ${roasSemana2} > $${retornoDiarioSemana2.toLocaleString()} USD/día\n` +
     `• Semana 3: ROAS ${roasSemana3} ➔ $${retornoDiarioSemana3.toLocaleString()} USD/día\n` +
     `• Semana 4: ROAS ${roasSemana4} ➔ $${retornoDiarioSemana4.toLocaleString()} USD/día`;
 
