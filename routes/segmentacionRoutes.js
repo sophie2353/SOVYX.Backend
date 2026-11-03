@@ -14,20 +14,28 @@ const { procesarYGuardarAudiencia, normalizeClientId } = require('./uploadRoutes
  * distribuidas equitativamente entre los países seleccionados.
  */
 function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho }) {
-  // ⚡ Normalización robusta de países: si vienen como string separado por comas o array
+  // ⚡ Normalización robusta de países
   let listaPaises = ['US'];
   if (Array.isArray(paises) && paises.length > 0) {
     listaPaises = paises.map(p => String(p).trim().toUpperCase());
   } else if (typeof paises === 'string' && paises.trim() !== '') {
-    listaPaises = paises.split(',').map(p => p.trim().toUpperCase());
+    listaPaises = paises.split(',').map(p => String(p).trim().toUpperCase());
   }
 
   const valorBase = parseFloat(value) || 1000;
   const totalPaises = listaPaises.length;
 
-  // ⚡ Cálculo blindado: Aseguramos que nunca baje de 1,200 filas (mínimo 300 por país, o más si hay pocos países)
-  const filasMinimasGlobales = 1200;
-  const filasPorPais = Math.max(300, Math.ceil(filasMinimasGlobales / totalPaises));
+  // ⚡ Cálculo exacto según tu regla: 
+  // 1 país = 1,200 | 2 países = 600 c/u | 3 o más países = proporción que garantice mínimo 1,200 a 1,500 total (ej: 5 países = 400 c/u = 2,000)
+  let filasPorPais;
+  if (totalPaises === 1) {
+    filasPorPais = 1200;
+  } else if (totalPaises === 2) {
+    filasPorPais = 600;
+  } else {
+    // Para 3 o más países, aseguramos un bloque fuerte por país (ej: mínimo 400 por país)
+    filasPorPais = Math.max(400, Math.ceil(1200 / totalPaises));
+  }
 
   const nombres = ['Carlos', 'Sofía', 'Mateo', 'Valentina', 'Santiago', 'Camila', 'Alejandro', 'Mariana', 'Diego', 'Lucía', 'Valeria', 'Sebastián', 'Renata', 'Joaquín', 'Isabella'];
   const apellidos = ['Mendoza', 'Rodríguez', 'Silva', 'Gomez', 'Hernandez', 'Torres', 'Perez', 'Morales', 'Rios', 'Castro', 'Navarro', 'Rojas', 'Ortega', 'Vargas', 'Jiménez'];
@@ -46,7 +54,7 @@ function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho
       datasetCompleto.push({
         firstName: fn.toLowerCase(),
         lastName: ln.toLowerCase(),
-        country: pais, // 👈 Asigna el país correcto del array iterado
+        country: pais, // 👈 Asigna perfectamente cada país del array (BR, SV, US, etc.)
         zip: '00000',
         value: valorCalculado > 0 ? valorCalculado : 100,
         age_min: parseInt(edadMin) || 22,
