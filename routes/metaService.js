@@ -1,3 +1,9 @@
+/**
+ * SODIE - Servicio de Conexión y Gestión de Meta Ads (services/metaService.js)
+ * Actualizado para Lookalike + Advantage+ con mínimo 1,200 filas globales 
+ * (300 por país), sin correos ni teléfonos, y manejo avanzado de Value-Based.
+ */
+
 const crypto = require('crypto');
 const campaignStorage = require('./campaignStorageService');
 
@@ -5,7 +11,7 @@ const GRAPH_VERSION = 'v26.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 /**
- * Cifrado obligatorio SHA-256 para Meta Graph API
+ * Cifrado obligatorio SHA-256 para Meta Graph API (Solo datos permitidos)
  */
 function hashData(value) {
   if (!value || typeof value !== 'string') return null;
@@ -15,7 +21,7 @@ function hashData(value) {
 }
 
 /**
- * Nombre estandarizado de campaña: PRUEBA - SODIE - {CLIENT_ID}
+ * Nombre estandarizado de campaña: SODIE - {CLIENT_ID}
  */
 function buildCampaignName(clientId = 'ADMIN') {
   const cleanId = String(clientId).trim().toUpperCase();
@@ -91,7 +97,7 @@ const metaService = {
   },
 
   // =========================================================================
-  // 2. CREACIÓN DE AUDIENCIA SEMILLA Y LOOKALIKES (RETENIDOS O GENERADOS)
+  // 2. CREACIÓN DE AUDIENCIA SEMILLA Y LOOKALIKES (VALUE-BASED)
   // =========================================================================
   async crearAudienciaSemillaConValor(adAccountId, token, name, clientId = 'ADMIN') {
     const creds = getMetaCredentials({ token, clientId, adAccountId });
@@ -105,7 +111,7 @@ const metaService = {
       body: JSON.stringify({
         name: name,
         subtype: 'CUSTOM',
-        description: 'Semilla inyectada desde SODIE (Value-Based)',
+        description: 'Semilla inyectada desde SODIE (Value-Based sin correos/teléfonos)',
         customer_file_source: 'USER_PROVIDED_ONLY',
         is_value_based: true,
         access_token: creds.token
@@ -130,27 +136,24 @@ const metaService = {
     const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
     
-    const schema = ['EMAIL', 'PHONE', 'FN', 'LN', 'COUNTRY', 'LOOKALIKE_VALUE'];
+    // Schema limpio: Únicamente nombres, apellido, país y el valor (LOOKALIKE_VALUE) sin email ni phone
+    const schema = ['FN', 'LN', 'COUNTRY', 'LOOKALIKE_VALUE'];
 
     const formattedData = usersPayload.map(u => {
       const country = (u.country || u.pais || 'US').toString().trim().toUpperCase();
       const rawValue = u.value !== undefined ? u.value : (u.valor !== undefined ? u.valor : 1000);
       const valueNum = typeof rawValue === 'number' ? rawValue : parseFloat(rawValue || 1000);
       
-      const emailSimulado = u.email || `lead_${country.toLowerCase()}_${Date.now()}@sodie-leads.com`;
-      const phoneSimulado = u.phone || `+1555${Math.floor(100000 + Math.random() * 900000)}`;
-      const fnSimulado = u.firstName || u.nombre || 'Customer';
-      const lnSimulado = u.lastName || u.apellido || 'Target';
+      const fnSimulado = u.firstName || u.nombre || 'carlos';
+      const lnSimulado = u.lastName || u.apellido || 'mendoza';
 
       return [
-        hashData(emailSimulado),
-        hashData(phoneSimulado),
         hashData(fnSimulado),
         hashData(lnSimulado),
         country,
         valueNum > 0 ? valueNum : 10000 
       ];
-    }).filter(row => row[0] && row[1]);
+    }).filter(row => row[2]); // Validar que tenga al menos el país
 
     if (!formattedData.length) {
       throw new Error('⚠️ No se encontraron registros válidos para la inyección de valor.');
@@ -247,7 +250,7 @@ const metaService = {
   },
 
   // =========================================================================
-  // 3. CREACIÓN DE CAMPAÑA + ADSET (Soporta ADMIN y CLIENT-#01 al #10+)
+  // 3. CREACIÓN DE CAMPAÑA + ADSET (Con Advantage+ Audience integrado)
   // =========================================================================
   async crearCampanaVentas({ 
     actId, 
@@ -256,8 +259,8 @@ const metaService = {
     clientId = 'ADMIN', 
     dailyBudget, 
     customAudiences = [],
-    minAge = 25, 
-    maxAge = 65, 
+    minAge = 22, 
+    maxAge = 55, 
     websiteUrl = 'https://sodie.app'
   }) {
     const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId: actId });
@@ -267,13 +270,14 @@ const metaService = {
     }
 
     const campaignName = buildCampaignName(clientId);
-    const rawBudget = dailyBudget !== undefined ? dailyBudget : (clientId === 'ADMIN' ? 1000 : 3900);
+    // Presupuesto optimizado a 33$/día (o el valor recibido por parámetro)
+    const rawBudget = dailyBudget !== undefined ? dailyBudget : 3300;
     const finalDailyBudget = rawBudget < 100 ? rawBudget * 100 : rawBudget; 
 
     console.log(`📊 [SODIE Engine] Configurando campaña para [${clientId}] con presupuesto diario total de: $${finalDailyBudget / 100} USD`);
 
     // ---------------------------------------------------------
-    // 1. CREAR CAMPAÑA (is_adset_budget_sharing_enabled = false para ABO)
+    // 1. CREAR CAMPAÑA
     // ---------------------------------------------------------
     const campaignUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/campaigns`;
     const campaignRes = await fetch(campaignUrl, { 
@@ -309,16 +313,13 @@ const metaService = {
     }
 
     if (!pageId) {
-      console.warn(`⚠️ [SODIE Engine] La cuenta ${creds.adAccountId} no devolvió promote_pages. Usando página matriz de respaldo.`);
       pageId = process.env.META_PAGE_ID || ''; 
     }
 
     // ---------------------------------------------------------
     // 3. SUBIR IMAGEN DESDE INTERNET
     // ---------------------------------------------------------
-    console.log(`[SODIE] Obteniendo imagen comodín directamente de la nube...`);
-    
-    const imgRes = await fetch('https://placehold.co/1080x1080/1a1a1a/34d399/png?text=Borrador+SODIE');
+    const imgRes = await fetch('https://placehold.co/1080x1080/1a1a1a/34d399/png?text=Borrador+SODIE+V4');
     const imageBuffer = await imgRes.arrayBuffer();
     const imgBlob = new Blob([imageBuffer], { type: 'image/png' });
     
@@ -338,7 +339,7 @@ const metaService = {
     const imageHash = uploadData.images['sodie_placeholder.png'].hash;
 
     // ---------------------------------------------------------
-    // 4, 5 y 6. CICLO POR CADA PAÍS (AD SET, CREATIVE Y AD)
+    // 4, 5 y 6. CICLO POR CADA PAÍS (CON ADVANTAGE+ AUDIENCE HABILITADO)
     // ---------------------------------------------------------
     const targets = (customAudiences && customAudiences.length > 0) 
       ? customAudiences 
@@ -351,14 +352,17 @@ const metaService = {
     for (const target of targets) {
       const countryCode = target.country || 'US';
       
-      // -- PASO 4: CREAR AD SET INDIVIDUAL --
       const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
       
       const targetingData = {
         geo_locations: { countries: [countryCode] }, 
-        age_min: parseInt(minAge, 10) || 18, 
-        age_max: parseInt(maxAge, 10) || 65,
-        publisher_platforms: ['facebook', 'instagram'] 
+        age_min: parseInt(minAge, 10) || 22, 
+        age_max: parseInt(maxAge, 10) || 55,
+        publisher_platforms: ['facebook', 'instagram'],
+        // ⚡ Habilitar Advantage+ Audience (Targeting Relaxation Type para Lookalike)
+        targeting_relaxation_types: {
+          custom_audience: 1
+        }
       };
 
       if (target.id) {
@@ -366,7 +370,7 @@ const metaService = {
       }
 
       const adSetBody = {
-        name: `${campaignName} - AdSet LAL 1% (${countryCode})`,
+        name: `${campaignName} - AdSet LAL 1% + Adv+ (${countryCode})`,
         campaign_id: campaignId,
         daily_budget: budgetPerAdSet,
         billing_event: 'IMPRESSIONS',
@@ -393,14 +397,14 @@ const metaService = {
       
       createdAdSets.push(adSetData.id);
 
-      // -- PASO 5: CREAR CREATIVE INDIVIDUAL --
+      // -- CREATIVE --
       const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
       const objectStorySpec = {
         page_id: pageId,
         link_data: {
           image_hash: imageHash,
           link: websiteUrl,
-          message: `Tu anuncio para ${countryCode} va aquí. Selecciona "Usar publicación existente" en la configuración.`,
+          message: `Ecosistema SODIE - Automatización de pautas publicitarias de alto rendimiento para ${countryCode}.`,
           call_to_action: { type: 'LEARN_MORE', value: { link: websiteUrl } }
         }
       };
@@ -419,7 +423,7 @@ const metaService = {
       const creativeData = await creativeRes.json();
       if (creativeData.error) throw new Error(`Meta API Creative Error (${countryCode}): ${creativeData.error.message}`);
 
-      // -- PASO 6: CREAR AD INDIVIDUAL --
+      // -- AD --
       const adUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/ads`;
       const adRes = await fetch(adUrl, {
         method: 'POST',
@@ -453,7 +457,7 @@ const metaService = {
   },
   
   // =========================================================================
-  // 4. CICLO DE 72 HORAS & ORQUESTACIÓN DE LALs
+  // 4. CICLO DE 72 HORAS & ORQUESTACIÓN
   // =========================================================================
   async pausarCampana(token, campaignId) {
     if (!campaignId) return null;
@@ -482,7 +486,7 @@ const metaService = {
     pixelId,
     usersPayload = null,
     customAudiences = [],
-    dailyBudget = 1000,
+    dailyBudget = 3300,
     version = 'V3.5',
     minAge,      
     maxAge,      
@@ -497,7 +501,7 @@ const metaService = {
 
       let finalAudiences = customAudiences;
       if ((!finalAudiences || finalAudiences.length === 0) && usersPayload && usersPayload.length > 0) {
-        console.log(`🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes al vuelo para ${clientId}...`);
+        console.log(`🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes con Advantage+ al vuelo para ${clientId}...`);
         const generatedLal = await this.procesarEInyectarLookalikes({
           adAccountId: creds.adAccountId,
           token: creds.token,
