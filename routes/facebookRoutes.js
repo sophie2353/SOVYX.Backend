@@ -120,7 +120,7 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
     }
 
     // 🌐 LÓGICA DEL SITIO WEB: Usar el enviado, o el guardado en la nube
-    let finalWebsiteUrl = websiteUrl || metaCtx.clientDoc?.meta?.websiteUrl || 'https://tu-sitio-default.com';
+    let finalWebsiteUrl = websiteUrl || metaCtx.clientDoc?.meta?.websiteUrl || 'https://sodie.app';
     
     // Si enviaron uno nuevo desde el frontend que no teníamos, lo guardamos para siempre
     if (websiteUrl && websiteUrl !== metaCtx.clientDoc?.meta?.websiteUrl) {
@@ -129,38 +129,40 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
         { $set: { 'meta.websiteUrl': finalWebsiteUrl } }
       );
     }
-
     // 🔍 LÓGICA DE AUDIENCIA Y EDADES (Extraído directo de la nube)
     const ultimaAudiencia = await Audiencia.findOne({ clientId: metaCtx.clientId }).sort({ createdAt: -1 });
     
     const customAudiences = ultimaAudiencia?.segmentacion?.custom_audiences || [];
     const usersPayload = ultimaAudiencia?.segmentacion?.usersPayload || [];
     
-    // 💡 Extraemos las edades directamente de la nube (ajusta la ruta según cómo lo guardes en tu Schema)
-    const minAge = ultimaAudiencia?.segmentacion?.edad_minima || 25; 
-    const maxAge = ultimaAudiencia?.segmentacion?.edad_maxima || 65;
+    // 💡 Extracción robusta de edades desde la estructura de segmentación o parámetros
+    const minAge = ultimaAudiencia?.segmentacion?.age_min || ultimaAudiencia?.parametrosConfig?.edadMin || 22; 
+    const maxAge = ultimaAudiencia?.segmentacion?.age_max || ultimaAudiencia?.parametrosConfig?.edadMax || 55;
 
     if (!customAudiences.length && !usersPayload.length) {
-      return res.status(400).json({ success: false, error: `No se encontraron registros para ${metaCtx.clientId}.` });
+      return res.status(400).json({ success: false, error: `No se encontraron registros de audiencia en Mongo para ${metaCtx.clientId}. El paso de Upload falló o no se ha procesado.` });
     }
 
     if (!metaService || typeof metaService.procesarCicloHora24 !== 'function') {
       return res.status(500).json({ success: false, error: 'metaService no disponible.' });
     }
 
-    // ⚡ Disparar ciclo: MetaService inyecta
+    // ⚡ BLINDAJE DE PRESUPUESTO: Forzamos 3300 (33.00 USD) si no viene especificado desde el frontend
+    const presupuestoFinal = dailyBudget ? parseFloat(dailyBudget) : 3300;
+
+    // ⚡ Disparar ciclo: MetaService inyecta con el presupuesto y edades correctos
     const borradorResult = await metaService.procesarCicloHora24({
       clientId: metaCtx.clientId,
       token: metaCtx.fb_token,
       adAccountId: targetActId,
-      pixelId: metaCtx.pixel_id, // Pasamos el default del config, MetaService decidirá qué hacer
+      pixelId: metaCtx.pixel_id,
       usersPayload: usersPayload,
       customAudiences: customAudiences,
-      dailyBudget: dailyBudget ? parseFloat(dailyBudget) : 1000,
+      dailyBudget: presupuestoFinal, // <-- Aquí entran los 33$ fijos (3300)
       version: version || 'V3.5',
-      minAge: minAge,            // Viene de la nube
-      maxAge: maxAge,            // Viene de la nube
-      websiteUrl: finalWebsiteUrl // Viene del frontend (1ra vez) o de la nube
+      minAge: minAge,            // 👈 Extraído directo de la nube
+      maxAge: maxAge,            // 👈 Extraído directo de la nube
+      websiteUrl: finalWebsiteUrl 
     });
 
     const campaignId = borradorResult.campaignId;
