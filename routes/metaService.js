@@ -1,7 +1,7 @@
 /**
  * SODIE - Servicio de Conexión y Gestión de Meta Ads (services/metaService.js)
  * Actualizado para Lookalike + Advantage+ con mínimo 1,200 filas globales 
- * (300 por país), sin correos ni teléfonos, y manejo avanzado de Value-Based.
+ * (soporte multi-país robusto y presupuesto fijo de $33/día).
  */
 
 const crypto = require('crypto');
@@ -136,7 +136,6 @@ const metaService = {
     const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
     const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
     
-    // Schema limpio: Únicamente nombres, apellido, país y el valor (LOOKALIKE_VALUE) sin email ni phone
     const schema = ['FN', 'LN', 'COUNTRY', 'LOOKALIKE_VALUE'];
 
     const formattedData = usersPayload.map(u => {
@@ -153,7 +152,7 @@ const metaService = {
         country,
         valueNum > 0 ? valueNum : 10000 
       ];
-    }).filter(row => row[2]); // Validar que tenga al menos el país
+    }).filter(row => row[2]);
 
     if (!formattedData.length) {
       throw new Error('⚠️ No se encontraron registros válidos para la inyección de valor.');
@@ -215,13 +214,17 @@ const metaService = {
 
     const creds = getMetaCredentials({ token, clientId, adAccountId });
 
-    const countriesFound = [...new Set(
+    // Detección robusta de múltiples países sin forzar US por defecto inmediato
+    let countriesFound = [...new Set(
       usersPayload
         .map(u => (u.country || u.pais || '').trim().toUpperCase())
         .filter(c => c.length === 2)
     )];
 
-    if (!countriesFound.length) countriesFound.push('US');
+    if (!countriesFound.length) {
+      console.warn('⚠️ [MetaServices] No se detectaron códigos de país válidos en el payload. Usando multisegmentación por defecto (BR, SV, US)...');
+      countriesFound = ['BR', 'SV', 'US'];
+    }
 
     const seedAudienceId = await this.crearAudienciaSemillaConValor(
       creds.adAccountId, 
@@ -250,14 +253,14 @@ const metaService = {
   },
 
   // =========================================================================
-  // 3. CREACIÓN DE CAMPAÑA + ADSET (Con Advantage+ Audience integrado)
+  // 3. CREACIÓN DE CAMPAÑA + ADSET (Con Advantage+ Audience y $33/día fijos)
   // =========================================================================
   async crearCampanaVentas({ 
     actId, 
     token, 
     pixelId, 
     clientId = 'ADMIN', 
-    dailyBudget, 
+    dailyBudget = 3300, 
     customAudiences = [],
     minAge = 22, 
     maxAge = 55, 
@@ -270,8 +273,9 @@ const metaService = {
     }
 
     const campaignName = buildCampaignName(clientId);
-    // Presupuesto optimizado a 33$/día (o el valor recibido por parámetro)
-    const rawBudget = dailyBudget !== undefined ? dailyBudget : 3300;
+    
+    // ⚡ BLINDAJE DE PRESUPUESTO: Si viene menor a 100 se asumen dólares y se pasa a centavos (3300 = $33.00)
+    const rawBudget = dailyBudget !== undefined ? Number(dailyBudget) : 3300;
     const finalDailyBudget = rawBudget < 100 ? rawBudget * 100 : rawBudget; 
 
     console.log(`📊 [SODIE Engine] Configurando campaña para [${clientId}] con presupuesto diario total de: $${finalDailyBudget / 100} USD`);
@@ -359,7 +363,6 @@ const metaService = {
         age_min: parseInt(minAge, 10) || 22, 
         age_max: parseInt(maxAge, 10) || 55,
         publisher_platforms: ['facebook', 'instagram'],
-        // ⚡ Habilitar Advantage+ Audience (Targeting Relaxation Type para Lookalike)
         targeting_relaxation_types: {
           custom_audience: 1
         }
