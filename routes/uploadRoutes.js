@@ -47,8 +47,6 @@ function extraerCamposTexto(buffer) {
       return foundKey ? String(row[foundKey]).trim() : '';
     };
 
-    const email = getVal(['email', 'e-mail', 'correo', 'correo electronico', 'mail']);
-    const phone = getVal(['phone', 'telefono', 'tel', 'celular', 'mobile']);
     const country = getVal(['country', 'pais', 'geo', 'codigo pais']);
     const zip = getVal(['codigo postal', 'zip', 'zip code', 'postal code', 'cp']);
     const fn = getVal(['nombre', 'first name', 'firstname', 'fname']);
@@ -56,21 +54,15 @@ function extraerCamposTexto(buffer) {
     const value = getVal(['value', 'valor', 'monto', 'purchase value', 'ltv', 'precio', 'total']);
 
     return {
-      email: email.toLowerCase(),
-      phone: phone.replace(/\D/g, ''),
       country: country ? country.toUpperCase() : 'US',
       zip: zip,
       firstName: fn.toLowerCase(),
       lastName: ln.toLowerCase(),
       value: value ? parseFloat(value.replace(/[^0-9.-]+/g, '')) || 0 : 0
     };
-  }).filter(item => item.email || item.phone || item.firstName || item.value > 0);
+  }).filter(item => item.firstName || item.lastName || item.value > 0);
 }
 
-/**
- * Función centralizada y exportable para procesar y guardar audiencias en MongoDB
- * (Usada tanto por el endpoint de archivo como por segmentacionRoutes directamente)
- */
 async function procesarYGuardarAudiencia({ sessionId, clientId, nicho, usersPayload, fileName = 'dataset.xlsx' }) {
   const activeClientId = normalizeClientId(clientId);
   const session = sessionId || `sess_${activeClientId}_${Date.now()}`;
@@ -78,7 +70,7 @@ async function procesarYGuardarAudiencia({ sessionId, clientId, nicho, usersPayl
 
   let extractedTargeting;
   if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
-    const dummyCsv = usersPayload.map(u => `${u.email},${u.phone},${u.country},${u.value}`).join('\n');
+    const dummyCsv = usersPayload.map(u => `${u.firstName},${u.lastName},${u.country},${u.value}`).join('\n');
     extractedTargeting = await ia1Instance.segmentarCsv(dummyCsv, { nicho: nichoObjetivo });
   } else if (ia1Instance && typeof ia1Instance.generarSegmentacion === 'function') {
     extractedTargeting = ia1Instance.generarSegmentacion(nichoObjetivo, false, { 
@@ -100,7 +92,6 @@ async function procesarYGuardarAudiencia({ sessionId, clientId, nicho, usersPayl
     extractedTargeting.usersPayload = usersPayload;
   }
 
-  // ⚡ UNIFICADO: Actualizamos o creamos buscando por clientId para que todo esté en el mismo documento
   const audienciaGuardada = await Audiencia.findOneAndUpdate(
     { clientId: activeClientId },
     {
@@ -130,7 +121,6 @@ async function procesarYGuardarAudiencia({ sessionId, clientId, nicho, usersPayl
   };
 }
 
-// Endpoint tradicional para subida de archivos (Excel / CSV)
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     const { sessionId, clientId, nicho } = req.body;
@@ -138,7 +128,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
     const parsedPayload = extraerCamposTexto(req.file.buffer);
     if (!parsedPayload || parsedPayload.length === 0) {
-      return res.status(400).json({ error: 'No se encontraron registros válidos con emails o teléfonos procesables.' });
+      return res.status(400).json({ error: 'No se encontraron registros válidos con nombres o valores procesables.' });
     }
 
     const resultado = await procesarYGuardarAudiencia({
@@ -152,7 +142,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     return res.json({ 
       ok: true, 
       ...resultado,
-      message: 'Excel procesado con IA1 y guardado en Audiencias. Listo para que FacebookRoutes cree el borrador en Meta.'
+      message: 'Excel procesado con IA1 (sin correos/teléfonos) y guardado en Audiencias.'
     });
 
   } catch (error) {
@@ -173,7 +163,6 @@ router.get('/test-debug', async (req, res) => {
   });
 });
 
-// Exportamos tanto el router como la función procesadora para uso interno directo
 module.exports = router;
 module.exports.procesarYGuardarAudiencia = procesarYGuardarAudiencia;
 module.exports.normalizeClientId = normalizeClientId;
