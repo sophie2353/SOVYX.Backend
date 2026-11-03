@@ -1,5 +1,5 @@
 /**
- * SODIE - Test Suite V3.6 (Formulario -> Segmentación -> Configurar Meta -> Crear Borrador)
+ * SODIE - Test Suite V3.6 (Formulario -> Segmentación -> Configurar Meta -> Borrador)
  */
 const express = require('express');
 const router = express.Router();
@@ -7,7 +7,6 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-// Modelos de MongoDB
 const Audiencia = require('../models/Audiencia');
 const Client = require('../models/clients');
 
@@ -30,28 +29,28 @@ function saveTestHistory(entry) {
 }
 
 async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000') {
-  // Usamos 'ADMIN-TEST' para que facebookRoutes lo identifique como ADMIN pero podamos limpiar sin borrar tu config principal
   const testClientId = 'ADMIN'; 
   const logs = [];
 
   console.log('\n======================================================================');
-  console.log('🚀 INICIANDO TEST DE FLUJO COMPLETO (FORMULARIO -> MONGO -> META API)');
+  console.log('🚀 INICIANDO TEST DE FLUJO COMPLETO (FORMULARIO -> MONGO -> UPLOAD)');
   console.log('======================================================================\n');
 
   try {
     // -----------------------------------------------------------------------
-    // PASO 1: Procesar Segmentación (Genera Audiencia y Usuarios)
+    // PASO 1: Procesar Segmentación con múltiples países (Ej: BR, SV, US)
     // -----------------------------------------------------------------------
-    const paisesParam = ['CO', 'AR', 'US', 'MX', 'SV']; 
-    const valorLTV = 15000; 
+    const paisesParam = ['BR', 'SV', 'US']; 
+    const valorLTV = 1500; 
+    const presupuestoDiarioCentavos = 3300; // 33$ en centavos
 
     logs.push(`📡 [TEST] POST /api/v1/segmentacion/procesar...`);
     
     const formSegRes = await axios.post(`${baseUrl}/api/v1/segmentacion/procesar`, {
       clientId: testClientId,
       paises: paisesParam,
-      edadMin: 25,
-      edadMax: 40,
+      edadMin: 22,
+      edadMax: 55,
       value: valorLTV,
       nicho: 'infoproductos'
     });
@@ -60,7 +59,7 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
     logs.push(`Registros generados: ${formSegRes.data.totalRegistros}`);
 
     // -----------------------------------------------------------------------
-    // PASO 2: Verificación en MongoDB
+    // PASO 2: Verificación estricta en MongoDB (Comprobar que Upload guardó el payload)
     // -----------------------------------------------------------------------
     logs.push('🔍 [VERIFICACIÓN] Extrayendo la audiencia desde MongoDB...');
     const audienciaMongo = await Audiencia.findOne({ clientId: testClientId }).sort({ createdAt: -1 });
@@ -68,30 +67,36 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
     if (!audienciaMongo) throw new Error('❌ La audiencia no se encontró en MongoDB.');
 
     const payloadExtraido = audienciaMongo.segmentacion?.usersPayload || [];
+    const paisesEncontrados = audienciaMongo.segmentacion?.countriesFound || [];
+    
     console.log(`✅ PASO 2 OK (MongoDB): Encontrados ${payloadExtraido.length} registros.`);
-    logs.push(`Muestra de registro: ${payloadExtraido[0]?.email} | ${payloadExtraido[0]?.country}`);
+    console.log(`🌍 Países detectados en la nube:`, paisesEncontrados);
+    
+    if (payloadExtraido.length < 1200) {
+      throw new Error(`⚠️ El registro de filas (${payloadExtraido.length}) es inferior al mínimo de 1,200 establecido.`);
+    }
+
+    logs.push(`Muestra de registro limpio (Sin correos/teléfonos): ${payloadExtraido[0]?.firstName} | ${payloadExtraido[0]?.country} | Val: ${payloadExtraido[0]?.value}`);
 
     // -----------------------------------------------------------------------
-    // PASO 3: Consultar Estado del Temporizador
+    // PASO 3: Consultar Estado del Temporizador y Edades guardadas
     // -----------------------------------------------------------------------
     const estadoRes = await axios.get(`${baseUrl}/api/v1/segmentacion/estado/${encodeURIComponent(testClientId)}`);
-    console.log('✅ PASO 3 OK (Timer 72h):', estadoRes.data.ok ? 'EXITOSO' : 'FALLIDO');
+    console.log('✅ PASO 3 OK (Timer 72h y Config):', estadoRes.data.ok ? 'EXITOSO' : 'FALLIDO');
 
-        // -----------------------------------------------------------------------
-    // RESUMEN EXITOSO
-    // -----------------------------------------------------------------------
     const summary = {
       testId: `test_full_${Date.now()}`,
       status: 'SUCCESS',
       clientId: testClientId,
-      valorIngresado: valorLTV, // 👈 Aquí ves el valor enviado ($15,000)
-      valorProcesadoCentavos: Math.round(Number(valorLTV) * 100), // 👈 Aquí confirmas el x100 en centavos (1,500,000)
+      valorIngresado: valorLTV,
+      presupuestoConfiguradoCentavos: presupuestoDiarioCentavos,
       totalRegistros: formSegRes.data.totalRegistros,
+      paisesVerificados: paisesEncontrados,
       logs
     };
 
     saveTestHistory(summary);
-    console.log('\n✨ ¡TEST COMPLETO VERIFICADO! META API RESPONDIÓ CORRECTAMENTE ✨\n');
+    console.log('\n✨ ¡TEST DE FLUJO DE AUDIENCIA VERIFICADO CON ÉXITO EN MONGO! ✨\n');
     return summary;
 
   } catch (error) {
@@ -107,11 +112,8 @@ async function runFormularioSegmentacionTest(baseUrl = 'http://localhost:10000')
     saveTestHistory(errorSummary);
     throw error;
   } finally {
-    // -----------------------------------------------------------------------
-    // LIMPIEZA AUTOMÁTICA
-    // -----------------------------------------------------------------------
     try {
-      console.log('🧹 [CLEANUP] Limpiando datos de prueba (ADMIN-TEST) en MongoDB...');
+      console.log('🧹 [CLEANUP] Limpiando datos de prueba en MongoDB...');
       await Audiencia.deleteMany({ clientId: testClientId });
       await Client.deleteOne({ clientId: testClientId });
       console.log('✨ [CLEANUP] Completado.');
@@ -130,7 +132,7 @@ router.all('/', async (req, res) => {
     const result = await runFormularioSegmentacionTest(baseUrl);
     return res.status(200).json({
       ok: true,
-      message: 'Flujo completo (Frontend -> Mongo -> Meta API) probado con éxito.',
+      message: 'Flujo completo (Segmentación -> Upload -> Mongo) probado con éxito.',
       result
     });
   } catch (err) {
