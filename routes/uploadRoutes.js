@@ -69,15 +69,24 @@ async function procesarYGuardarAudiencia({ sessionId, clientId, nicho, usersPayl
   const nichoObjetivo = nicho || 'infoproductos';
 
   let extractedTargeting;
-  if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
-    const dummyCsv = usersPayload.map(u => `${u.firstName},${u.lastName},${u.country},${u.value}`).join('\n');
+
+  // ⚡ Si el archivo es el dataset automático del generador, saltamos el parseo CSV falso para no perder los países
+  if (fileName && fileName.includes('dataset_automatico')) {
+    const paisesUnicos = [...new Set(usersPayload.map(u => (u.country || u.pais || 'US').toUpperCase()))];
+    extractedTargeting = {
+      nicho: nichoObjetivo,
+      age_min: usersPayload[0]?.age_min || 22,
+      age_max: usersPayload[0]?.age_max || 55,
+      country: paisesUnicos[0] || 'US',
+      countriesFound: paisesUnicos, // 👈 Aquí se quedan intactos tus países (BR, SV, etc.)
+      usersPayload: usersPayload
+    };
+  } else if (ia1Instance && typeof ia1Instance.segmentarCsv === 'function') {
+    // Esto se mantiene solo por si suben un archivo Excel/CSV real de forma manual
+    const dummyCsv = usersPayload.map(u => `${u.firstName},${u.lastName},${u.country || u.pais || 'US'},${u.value}`).join('\n');
     extractedTargeting = await ia1Instance.segmentarCsv(dummyCsv, { nicho: nichoObjetivo });
-  } else if (ia1Instance && typeof ia1Instance.generarSegmentacion === 'function') {
-    extractedTargeting = ia1Instance.generarSegmentacion(nichoObjetivo, false, { 
-      usersPayload: usersPayload 
-    });
   } else {
-    const paisesUnicos = [...new Set(usersPayload.map(u => u.country || 'US'))];
+    const paisesUnicos = [...new Set(usersPayload.map(u => (u.country || u.pais || 'US').toUpperCase()))];
     extractedTargeting = {
       nicho: nichoObjetivo,
       age_min: usersPayload[0]?.age_min || 22,
