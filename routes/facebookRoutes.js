@@ -165,19 +165,22 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
       websiteUrl: finalWebsiteUrl 
     });
 
+    const cleanClientId = String(metaCtx.clientId || 'ADMIN').trim().toUpperCase();
     const campaignId = borradorResult.campaignId;
 
+    // ⚡ Blindaje con upsert: true para que soporte ADMIN y CLIENT-#XX sin fallar si no existe
     await Client.findOneAndUpdate(
-      { clientId: metaCtx.clientId },
-      { $set: { 'meta.lastCampaignId': campaignId, 'meta.act_id': targetActId } }
+      { clientId: cleanClientId },
+      { $set: { 'meta.lastCampaignId': campaignId, 'meta.act_id': targetActId } },
+      { upsert: true, new: true }
     );
 
     return res.json({
       success: true,
-      clientId: metaCtx.clientId,
+      clientId: cleanClientId,
       campaignId,
       status: 'PAUSED',
-      redirectUrl: `/confirmacion.html?step=activar_campana&clientId=${encodeURIComponent(metaCtx.clientId)}&campaignId=${campaignId}`
+      redirectUrl: `/confirmacion.html?step=activar_campana&clientId=${encodeURIComponent(cleanClientId)}&campaignId=${campaignId}`
     });
 
   } catch (err) {
