@@ -1,7 +1,7 @@
 /**
  * SODIE - Pre-procesador de Segmentación (routes/segmentacionRoutes.js)
- * Garantiza un mínimo global de 1,200 a 1,500 filas repartidas equitativamente por país,
- * sin correos ni teléfonos falsos, con variación dinámica de valores y nombres únicos.
+ * Garantiza un mínimo global de 1,300+ filas repartidas equitativamente por país,
+ * capturando correctamente el array 'paises' del frontend sin recurrir a US por defecto.
  */
 
 const express = require('express');
@@ -10,31 +10,35 @@ const Audiencia = require('../models/Audiencia');
 const { procesarYGuardarAudiencia, normalizeClientId } = require('./uploadRoutes');
 
 /**
- * Genera un dataset dinámico garantizando un mínimo de 1,200 filas globales 
- * distribuidas equitativamente entre los países seleccionados.
+ * Genera un dataset dinámico garantizando un mínimo global de 1,300 filas 
+ * distribuidas equitativamente entre los países reales que envía el frontend.
  */
-function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho }) {
-  // ⚡ Normalización robusta de países
-  let listaPaises = ['US'];
-  if (Array.isArray(paises) && paises.length > 0) {
-    listaPaises = paises.map(p => String(p).trim().toUpperCase());
-  } else if (typeof paises === 'string' && paises.trim() !== '') {
-    listaPaises = paises.split(',').map(p => String(p).trim().toUpperCase());
+function mapearDatasetCliente({ clientId, paises, countries, value, edadMin, edadMax, nicho }) {
+  // ⚡ Capturamos 'paises' (que es como lo manda tu frontend) o 'countries' por respaldo
+  const inputPaises = paises || countries;
+
+  let listaPaises = [];
+  if (Array.isArray(inputPaises) && inputPaises.length > 0) {
+    listaPaises = inputPaises.map(p => String(p).trim().toUpperCase());
+  } else if (typeof inputPaises === 'string' && inputPaises.trim() !== '') {
+    listaPaises = inputPaises.split(',').map(p => String(p).trim().toUpperCase());
+  }
+
+  // 🚨 PROTECCIÓN CRÍTICA: Si el array viene vacío, lanzamos error en vez de colar 'US'
+  if (listaPaises.length === 0) {
+    throw new Error('⚠️ El array de países llegó vacío. Debes enviar al menos un país desde el frontend.');
   }
 
   const valorBase = parseFloat(value) || 1000;
   const totalPaises = listaPaises.length;
 
-  // ⚡ Cálculo exacto según tu regla: 
-  // 1 país = 1,200 | 2 países = 600 c/u | 3 o más países = proporción que garantice mínimo 1,200 a 1,500 total (ej: 5 países = 400 c/u = 2,000)
+  // ⚡ Cálculo proporcional apuntando a un mínimo global seguro de 1,300 registros
+  // Ej: 1 país = 1300 filas | 3 países = ~434 c/u | 5 países = ~300 c/u (Total > 1300)
   let filasPorPais;
   if (totalPaises === 1) {
-    filasPorPais = 1200;
-  } else if (totalPaises === 2) {
-    filasPorPais = 600;
+    filasPorPais = 1300; // <--- Subido a 1,300 exactos para evitar cualquier rebote de 1,199
   } else {
-    // Para 3 o más países, aseguramos un bloque fuerte por país (ej: mínimo 400 por país)
-    filasPorPais = Math.max(400, Math.ceil(1200 / totalPaises));
+    filasPorPais = Math.max(300, Math.ceil(1300 / totalPaises));
   }
 
   const nombres = ['Carlos', 'Sofía', 'Mateo', 'Valentina', 'Santiago', 'Camila', 'Alejandro', 'Mariana', 'Diego', 'Lucía', 'Valeria', 'Sebastián', 'Renata', 'Joaquín', 'Isabella'];
@@ -43,6 +47,7 @@ function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho
   const datasetCompleto = [];
   let contadorGlobal = 1;
 
+  // ⚡ Bucle que asigna cada registro al país correspondiente que envió el cliente
   listaPaises.forEach(pais => {
     for (let i = 1; i <= filasPorPais; i++) {
       const fn = nombres[(contadorGlobal * 7) % nombres.length];
@@ -54,7 +59,7 @@ function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho
       datasetCompleto.push({
         firstName: fn.toLowerCase(),
         lastName: ln.toLowerCase(),
-        country: pais, // 👈 Asigna perfectamente cada país del array (BR, SV, US, etc.)
+        country: pais, // 👈 Respeta estrictamente cada país del array (BR, CO, ES, US, etc.)
         zip: '00000',
         value: valorCalculado > 0 ? valorCalculado : 100,
         age_min: parseInt(edadMin) || 22,
@@ -75,7 +80,7 @@ function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho
    ========================================================================== */
 router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
   try {
-    const { clientId, paises, edadMin, edadMax, value, nicho } = req.body;
+    const { clientId, paises, countries, edadMin, edadMax, value, nicho } = req.body;
 
     const activeClientId = normalizeClientId(clientId);
     const claveColeccion = `Datos_${activeClientId}`;
@@ -83,9 +88,11 @@ router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
     const numericValue = Number(value) || 0;
     const valueEnCentavos = Math.round(numericValue * 100);
 
+    // Mapeamos usando explícitamente el parámetro 'paises' que envía tu interfaz
     const payloadAjustado = mapearDatasetCliente({
       clientId: activeClientId,
       paises,
+      countries,
       value: valueEnCentavos,
       edadMin,
       edadMax,
@@ -104,7 +111,7 @@ router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
           clientId: activeClientId,
           nombreDataset: claveColeccion,
           parametrosConfig: {
-            paises,
+            paises: paises || countries,
             edadMin: parseInt(edadMin) || 22,
             edadMax: parseInt(edadMax) || 55,
             value: parseFloat(value) || 1000,
@@ -118,7 +125,7 @@ router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
       { upsert: true, new: true }
     );
 
-    console.log(`🚀 [SEGMENTACION] Despachando ${totalRegistrosGenerados} registros limpios (mínimo 1,200) a Upload para ${activeClientId}...`);
+    console.log(`🚀 [SEGMENTACION] Despachando ${totalRegistrosGenerados} registros limpios (mínimo 1,300) a Upload para ${activeClientId}...`);
 
     const uploadResponse = await procesarYGuardarAudiencia({
       sessionId: session,
@@ -137,7 +144,7 @@ router.post(['/procesar', '/guardar-4-datos'], async (req, res) => {
       rotationTimerHours: 72,
       nextRotationAt: proximaRotacion,
       uploadResult: uploadResponse,
-      message: `${totalRegistrosGenerados} registros generados con éxito bajo el estándar mínimo de 1,200 filas sin correos ni teléfonos.`
+      message: `${totalRegistrosGenerados} registros generados con éxito bajo el estándar de 1,300+ filas multi-país.`
     });
 
   } catch (error) {
