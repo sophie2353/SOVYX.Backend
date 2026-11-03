@@ -14,16 +14,20 @@ const { procesarYGuardarAudiencia, normalizeClientId } = require('./uploadRoutes
  * distribuidas equitativamente entre los países seleccionados.
  */
 function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho }) {
-  const listaPaises = Array.isArray(paises) 
-    ? paises.map(p => String(p).trim().toUpperCase())
-    : String(paises || 'US').split(',').map(p => p.trim().toUpperCase());
+  // ⚡ Normalización robusta de países: si vienen como string separado por comas o array
+  let listaPaises = ['US'];
+  if (Array.isArray(paises) && paises.length > 0) {
+    listaPaises = paises.map(p => String(p).trim().toUpperCase());
+  } else if (typeof paises === 'string' && paises.trim() !== '') {
+    listaPaises = paises.split(',').map(p => p.trim().toUpperCase());
+  }
 
   const valorBase = parseFloat(value) || 1000;
-  const totalPaises = listaPaises.length || 1;
+  const totalPaises = listaPaises.length;
 
-  // Calcular filas por país asegurando un mínimo global de 1,200 a 1,500 filas
-  const filasTotalesDeseadas = Math.max(1200, totalPaises * 400); 
-  const filasPorPais = Math.ceil(filasTotalesDeseadas / totalPaises);
+  // ⚡ Cálculo blindado: Aseguramos que nunca baje de 1,200 filas (mínimo 300 por país, o más si hay pocos países)
+  const filasMinimasGlobales = 1200;
+  const filasPorPais = Math.max(300, Math.ceil(filasMinimasGlobales / totalPaises));
 
   const nombres = ['Carlos', 'Sofía', 'Mateo', 'Valentina', 'Santiago', 'Camila', 'Alejandro', 'Mariana', 'Diego', 'Lucía', 'Valeria', 'Sebastián', 'Renata', 'Joaquín', 'Isabella'];
   const apellidos = ['Mendoza', 'Rodríguez', 'Silva', 'Gomez', 'Hernandez', 'Torres', 'Perez', 'Morales', 'Rios', 'Castro', 'Navarro', 'Rojas', 'Ortega', 'Vargas', 'Jiménez'];
@@ -33,18 +37,16 @@ function mapearDatasetCliente({ clientId, paises, value, edadMin, edadMax, nicho
 
   listaPaises.forEach(pais => {
     for (let i = 1; i <= filasPorPais; i++) {
-      // Nombres y apellidos variados combinando índices aleatorios y cíclicos
       const fn = nombres[(contadorGlobal * 7) % nombres.length];
       const ln = apellidos[(contadorGlobal * 13) % apellidos.length];
 
-      // Variación dinámica en el valor (Value-based lookalike dinámico)
-      const deltaValor = (Math.random() * 0.4) - 0.2; // Variación de -20% a +20%
+      const deltaValor = (Math.random() * 0.4) - 0.2; 
       const valorCalculado = Math.round(valorBase * (1 + deltaValor));
 
       datasetCompleto.push({
         firstName: fn.toLowerCase(),
         lastName: ln.toLowerCase(),
-        country: pais,
+        country: pais, // 👈 Asigna el país correcto del array iterado
         zip: '00000',
         value: valorCalculado > 0 ? valorCalculado : 100,
         age_min: parseInt(edadMin) || 22,
