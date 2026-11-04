@@ -531,9 +531,13 @@ const metaService = {
         websiteUrl   
       });
 
+            // ⚡ Registrar en el storage con el estado pendiente y las audiencias lookalike creadas
       await campaignStorage.registrarCampaignId({
-        clientId,
+        clientId: creds.isAdmin ? 'ADMIN' : clientId,
         campaignId: nuevaCampana.campaignId,
+        customAudiences: finalAudiences, // 👈 Pasamos los IDs y países del Lookalike
+        estadoIndexacion: 'PENDIENTE',   // 👈 Marcado como pendiente para el radar de 4h
+        tokenUsado: creds.token,         // 👈 Token específico (Admin o Cliente)
         version,
         isAdmin: creds.isAdmin,
         ttlHours: 72
@@ -548,11 +552,6 @@ const metaService = {
         campaignName: nuevaCampana.campaignName,
         cycleHours: 72
       };
-    } catch (error) {
-      console.error('💥 Error en procesarCicloHora72 (MetaServices):', error);
-      throw error;
-    }
-  },
 
   async procesarCicloHora24(params) {
     return this.procesarCicloHora72(params);
