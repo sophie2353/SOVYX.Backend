@@ -357,17 +357,21 @@ const metaService = {
       const countryCode = target.country || 'US';
       const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
       
+            // ⚡ 1. Base Targeting con Advantage Audience apagado por defecto (0)
       const baseTargeting = {
         geo_locations: { countries: [countryCode] }, 
         age_min: parseInt(minAge, 10) || 22, 
         age_max: parseInt(maxAge, 10) || 55,
-        publisher_platforms: ['facebook', 'instagram']
+        publisher_platforms: ['facebook', 'instagram'],
+        targeting_automation: { advantage_audience: 0 } // Exigencia de Meta v26
       };
 
-      // ⚡ Limpio: Sin parámetros obsoletos que causen Invalid parameter
       let targetingData = { ...baseTargeting };
+      
+      // ⚡ 2. Si hay Lookalike, lo inyectamos y activamos Advantage Audience (1) para maximizar rendimiento
       if (target.id && String(target.id).trim() !== '') {
         targetingData.custom_audiences = [{ id: String(target.id).trim() }];
+        targetingData.targeting_automation = { advantage_audience: 1 }; 
       }
 
       const adSetBody = {
