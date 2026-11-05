@@ -552,6 +552,11 @@ const metaService = {
         campaignName: nuevaCampana.campaignName,
         cycleHours: 72
       };
+      } catch (error) {
+      console.error('💥 Error en procesarCicloHora72 (MetaServices):', error);
+      throw error;
+    }
+  },
 
   async procesarCicloHora24(params) {
     return this.procesarCicloHora72(params);
