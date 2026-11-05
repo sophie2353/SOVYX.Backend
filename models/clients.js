@@ -12,7 +12,7 @@ const ClientSchema = new mongoose.Schema({
     campaignExpiresAt: { type: Date },
     status: { type: String, default: 'PENDIENTE' },
     configuredAt: { type: Date }
-  }
+  },
 
   // 👈 NUEVO: Suscripción WebPush nativa vinculada al clientId
   pushSubscription: {
