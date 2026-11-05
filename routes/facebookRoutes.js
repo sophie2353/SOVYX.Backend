@@ -62,9 +62,12 @@ async function getUserMetaContext(userId, sessionId, clientId) {
 /* ==========================================================================
    1. CONFIGURACIÓN (/configurar)
    ========================================================================== */
+ /* ==========================================================================
+   1. CONFIGURACIÓN (/configurar)
+   ========================================================================== */
 router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (req, res) => {
   try {
-    const { clientId, actId, websiteUrl } = req.body; // <-- Recibimos websiteUrl en vez de pixelId
+    const { clientId, actId, websiteUrl } = req.body;
     
     if (!actId) {
       return res.status(400).json({ success: false, error: 'El ID de la cuenta publicitaria (actId) es obligatorio.' });
@@ -73,14 +76,14 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
     const activeClientId = normalizeClientId(clientId);
     const cleanActId = String(actId).replace(/^act_/, '').trim();
     
-    // Guardamos las credenciales base y la URL en MongoDB
+    // Guardamos la configuración inicial limpia en MongoDB
     await Client.findOneAndUpdate(
       { clientId: activeClientId },
       {
         $set: {
           clientId: activeClientId,
           'meta.act_id': cleanActId,
-          'meta.websiteUrl': websiteUrl, // <-- Guardamos la URL aquí
+          'meta.websiteUrl': websiteUrl || 'https://sodie.app',
           'meta.configuredAt': new Date(),
           'meta.status': 'CONFIGURED'
         }
@@ -88,14 +91,14 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
       { upsert: true, new: true }
     );
 
-    console.log(`⚙️ [CONFIGURAR] Credenciales listas para ${activeClientId}.`);
+    console.log(`⚙️ [CONFIGURAR] Credenciales y URL guardadas para ${activeClientId}.`);
     
     return res.json({
       success: true,
-      message: 'Credenciales guardadas y pasadas al motor de creación de borrador.',
+      message: 'Credenciales guardadas con éxito.',
       clientId: activeClientId,
       act_id: cleanActId,
-      nextStep: 'Invocar /crear-borrador con estos parámetros'
+      nextStep: 'Invocar /crear-borrador para procesar e inyectar la campaña.'
     });
 
   } catch (err) {
@@ -109,78 +112,68 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
    ========================================================================== */
 router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/draft'], async (req, res) => {
   try {
-    // Solo recibimos websiteUrl de body (si es la primera vez que lo envían)
-    const { userId, sessionId,clientId, dailyBudget, version, actId, websiteUrl } = req.body;
+    const { userId, sessionId, clientId, dailyBudget, version, actId, websiteUrl } = req.body;
     
     const metaCtx = await getUserMetaContext(userId, sessionId, clientId);
     const targetActId = actId ? String(actId).replace(/^act_/, '').trim() : metaCtx.act_id;
 
     if (!targetActId) {
-      return res.status(400).json({ success: false, error: 'Falta el act_id.' });
+      return res.status(400).json({ success: false, error: 'Falta el ID de la cuenta publicitaria (act_id).' });
     }
 
-    // 🌐 LÓGICA DEL SITIO WEB: Usar el enviado, o el guardado en la nube
+    // Lógica del sitio web
     let finalWebsiteUrl = websiteUrl || metaCtx.clientDoc?.meta?.websiteUrl || 'https://sodie.app';
-    
-    // Si enviaron uno nuevo desde el frontend que no teníamos, lo guardamos para siempre
     if (websiteUrl && websiteUrl !== metaCtx.clientDoc?.meta?.websiteUrl) {
       await Client.findOneAndUpdate(
         { clientId: metaCtx.clientId },
         { $set: { 'meta.websiteUrl': finalWebsiteUrl } }
       );
     }
-    // 🔍 LÓGICA DE AUDIENCIA Y EDADES (Extraído directo de la nube)
+
+    // Extracción de la audiencia desde Mongo
     const ultimaAudiencia = await Audiencia.findOne({ clientId: metaCtx.clientId }).sort({ createdAt: -1 });
-    
     const customAudiences = ultimaAudiencia?.segmentacion?.custom_audiences || [];
     const usersPayload = ultimaAudiencia?.segmentacion?.usersPayload || [];
     
-    // 💡 Extracción robusta de edades desde la estructura de segmentación o parámetros
     const minAge = ultimaAudiencia?.segmentacion?.age_min || ultimaAudiencia?.parametrosConfig?.edadMin || 22; 
     const maxAge = ultimaAudiencia?.segmentacion?.age_max || ultimaAudiencia?.parametrosConfig?.edadMax || 55;
 
     if (!customAudiences.length && !usersPayload.length) {
-      return res.status(400).json({ success: false, error: `No se encontraron registros de audiencia en Mongo para ${metaCtx.clientId}. El paso de Upload falló o no se ha procesado.` });
+      return res.status(400).json({ success: false, error: `No se encontraron registros de audiencia en Mongo para ${metaCtx.clientId}.` });
     }
 
     if (!metaService || typeof metaService.procesarCicloHora24 !== 'function') {
-      return res.status(500).json({ success: false, error: 'metaService no disponible.' });
+      return res.status(500).json({ success: false, error: 'metaService no está disponible.' });
     }
 
-    // ⚡ BLINDAJE DE PRESUPUESTO: Forzamos 3300 (33.00 USD) si no viene especificado desde el frontend
     const presupuestoFinal = dailyBudget ? parseFloat(dailyBudget) : 3300;
 
-    // ⚡ Disparar ciclo: MetaService inyecta con el presupuesto y edades correctos
+    // ⚡ Delegación absoluta a MetaService:
+    // metaService se encarga de crear en Meta y registrar en campaignStorage (con estatus PENDIENTE)
     const borradorResult = await metaService.procesarCicloHora24({
       clientId: metaCtx.clientId,
       token: metaCtx.fb_token,
       adAccountId: targetActId,
       pixelId: metaCtx.pixel_id,
-      usersPayload: usersPayload,
-      customAudiences: customAudiences,
-      dailyBudget: presupuestoFinal, // <-- Aquí entran los 33$ fijos (3300)
+      usersPayload,
+      customAudiences,
+      dailyBudget: presupuestoFinal,
       version: version || 'V3.5',
-      minAge: minAge,            // 👈 Extraído directo de la nube
-      maxAge: maxAge,            // 👈 Extraído directo de la nube
+      minAge,      
+      maxAge,      
       websiteUrl: finalWebsiteUrl 
     });
 
     const cleanClientId = String(metaCtx.clientId || 'ADMIN').trim().toUpperCase();
-    const campaignId = borradorResult.campaignId;
 
-    // ⚡ Blindaje con upsert: true para que soporte ADMIN y CLIENT-#XX sin fallar si no existe
-    await Client.findOneAndUpdate(
-      { clientId: cleanClientId },
-      { $set: { 'meta.lastCampaignId': campaignId, 'meta.act_id': targetActId } },
-      { upsert: true, new: true }
-    );
-
+    // 🚀 Responder ÚNICAMENTE con la confirmación de la inyección
     return res.json({
       success: true,
       clientId: cleanClientId,
-      campaignId,
+      campaignId: borradorResult.campaignId,
       status: 'PAUSED',
-      redirectUrl: `/confirmacion.html?step=activar_campana&clientId=${encodeURIComponent(cleanClientId)}&campaignId=${campaignId}`
+      message: 'Borrador inyectado en Meta con éxito. En fase de maduración de audiencia (Radar 4h).',
+      redirectUrl: `/confirmacion.html?step=esperar_maduracion&clientId=${encodeURIComponent(cleanClientId)}&campaignId=${borradorResult.campaignId}`
     });
 
   } catch (err) {
@@ -198,32 +191,42 @@ router.post(['/activar-campana', '/campaigns/activate', '/api/v1/activar-campana
     const metaCtx = await getUserMetaContext(userId, sessionId, clientId);
     const targetCampaignId = campaignId || metaCtx.lastCampaignId;
 
-    if (!metaCtx.act_id) {
-      return res.status(400).json({ success: false, error: 'Cuenta publicitaria no configurada.' });
+    if (!targetCampaignId) {
+      return res.status(400).json({ success: false, error: 'No se encontró un ID de campaña para activar.' });
     }
 
+    // 1. Verificar en Mongo si el radar de 4h ya marcó la audiencia como lista
+    const audienciaDoc = await Audiencia.findOne({ clientId: metaCtx.clientId });
+    const estaListoParaActivar = audienciaDoc?.estadoIndexacion === 'LISTO_PARA_ACTIVAR';
+
+    // 2. Verificar el estado real en Meta
     let isActiveInMeta = false;
-    if (metaService && typeof metaService.verificarEstadoCampana === 'function' && targetCampaignId) {
+    if (metaService && typeof metaService.verificarEstadoCampana === 'function') {
       try {
         isActiveInMeta = await metaService.verificarEstadoCampana(metaCtx.fb_token, targetCampaignId);
       } catch (e) {
-        console.warn('⚠️ Verificación de estado omitida temporalmente:', e.message);
+        console.warn('⚠️ Verificación de estado en Meta omitida:', e.message);
       }
     }
 
+    // Construir enlace directo al Administrador de Anuncios
     let metaAdsUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${metaCtx.act_id}`;
     if (targetCampaignId) metaAdsUrl += `&selected_campaign_ids=${targetCampaignId}`;
 
     return res.json({
       success: true,
-      status: isActiveInMeta ? 'ACTIVE' : 'PENDING_USER_ACTIVATION',
       clientId: metaCtx.clientId,
       campaignId: targetCampaignId,
-      actId: metaCtx.act_id,
+      status: isActiveInMeta ? 'ACTIVE' : (estaListoParaActivar ? 'READY_FOR_ACTIVATION' : 'MATURING_PAUSED'),
+      canActivate: estaListoParaActivar || isActiveInMeta,
+      message: estaListoParaActivar 
+        ? '¡Audiencia indexada! La campaña está lista para ser activada.' 
+        : 'La audiencia sigue en fase de maduración en los servidores de Meta.',
       metaAdsUrl
     });
 
   } catch (err) {
+    console.error('💥 Error en /activar-campana:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
