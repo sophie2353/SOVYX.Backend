@@ -262,15 +262,18 @@ try {
 
 // --- 14. ENDPOINT SLOTS DISPONIBLES ---
 app.get('/api/clientes/disponibles', async (req, res) => {
-  const maxSovyxSlots = config.sovyx?.totalSlots || 3;
+  const maxSovyxSlots = config.sovyx?.totalSlots || 10;
   res.json({
     totalSlots: maxSovyxSlots,
     ocupados: 0,
     disponibles: maxSovyxSlots,
     mensaje: "Slots disponibles",
-    precio: { reserva: 1000, final: 9000, total: 10000, moneda: 'USD' }
+    precio: { reserva: 25000, moneda: 'USD' }
   });
 });
+
+const timeDashboardRoutes = require('../routes/timeDashboardRoutes');
+app.use('/api/v1/timer', timeDashboardRoutes);
 
 // --- 15. TEST ROUTE (Ruta del Test E2E) ---
 try {
