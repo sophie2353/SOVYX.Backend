@@ -7,7 +7,7 @@ const campaignStorage = require('../routes/campaignStorageService');
 const audienceStatusService = require('../routes/audienceStatusService'); 
 
 // Endpoint GET manual para disparar la prueba cuando tú quieras
-router.get('api/admin/test-final', async (req, res) => {
+router.get('/api/admin/test-final', async (req, res) => {
   // Blindaje anti-error de conexión
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({
