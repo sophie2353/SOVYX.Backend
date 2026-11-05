@@ -358,18 +358,18 @@ const metaService = {
       
       const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
       
-      const targetingData = {
+            const targetingData = {
         geo_locations: { countries: [countryCode] }, 
         age_min: parseInt(minAge, 10) || 22, 
         age_max: parseInt(maxAge, 10) || 55,
-        publisher_platforms: ['facebook', 'instagram'],
-        targeting_relaxation_types: {
-          custom_audience: 1
-        }
+        publisher_platforms: ['facebook', 'instagram']
       };
 
-      if (target.id) {
-        targetingData.custom_audiences = [{ id: target.id }];
+      // Asignación segura de la audiencia personalizada / Lookalike
+      if (target.id && String(target.id).trim() !== '') {
+        targetingData.custom_audiences = [{ id: String(target.id).trim() }];
+        // Activamos la expansión de Advantage+ solo si hay una audiencia custom válida adjunta
+        targetingData.targeting_relaxation_types = { custom_audience: 1 };
       }
 
       const adSetBody = {
