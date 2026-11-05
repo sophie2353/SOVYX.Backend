@@ -1,8 +1,8 @@
 // testStorage.js
 require('dotenv').config();
 const mongoose = require('mongoose');
-const Audiencia = require('./src/models/Audiencia'); // Ajusta la ruta si es necesario
-const campaignStorage = require('./src/routes/campaignStorageService'); // Ajusta la ruta a tu service
+const Audiencia = require('../models/Audiencia'); // Ajusta la ruta si es necesario
+const campaignStorage = require('../routes/campaignStorageService'); // Ajusta la ruta a tu service
 
 async function verificarStorage() {
   try {
