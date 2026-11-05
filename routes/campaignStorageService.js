@@ -22,13 +22,14 @@ async function registrarCampaignId({
   version = 'V3.5', 
   isAdmin = false 
 }) {
-  const key = isAdmin ? 'ID_CAMPAIGN_ADMIN' : `ID_CAMPAIGN_${String(clientId).toUpperCase()}`;
+  const cleanClientId = isAdmin ? 'ADMIN' : String(clientId).trim().toUpperCase();
+  const key = `ID_CAMPAIGN_${cleanClientId}`;
   const now = Date.now();
   const expiresAt = now + (72 * 60 * 60 * 1000); // 72 horas de ciclo
 
   const campaignData = {
     key,
-    clientId: isAdmin ? 'ADMIN' : clientId,
+    clientId: cleanClientId,
     campaignId,
     customAudiences,
     estadoIndexacion,
@@ -41,10 +42,8 @@ async function registrarCampaignId({
   // 1. Guardar en caché rápida de memoria
   activeCampaignsCache.set(key, campaignData);
 
-  // 2. Persistir en la base de datos (Modelo Audiencia o Client según prefieras mantener la metadata)
+  // 2. Persistir en la base de datos
   try {
-    const cleanClientId = isAdmin ? 'ADMIN' : String(clientId).trim().toUpperCase();
-    
     // Actualizamos el documento de Audiencia para que el radar lo barra fácilmente
     await Audiencia.findOneAndUpdate(
       { clientId: cleanClientId },
@@ -64,21 +63,20 @@ async function registrarCampaignId({
       { upsert: true, new: true }
     );
 
-    // Si no es admin, actualizamos también el modelo Client por compatibilidad
-    if (!isAdmin) {
-      await Client.findOneAndUpdate(
-        { clientId: cleanClientId },
-        { 
-          $set: { 
-            'meta.lastCampaignId': campaignId,
-            'meta.version': version,
-            'meta.campaignExpiresAt': new Date(expiresAt),
-            'meta.status': 'PAUSED'
-          } 
-        },
-        { upsert: true }
-      );
-    }
+    // ⚡ FIX: Guardamos SIEMPRE en Client (incluso si es Admin) para que sobreviva a los reinicios de Render
+    await Client.findOneAndUpdate(
+      { clientId: cleanClientId },
+      { 
+        $set: { 
+          'meta.lastCampaignId': campaignId,
+          'meta.version': version,
+          'meta.campaignExpiresAt': new Date(expiresAt),
+          'meta.status': 'PAUSED'
+        } 
+      },
+      { upsert: true }
+    );
+    
   } catch (err) {
     console.error(`⚠️ Error al guardar campaign_id y metadatos en DB para ${key}:`, err.message);
   }
@@ -90,19 +88,21 @@ async function registrarCampaignId({
  * Obtiene el campaign_id vigente verificando la expiración
  */
 async function obtenerCampaignIdVigente(clientId, isAdmin = false) {
-  const key = isAdmin ? 'ID_CAMPAIGN_ADMIN' : `ID_CAMPAIGN_${String(clientId).toUpperCase()}`;
+  const cleanClientId = isAdmin ? 'ADMIN' : String(clientId).trim().toUpperCase();
+  const key = `ID_CAMPAIGN_${cleanClientId}`;
   const now = Date.now();
 
   let data = activeCampaignsCache.get(key);
 
-  if (!data && !isAdmin) {
-    const clientDoc = await Client.findOne({ clientId });
+  // ⚡ FIX: Si no está en caché (ej. Render reinició el server), buscar en BD sin importar si es Admin
+  if (!data) {
+    const clientDoc = await Client.findOne({ clientId: cleanClientId });
     if (clientDoc && clientDoc.meta?.lastCampaignId) {
       const exp = new Date(clientDoc.meta.campaignExpiresAt).getTime();
       if (exp > now) {
         data = {
           key,
-          clientId,
+          clientId: cleanClientId,
           campaignId: clientDoc.meta.lastCampaignId,
           version: clientDoc.meta.version || 'V3.5',
           expiresAt: exp
@@ -115,9 +115,7 @@ async function obtenerCampaignIdVigente(clientId, isAdmin = false) {
   if (data) {
     if (now >= data.expiresAt) {
       activeCampaignsCache.delete(key);
-      if (!isAdmin) {
-        await Client.updateOne({ clientId }, { $unset: { 'meta.lastCampaignId': 1 } });
-      }
+      await Client.updateOne({ clientId: cleanClientId }, { $unset: { 'meta.lastCampaignId': 1 } });
       return null;
     }
     return data.campaignId;
@@ -127,7 +125,7 @@ async function obtenerCampaignIdVigente(clientId, isAdmin = false) {
 }
 
 /**
- * ⚡ NUEVO BLOQUE: Obtiene únicamente las campañas que siguen INACTIVAS / PENDIENTES de indexación
+ * Obtiene únicamente las campañas que siguen INACTIVAS / PENDIENTES de indexación
  * Usado exclusivamente por el Node-cron del radar.
  */
 async function obtenerCampanasInactivas() {
@@ -141,18 +139,16 @@ async function obtenerCampanasInactivas() {
 }
 
 /**
- * ⚡ NUEVO BLOQUE: Marca la campaña/audiencia como LISTA (activa para el usuario) 
+ * Marca la campaña/audiencia como LISTA (activa para el usuario) 
  * para sacarla del radar de consultas repetitivas a Meta.
  */
 async function marcarComoIndexada(clientId, campaignId) {
   try {
     const cleanClientId = String(clientId).trim().toUpperCase();
-    const key = cleanClientId === 'ADMIN' ? 'ID_CAMPAIGN_ADMIN' : `ID_CAMPAIGN_${cleanClientId}`;
     
-    // 1. Limpiar de caché rápida si existía
-    activeCampaignsCache.delete(key);
+    // ⚡ FIX: Eliminamos el borrado de la caché. La campaña DEBE seguir en memoria porque ya está lista.
 
-    // 2. Actualizar en MongoDB cambiando el estado a LISTO_PARA_ACTIVAR
+    // Actualizar en MongoDB cambiando el estado a LISTO_PARA_ACTIVAR
     return await Audiencia.findOneAndUpdate(
       { clientId: cleanClientId, campaignIdPendiente: campaignId },
       { 
