@@ -427,12 +427,12 @@ const metaService = {
         link_data: {
           image_hash: imageHash,
           link: websiteUrl,
-          message: `Ecosistema SODIE - Automatización de pautas publicitarias de alto rendimiento para ${countryCode}.`,
+          message: `Ecosistema SODIE - Automatización de pautas publicitarias de alto rendimiento para ${countryCode}. Actualiza tus datos correspondientes`,
           call_to_action: { type: 'LEARN_MORE', value: { link: websiteUrl } }
         }
       };
 
-      if (instagramId) objectStorySpec.instagram_actor_id = instagramId;
+      // if (instagramId) objectStorySpec.instagram_actor_id = instagramId;
 
       const creativeRes = await fetch(creativeUrl, {
         method: 'POST',
