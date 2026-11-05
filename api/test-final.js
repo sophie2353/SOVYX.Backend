@@ -1,51 +1,59 @@
-require('dotenv').config();
+const express = require('express');
+const router = express.Router();
 const mongoose = require('mongoose');
 
 // Ajusta estas rutas a donde tengas tus servicios realmente
 const campaignStorage = require('../routes/campaignStorageService'); 
 const audienceStatusService = require('../routes/audienceStatusService'); 
 
-async function probarOrquestacionCompleta() {
-  try {
-    console.log('🔄 Conectando a MongoDB para prueba integral...');
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
+// Endpoint GET manual para disparar la prueba cuando tú quieras
+router.get('api/admin/test-final', async (req, res) => {
+  // Blindaje anti-error de conexión
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      success: false,
+      error: 'MongoDB no está conectado todavía. Espera unos segundos e intenta recargar.'
     });
-    console.log('✅ Conectado a la base de datos.\n');
+  }
 
-    console.log('======================================================');
-    console.log('🚀 FASE 1: VERIFICACIÓN DE STORAGE (¿Se guardó en DB?)');
-    console.log('======================================================');
+  try {
+    console.log('🔄 [TEST GET] Consultando estado de campañas inactivas...');
     
     const pendientes = await campaignStorage.obtenerCampanasInactivas();
 
     if (!pendientes || pendientes.length === 0) {
-      console.log('⚠️ RESULTADO: No hay campañas en estado "PENDIENTE".');
-      console.log('💡 Nota: Lanza un borrador nuevo desde tu dashboard y vuelve a correr este test.');
-    } else {
-      console.log(`✅ RESULTADO: Se encontraron ${pendientes.length} campaña(s) esperando al radar.`);
-      pendientes.forEach((campana, index) => {
-        console.log(`  -> [${index + 1}] Cliente: ${campana.clientId} | Campaña Meta ID: ${campana.campaignIdPendiente}`);
-        console.log(`  -> Audiencias LAL inyectadas: ${campana.customAudiencesPendientes.length}`);
+      return res.json({
+        success: true,
+        mensaje: 'No hay campañas en estado "PENDIENTE". Lanza un borrador nuevo para probar.',
+        totalPendientes: 0
       });
-
-      console.log('\n======================================================');
-      console.log('⏰ FASE 2: SIMULACIÓN DE RADAR (Salto de 4 horas)');
-      console.log('======================================================');
-      
-      // Forzamos el chequeo exacto que haría el cron-job
-      await audienceStatusService.ejecutarChequeo();
-
-      console.log('\n✨ [TEST INTEGRAL COMPLETADO] Verifica en los logs de arriba si se disparó la Push y si pasó a LISTO.');
     }
 
-  } catch (error) {
-    console.error('💥 Error crítico durante la prueba integral:', error);
-  } finally {
-    mongoose.connection.close();
-    console.log('🔌 Conexión cerrada.');
-  }
-}
+    let detalleCampanas = [];
+    pendientes.forEach((campana, index) => {
+      detalleCampanas.push({
+        id: index + 1,
+        clientId: campana.clientId,
+        campaignIdMeta: campana.campaignIdPendiente,
+        audienciasInyectadas: campana.customAudiencesPendientes?.length || 0
+      });
+    });
 
-probarOrquestacionCompleta();
+    // Opcional: Ejecutar simulación del radar de 4h si quieres forzarlo en el GET
+    console.log('⏰ [TEST GET] Ejecutando chequeo del radar de audiencias...');
+    await audienceStatusService.ejecutarChequeo();
+
+    return res.json({
+      success: true,
+      mensaje: 'Test de orquestación ejecutado con éxito vía GET.',
+      totalPendientes: pendientes.length,
+      campanas: detalleCampanas
+    });
+
+  } catch (error) {
+    console.error('💥 Error crítico durante el test GET:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+module.exports = router;
