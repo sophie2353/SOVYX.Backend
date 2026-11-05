@@ -1,41 +1,42 @@
 const mongoose = require('mongoose');
 
 const AudienciaSchema = new mongoose.Schema({
-  clientId: { type: String, required: true, index: true }, 
+  clientId: { type: String, required: true }, // 👈 Quitamos el index: true automático para que no colisione al arrancar
   sessionId: { type: String, required: true },
   
   // Archivos
-  fileUrl: { type: String }, // Le quitamos el required por si automatizamos sin archivos
+  fileUrl: { type: String }, 
   fileName: { type: String },
   
-  // Datos de Configuración Automática (Desde tu panel V3.5)
+  // Datos de Configuración Automática
   nombreDataset: { type: String },
   parametrosConfig: { type: Object, default: {} },
   
   // Segmentación generada por IA o Automática
   segmentacion: { type: Object, default: {} }, 
   
-  // Control de estado general (Le quitamos el ENUM para que no te bloquee estados nuevos)
+  // Control de estado general
   estado: { type: String, default: 'PENDIENTE_CONFIRMACION' }, 
   
   // =========================================================
-  // ⚡ NUEVOS CAMPOS PARA EL RADAR Y ORQUESTACIÓN META V3.5
+  // ⚡ CAMPOS PARA EL RADAR Y ORQUESTACIÓN META V3.5
   // =========================================================
-  metaCampaignId: { type: String, default: null }, // Mantenemos el legacy por si acaso
+  metaCampaignId: { type: String, default: null },
   campaignIdPendiente: { type: String, default: null },
   customAudiencesPendientes: { type: Array, default: [] },
   estadoIndexacion: { type: String, default: null },
   tokenUsado: { type: String, default: null },
   indexadoEn: { type: Date, default: null },
   
-  // Objeto anidado meta (Para expiración, versión y estatus)
+  // Objeto anidado meta
   meta: { type: Object, default: {} },
 
   createdAt: { type: Date, default: Date.now }
 }, 
 {
-  timestamps: true, // Agrega updatedAt automáticamente
-  strict: false     // 🚨 EL SALVAVIDAS: Permite inyectar campos dinámicos sin que Mongoose los borre
+  timestamps: true,
+  strict: false,       // 🚨 Salavavidas activo
+  autoIndex: false     // 🛑 Evita que Mongoose intente reconstruir índices en caliente y tire errores raros
 });
 
 module.exports = mongoose.model('Audiencia', AudienciaSchema);
