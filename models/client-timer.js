@@ -1,4 +1,4 @@
-const require = 'mongoose'
+const mongoose = require ('mongoose')
 
 // Dentro de tu Schema de Client en models/clients.js
 timers: {
