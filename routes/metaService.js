@@ -406,6 +406,55 @@ const metaService = {
         delete adSetBody.targeting.custom_audiences;
         adSetBody.name = `${campaignName} - AdSet Geo Open (${countryCode})`;
 
+        const retryRes = await fetch(adSetUrl {
+                // ⚡ Segmentación ESTRICTA: Tu panel manda, no Meta.
+      const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
+      
+      let targetingData = {
+        geo_locations: { countries: [countryCode] }, 
+        age_min: parseInt(minAge, 10) || 22, 
+        age_max: parseInt(maxAge, 10) || 55, // 👈 Entra tu edad exacta del dashboard
+        publisher_platforms: ['facebook', 'instagram'],
+        targeting_automation: { advantage_audience: 0 } // 👈 APAGAMOS la rebeldía de Meta
+      };
+
+      // Si hay Lookalike, lo inyectamos respetando tus límites duros
+      if (target.id && String(target.id).trim() !== '') {
+        targetingData.custom_audiences = [{ id: String(target.id).trim() }];
+      }
+
+      const adSetBody = {
+        name: `${campaignName} - AdSet LAL 1% Estricto (${countryCode})`,
+        campaign_id: campaignId,
+        daily_budget: budgetPerAdSet,
+        billing_event: 'IMPRESSIONS',
+        optimization_goal: 'OFFSITE_CONVERSIONS',
+        bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+        targeting: targetingData,
+        status: 'PAUSED',
+        dsa_beneficiary: "SODIE Client", 
+        dsa_payor: "SODIE Client",
+        access_token: creds.token
+      };
+
+      if (creds.pixelId) {
+        adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
+      }
+
+      let adSetRes = await fetch(adSetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adSetBody)
+      });
+      let adSetData = await adSetRes.json();
+
+      // ⚡ Fallback automático limpio por si la audiencia custom da error
+      if (adSetData.error) {
+        console.warn(`⚠️ [SODIE Engine] Falló AdSet con Lookalike para ${countryCode} (${adSetData.error.message}). Aplicando fallback a geo abierto...`);
+        
+        delete adSetBody.targeting.custom_audiences;
+        adSetBody.name = `${campaignName} - AdSet Geo Open (${countryCode})`;
+
         const retryRes = await fetch(adSetUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -422,6 +471,7 @@ const metaService = {
       }
 
       createdAdSets.push(adSetData.id);
+
 
       // -- CREATIVE --
       const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
