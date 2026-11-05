@@ -10,9 +10,16 @@ const ClientSchema = new mongoose.Schema({
     lastCampaignId: { type: String },
     version: { type: String },
     campaignExpiresAt: { type: Date },
-    status: { type: String, default: 'PENDING' },
+    status: { type: String, default: 'PENDIENTE' },
     configuredAt: { type: Date }
-  },
+  }
+  
+  // Dentro de tu Schema de Client en models/clients.js
+timers: {
+  startTimeStamp: { type: Number, default: Date.now },
+  durationSeconds: { type: Number, default: 345600 } // 96 horas o 72 horas por defecto
+}
+
   // 👈 NUEVO: Suscripción WebPush nativa vinculada al clientId
   pushSubscription: {
     endpoint: { type: String },
