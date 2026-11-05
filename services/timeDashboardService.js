@@ -1,17 +1,17 @@
 /**
  * SODIE - Servicio de Temporizadores en la Nube (services/timeDashboardService.js)
  */
-const Client = require('../models/clients');
+const client = require('../models/clientTimer');
 
 const timeDashboardService = {
   async obtenerOTier(clientId) {
     const cleanId = String(clientId || 'ADMIN').trim().toUpperCase();
-    let clientDoc = await Client.findOne({ clientId: cleanId });
+    let clientDoc = await client.findOne({ clientId: cleanId });
 
     const now = Date.now();
 
     if (!clientDoc || !clientDoc.timers?.startTimeStamp) {
-      await Client.findOneAndUpdate(
+      await client.findOneAndUpdate(
         { clientId: cleanId },
         { 
           $set: { 
@@ -36,7 +36,7 @@ const timeDashboardService = {
     const cleanId = String(clientId || 'ADMIN').trim().toUpperCase();
     const now = Date.now();
     
-    await Client.findOneAndUpdate(
+    await client.findOneAndUpdate(
       { clientId: cleanId },
       { $set: { 'timers.startTimeStamp': now } },
       { upsert: true }
