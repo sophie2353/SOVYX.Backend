@@ -353,22 +353,21 @@ const metaService = {
     const createdAdSets = [];
     const createdAds = [];
 
-    for (const target of targets) {
+        for (const target of targets) {
       const countryCode = target.country || 'US';
-      
       const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
       
-            const targetingData = {
+      const baseTargeting = {
         geo_locations: { countries: [countryCode] }, 
         age_min: parseInt(minAge, 10) || 22, 
         age_max: parseInt(maxAge, 10) || 55,
         publisher_platforms: ['facebook', 'instagram']
       };
 
-      // Asignación segura de la audiencia personalizada / Lookalike
+      // Intentamos primero con la audiencia Lookalike / Custom si existe
+      let targetingData = { ...baseTargeting };
       if (target.id && String(target.id).trim() !== '') {
         targetingData.custom_audiences = [{ id: String(target.id).trim() }];
-        // Activamos la expansión de Advantage+ solo si hay una audiencia custom válida adjunta
         targetingData.targeting_relaxation_types = { custom_audience: 1 };
       }
 
@@ -390,13 +389,38 @@ const metaService = {
         adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
       }
 
-      const adSetRes = await fetch(adSetUrl, {
+      let adSetRes = await fetch(adSetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(adSetBody)
       });
-      const adSetData = await adSetRes.json();
-      if (adSetData.error) throw new Error(`Meta API AdSet Error (${countryCode}): ${adSetData.error.message}`);
+      let adSetData = await adSetRes.json();
+
+      // CORRECCIÓN AUTOMÁTICA (FALLBACK INTELIGENTE):
+      // Si Meta rechaza el AdSet por un parámetro inválido de audiencia, lo atrapamos aquí,
+      // purgamos el custom_audience conflictivo y reintentamos automáticamente en la misma llamada.
+      if (adSetData.error) {
+        console.warn(`⚠️ [SODIE Engine] Falló AdSet con Lookalike para ${countryCode} (${adSetData.error.message}). Aplicando corrección automática (fallback a abierto/geo)...`);
+        
+        // Limpiamos la audiencia custom que causaba el conflicto y dejamos el targeting limpio solo por país y edad
+        delete adSetBody.targeting.custom_audiences;
+        delete adSetBody.targeting.targeting_relaxation_types;
+        adSetBody.name = `${campaignName} - AdSet Geo Open (${countryCode})`;
+
+        // Segundo intento automático inmediato
+        const retryRes = await fetch(adSetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(adSetBody)
+        });
+        adSetData = await retryRes.json();
+
+        if (adSetData.error) {
+          throw new Error(`Meta API AdSet Error Definitivo (${countryCode}): ${adSetData.error.message}`);
+        } else {
+          console.log(`✅ [SODIE Engine] Recuperación exitosa para ${countryCode} mediante fallback automático.`);
+        }
+      }
       
       createdAdSets.push(adSetData.id);
 
