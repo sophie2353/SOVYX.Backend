@@ -278,7 +278,7 @@ app.use('/api/v1/timer', timeDashboardRoutes);
 // --- 15. TEST ROUTE (Ruta del Test E2E) ---
 try {
   const testRoutes = require('./test-final'); // o test-final según tengas nombrado tu archivo
-  safeUse('/api/admin/test-final', testRoutes);
+  safeUse('/api/admin', testRoutes);
 } catch (e) {
   console.warn('⚠️ [TEST ROUTES] No se pudo cargar la ruta de test:', e.message);
 }
