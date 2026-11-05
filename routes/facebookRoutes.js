@@ -110,6 +110,9 @@ router.post(['/configurar', '/save-credentials', '/api/v1/configurar'], async (r
 /* ==========================================================================
    2. CREAR BORRADOR (/crear-borrador)
    ========================================================================== */
+/* ==========================================================================
+   2. CREAR BORRADOR (/crear-borrador)
+   ========================================================================== */
 router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/draft'], async (req, res) => {
   try {
     const { userId, sessionId, clientId, dailyBudget, version, actId, websiteUrl } = req.body;
@@ -148,8 +151,7 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
 
     const presupuestoFinal = dailyBudget ? parseFloat(dailyBudget) : 3300;
 
-    // ⚡ Delegación absoluta a MetaService:
-    // metaService se encarga de crear en Meta y registrar en campaignStorage (con estatus PENDIENTE)
+    // ⚡ Delegación a MetaService para orquestación y creación en Meta
     const borradorResult = await metaService.procesarCicloHora24({
       clientId: metaCtx.clientId,
       token: metaCtx.fb_token,
@@ -166,6 +168,20 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
 
     const cleanClientId = String(metaCtx.clientId || 'ADMIN').trim().toUpperCase();
 
+    // ⚡ FIX: Guardado de seguridad obligatorio en el modelo Client. 
+    // Garantiza que la redirección encuentre el act_id y campaignId en la base de datos sin depender 100% de la caché
+    await Client.findOneAndUpdate(
+      { clientId: cleanClientId },
+      { 
+        $set: { 
+          'meta.lastCampaignId': borradorResult.campaignId, 
+          'meta.act_id': targetActId,
+          'meta.status': 'PAUSED' // Asegura que empiece pausado en el DB
+        } 
+      },
+      { upsert: true, new: true }
+    );
+
     // 🚀 Responder ÚNICAMENTE con la confirmación de la inyección
     return res.json({
       success: true,
@@ -173,6 +189,7 @@ router.post(['/crear-borrador', '/draft', '/api/v1/crear-borrador', '/api/v1/dra
       campaignId: borradorResult.campaignId,
       status: 'PAUSED',
       message: 'Borrador inyectado en Meta con éxito. En fase de maduración de audiencia (Radar 4h).',
+      // NOTA: Asegúrate de que confirmacion.js/html procese el step "esperar_maduracion"
       redirectUrl: `/confirmacion.html?step=esperar_maduracion&clientId=${encodeURIComponent(cleanClientId)}&campaignId=${borradorResult.campaignId}`
     });
 
