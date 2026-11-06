@@ -32,3 +32,5 @@ router.get('/api/v1/cron/radar', async (req, res) => {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
+
+modules.exports = router;
