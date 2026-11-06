@@ -90,12 +90,12 @@ const audienceStatusService = {
     // Enviar por VAPID webpush...
   },
 
-  iniciarCron4Horas() {
-    cron.schedule('0 */4 * * *', () => {
-      this.ejecutarChequeo();
-    });
-    console.log('⏰ [Cron Job] Radar de audiencias inactivas activo (Ejecución cada 4 horas).');
-  }
+ // iniciarCron4Horas() {
+   // cron.schedule('0 */4 * * *', () => {
+   //   this.ejecutarChequeo();
+ //   });
+ //   console.log(' [Cron Job] Radar de audiencias inactivas activo (Ejecución cada 4 horas).');
+//  }
 };
 
 module.exports = audienceStatusService;
