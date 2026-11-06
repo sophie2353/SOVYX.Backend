@@ -1,5 +1,4 @@
-// Asegúrate de tener importado tu servicio del radar
-const audienceStatusService = require('../services/audienceStatusService'); 
+const audienceStatusService = require('./audienceStatusService'); 
 
 /* ==========================================================================
    ENDPOINT DEL RADAR (Llamado externamente cada 4 horas)
