@@ -272,10 +272,21 @@ app.get('/api/clientes/disponibles', async (req, res) => {
   });
 });
 
+// --- 15 ------//
 const timeDashboardRoutes = require('../routes/timeDashboardRoutes');
 app.use('/api/v1/timer', timeDashboardRoutes);
+} catch (e) {
+  console.warn('⚠️ [TIMER ROUTES] No se pudo cargar la ruta de test:', e.message);
+}
 
-// --- 15. TEST ROUTE (Ruta del Test E2E) ---
+// ----- 16 ----- //
+const cronRoutes = require('../routes/cronRoutes');
+app.use(cronRoutes);
+} catch (e) {
+  console.warn('⚠️ [CRON ROUTES] No se pudo cargar la ruta de test:', e.message);
+}
+
+// --- 17. TEST ROUTE (Ruta del Test E2E) ---
 try {
   const testRoutes = require('./test-final'); // o test-final según tengas nombrado tu archivo
   safeUse('/api/admin', testRoutes);
