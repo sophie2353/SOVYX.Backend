@@ -75,6 +75,16 @@ const audienceStatusService = {
     } catch (err) {
       console.error('💥 Error crítico en el radar de 4 horas:', err.message);
     }
+    
+     // =====================================================================
+        // ⚡ THROTTLING (EL FRENO DE MANO)
+        // =====================================================================
+        // Si hay más campañas en la lista, obligamos al servidor a esperar 
+        // 30 segundos exactos antes de consultar al siguiente cliente.
+        // 10 campañas x 30 segundos = 5 minutos exactos de procesamiento dosificado.
+        console.log(`⏳ [Radar Throttling] Pausando 30 segundos antes de consultar la siguiente campaña...`);
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
   },
 
   async enviarNotificacionPush({ clientId, campaignId, alcance }) {
