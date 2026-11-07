@@ -1,7 +1,6 @@
 /**
  * SODIE - Radar de Verificación de Audiencias (Cada 4 Horas)
  */
-const cron = require('node-cron');
 const campaignStorage = require('./campaignStorageService');
 const webpush = require('web-push');
 
@@ -42,49 +41,48 @@ const audienceStatusService = {
 
           if (data.error) {
             console.error(`⚠️ Error consultando audiencia ${targetAudienceId} (${clientId}):`, data.error.message);
-            continue;
-          }
-
-          // ⚡ Extraemos el alcance actualizado
-          const alcanceAprox = data.approximate_count_upper_bound || 0;
-          
-          // ⚡ Verificamos si Meta ya lo marcó como "Listo para entrega" (Código 200)
-          const isReady = data.delivery_status && data.delivery_status.code === 200;
-
-          if (isReady || alcanceAprox > 1000) {
-            console.log(`✨ [Radar 4H] ¡Audiencia de ${clientId} INDEXADA con éxito! Alcance est: ${alcanceAprox}`);
-
-            // A) Notificar al cliente y/o Admin vía Push
-            await this.enviarNotificacionPush({
-              clientId,
-              campaignId: campaignIdPendiente,
-              alcance: alcanceAprox > 0 ? alcanceAprox : 'Generando...'
-            });
-
-            // B) Comunicar a campaignStorage que pase de PENDIENTE a LISTO_PARA_ACTIVAR
-            await campaignStorage.marcarComoIndexada(clientId, campaignIdPendiente);
-            console.log(`🔒 [Radar 4H] Campaña ${campaignIdPendiente} de [${clientId}] marcada como ACTIVA/LISTA en Storage.`);
           } else {
-            console.log(`⏳ [Radar 4H] Audiencia de ${clientId} aún procesando en Meta. Se volverá a intentar en el próximo ciclo.`);
+            // ⚡ Extraemos el alcance actualizado
+            const alcanceAprox = data.approximate_count_upper_bound || 0;
+            
+            // ⚡ Verificamos si Meta ya lo marcó como "Listo para entrega" (Código 200)
+            const isReady = data.delivery_status && data.delivery_status.code === 200;
+
+            if (isReady || alcanceAprox > 1000) {
+              console.log(`✨ [Radar 4H] ¡Audiencia de ${clientId} INDEXADA con éxito! Alcance est: ${alcanceAprox}`);
+
+              // A) Notificar al cliente y/o Admin vía Push
+              await this.enviarNotificacionPush({
+                clientId,
+                campaignId: campaignIdPendiente,
+                alcance: alcanceAprox > 0 ? alcanceAprox : 'Generando...'
+              });
+
+              // B) Comunicar a campaignStorage que pase de PENDIENTE a LISTO_PARA_ACTIVAR
+              await campaignStorage.marcarComoIndexada(clientId, campaignIdPendiente);
+              console.log(`🔒 [Radar 4H] Campaña ${campaignIdPendiente} de [${clientId}] marcada como ACTIVA/LISTA en Storage.`);
+            } else {
+              console.log(`⏳ [Radar 4H] Audiencia de ${clientId} aún procesando en Meta. Se volverá a intentar en el próximo ciclo.`);
+            }
           }
 
         } catch (innerError) {
           console.error(`💥 Error de red procesando al cliente ${clientId}:`, innerError.message);
         }
-      }
-    } catch (err) {
-      console.error('💥 Error crítico en el radar de 4 horas:', err.message);
-    }
-    
-     // =====================================================================
-        // ⚡ THROTTLING (EL FRENO DE MANO)
+
+        // =====================================================================
+        // ⚡ THROTTLING (EL FRENO DE MANO) - AHORA SÍ DENTRO DEL BUCLE FOR
         // =====================================================================
         // Si hay más campañas en la lista, obligamos al servidor a esperar 
         // 30 segundos exactos antes de consultar al siguiente cliente.
-        // 10 campañas x 30 segundos = 5 minutos exactos de procesamiento dosificado.
         console.log(`⏳ [Radar Throttling] Pausando 30 segundos antes de consultar la siguiente campaña...`);
         await new Promise(resolve => setTimeout(resolve, 30000));
-      }
+        
+      } // <-- AQUÍ CIERRA EL BUCLE FOR (Después de la pausa)
+
+    } catch (err) {
+      console.error('💥 Error crítico en el radar de 4 horas:', err.message);
+    }
   },
 
   async enviarNotificacionPush({ clientId, campaignId, alcance }) {
@@ -98,14 +96,7 @@ const audienceStatusService = {
     });
 
     // Enviar por VAPID webpush...
-  },
-
- // iniciarCron4Horas() {
-   // cron.schedule('0 */4 * * *', () => {
-   //   this.ejecutarChequeo();
- //   });
- //   console.log(' [Cron Job] Radar de audiencias inactivas activo (Ejecución cada 4 horas).');
-//  }
+  }
 };
 
 module.exports = audienceStatusService;
