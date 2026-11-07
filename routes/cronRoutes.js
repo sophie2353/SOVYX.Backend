@@ -7,7 +7,7 @@ router.get('/api/v1/cron/radar', async (req, res) => {
   try {
     // 1. Protección estricta: Solo un servicio con la clave correcta puede disparar esto
     const authHeader = req.headers.authorization;
-    const cronSecret = process.env.CRON_SECRET || 'sodie-radar-secret-2026';
+    const cronSecret = process.env.CRON_SECRET || '';
 
     if (authHeader !== `Bearer ${cronSecret}`) {
       console.warn('⚠️ [CRON] Intento de acceso no autorizado al Radar.');
