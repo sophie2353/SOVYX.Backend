@@ -1,4 +1,6 @@
-const audienceStatusService = require('./audienceStatusService'); 
+const express = require('express');
+const router = express.Router();
+const audienceStatusService = require('../services/audienceStatusService'); // Ajusta los '../' según dónde esté tu servicio
 
 /* ==========================================================================
    ENDPOINT DEL RADAR (Llamado externamente cada 4 horas)
@@ -33,4 +35,4 @@ router.get('/api/v1/cron/radar', async (req, res) => {
   }
 });
 
-modules.exports = router;
+module.exports = router;
