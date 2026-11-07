@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const audienceStatusService = require('../services/audienceStatusService'); // Ajusta los '../' según dónde esté tu servicio
+const audienceStatusService = require('./routes/audienceStatusService');
 
 /* ==========================================================================
    ENDPOINT DEL RADAR (Llamado externamente cada 4 horas)
