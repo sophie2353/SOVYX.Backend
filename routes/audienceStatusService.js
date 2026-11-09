@@ -32,40 +32,38 @@ const audienceStatusService = {
         // ⚡ ENCAPSULAMOS EN TRY-CATCH INTERNO: Si falla 1 cliente, el bucle sigue con los demás
         try {
           const targetAudienceId = customAudiencesPendientes[0].id;
-          
-          // 🚨 FIX V26.0: Solicitar upper_bound y delivery_status
-          const url = `${GRAPH_BASE_URL}/${targetAudienceId}?fields=name,delivery_status,approximate_count_upper_bound&access_token=${activeToken}`;
 
-          const res = await fetch(url);
-          const data = await res.json();
+          // 🚨 CONSULTA EXTENDIDA: Incluye operation_status y objeto delivery_status completo
+const url = `${GRAPH_BASE_URL}/${targetAudienceId}?fields=name,delivery_status,operation_status,approximate_count_lower_bound,approximate_count_upper_bound&access_token=${activeToken}`;
 
-          if (data.error) {
-            console.error(`⚠️ Error consultando audiencia ${targetAudienceId} (${clientId}):`, data.error.message);
-          } else {
-            // ⚡ Extraemos el alcance actualizado
-            const alcanceAprox = data.approximate_count_upper_bound || 0;
-            
-            // ⚡ Verificamos si Meta ya lo marcó como "Listo para entrega" (Código 200)
-            const isReady = data.delivery_status && data.delivery_status.code === 200;
+const res = await fetch(url);
+const data = await res.json();
 
-            if (isReady || alcanceAprox > 1000) {
-              console.log(`✨ [Radar 4H] ¡Audiencia de ${clientId} INDEXADA con éxito! Alcance est: ${alcanceAprox}`);
+if (data.error) {
+  console.error(`⚠️ Error Meta Graph API (${clientId}):`, JSON.stringify(data.error, null, 2));
+} else {
+  const alcanceAprox = data.approximate_count_upper_bound || 0;
+  const isReady = data.delivery_status && data.delivery_status.code === 200;
 
-              // A) Notificar al cliente y/o Admin vía Push
-              await this.enviarNotificacionPush({
-                clientId,
-                campaignId: campaignIdPendiente,
-                alcance: alcanceAprox > 0 ? alcanceAprox : 'Generando...'
-              });
+  // LOG DETALLADO DE DIAGNÓSTICO
+  console.log(`🔍 [DIAGNÓSTICO COMPLETO - ${clientId}]`);
+  console.log(`   └─ Delivery Status:`, JSON.stringify(data.delivery_status));
+  console.log(`   └─ Operation Status:`, JSON.stringify(data.operation_status));
+  console.log(`   └─ Alcance Est.: ${alcanceAprox} usuarios`);
 
-              // B) Comunicar a campaignStorage que pase de PENDIENTE a LISTO_PARA_ACTIVAR
-              await campaignStorage.marcarComoIndexada(clientId, campaignIdPendiente);
-              console.log(`🔒 [Radar 4H] Campaña ${campaignIdPendiente} de [${clientId}] marcada como ACTIVA/LISTA en Storage.`);
-            } else {
-              console.log(`⏳ [Radar 4H] Audiencia de ${clientId} aún procesando en Meta. Se volverá a intentar en el próximo ciclo.`);
-            }
-          }
-
+  if (isReady || alcanceAprox > 1000) {
+    await this.enviarNotificacionPush({
+      clientId,
+      campaignId: campaignIdPendiente,
+      alcance: alcanceAprox > 0 ? alcanceAprox : 'Generando...'
+    });
+    await campaignStorage.marcarComoIndexada(clientId, campaignIdPendiente);
+  } else {
+    // Si sigue en revisión, guardamos o imprimimos la razón que da Meta
+    const razonMeta = data.delivery_status?.description || 'En proceso de igualación de datos';
+    console.log(`⏳ [Radar 4H] Estado: "${razonMeta}". Reintento en el próximo ciclo.`);
+  }
+}
         } catch (innerError) {
           console.error(`💥 Error de red procesando al cliente ${clientId}:`, innerError.message);
         }
