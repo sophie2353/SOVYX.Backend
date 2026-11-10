@@ -15,11 +15,17 @@ function hashData(data) {
 
 function generarDataFalsa() {
   const data = [];
+  const paises = ['us', 'br', 'sv']; // Códigos ISO de 2 letras en minúscula
+
   for (let i = 0; i < 5000; i++) {
+    // Escoger un país al azar de los 3
+    const paisAleatorio = paises[Math.floor(Math.random() * paises.length)]; 
+
     data.push([
       hashData(`TestName${i}`), 
       hashData(`TestLast${i}`), 
-      Math.floor(Math.random() * (15000 - 8000 + 1)) + 8000 // Value de 8K a 15K
+      hashData(paisAleatorio), // 👈 País encriptado en SHA256 (Requisito de Meta)
+      Math.floor(Math.random() * (15000 - 8000 + 1)) + 8000
     ]);
   }
   return data;
@@ -51,7 +57,10 @@ async function ejecutarTestIntegral() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        payload: { schema: ['FN', 'LN', 'LOOKALIKE_VALUE'], data: usuarios },
+        payload: { 
+          schema: ['FN', 'LN', 'COUNTRY', 'LOOKALIKE_VALUE'],
+          data: usuarios 
+        },
         access_token: ACCESS_TOKEN
       })
     });
