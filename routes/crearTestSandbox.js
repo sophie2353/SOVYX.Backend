@@ -5,8 +5,14 @@ const crypto = require('crypto');
 const campaignStorage = require('./campaignStorageService'); 
 
 const GRAPH_VERSION = 'v26.0';
-const AD_ACCOUNT_ID = process.env.META_AD_ACCOUNT_ID;
+// Validación de Cuenta de Anuncios y Token
+const rawAdAccountId = process.env.META_AD_ACCOUNT_ID || process.env.AD_ACCOUNT_ID;
 const ACCESS_TOKEN = process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
+
+// Meta exige el prefijo 'act_' antes del ID de la cuenta publicitaria
+const AD_ACCOUNT_ID = rawAdAccountId && !rawAdAccountId.startsWith('act_') 
+  ? `act_${rawAdAccountId}` 
+  : rawAdAccountId;
 
 // ⏱️ UTILIDAD NUEVA: Función para pausar la ejecución
 const pausar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -33,9 +39,17 @@ function generarDataFalsa() {
 }
 
 async function ejecutarTestIntegral() {
+  // 🚨 FRENO DE SEGURIDAD: Verificar que la variable existe antes de llamar a Meta
+  if (!AD_ACCOUNT_ID || AD_ACCOUNT_ID.includes('undefined')) {
+    console.error('💥 ERROR: La variable META_AD_ACCOUNT_ID no está definida en Render.');
+    console.log('👉 Asegúrate de agregar META_AD_ACCOUNT_ID en la sección "Environment Variables" de Render.');
+    return false;
+  }
+
+  console.log(`📌 Usando Cuenta de Anuncios: ${AD_ACCOUNT_ID}`);
+  
   try {
-        // 1. Crear Semilla en Meta
-    console.log('🚀 1. Solicitando creación de semilla a Meta...');
+    // 1. Crear Semilla en Meta
     const seedRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${AD_ACCOUNT_ID}/customaudiences`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -50,16 +64,15 @@ async function ejecutarTestIntegral() {
     
     const seedData = await seedRes.json();
 
-    // 🚨 ESCUDO EN LA SEMILLA: Si Meta rechaza la semilla, nos dice el motivo exacto aquí
     if (seedData.error) {
       console.error('\n💥 ERROR DE META CREANDO LA SEMILLA:');
       console.error(JSON.stringify(seedData.error, null, 2));
-      console.log('\n❌ El test se abortó en el Paso 1.');
       return false;
     }
 
     const seedId = seedData.id;
-    console.log(`✅ Semilla Creada con éxito. ID real: ${seedId}`);
+    console.log(`✅ Semilla Creada con éxito. ID: ${seedId}`);
+    
     // 2. Inyectar los 5,000 usuarios a la semilla
     const usuarios = generarDataFalsa();
     await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${seedId}/users`, {
