@@ -33,11 +33,7 @@ function generarDataFalsa() {
 
 async function ejecutarTestIntegral() {
   try {
-    // 1. Conectar a MongoDB para poder guardar el test
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('📦 Conectado a la BD para el test...');
-
-    // 2. Crear Semilla en Meta
+    // Crear Semilla en Meta
     const seedRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${AD_ACCOUNT_ID}/customaudiences`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -103,13 +99,11 @@ async function ejecutarTestIntegral() {
       ttlHours: 72
     });
     
-    console.log('✅ ¡Test guardado impecable! El Radar lo procesará en el próximo ciclo.');
+        console.log('✅ ¡Test guardado impecable! El Radar lo procesará en el próximo ciclo.');
     
-    
-    process.exit(0); // Cerrar script
+    return true; // 👈 Cambia los process.exit() por esto
   } catch (error) {
     console.error('💥 Error:', error);
-    process.exit(1);
   }
 }
 
