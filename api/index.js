@@ -288,6 +288,14 @@ try {
   console.warn('⚠️ [TEST ROUTES] No se pudo cargar la ruta de test:', e.message);
 }
 
+// TEST AUDIENCIA #18 // 
+
+// Ruta temporal para ejecutar el test desde el navegador
+app.get('/api/run-test', (req, res) => {
+  require('../routes/crearTestSandbox.js');
+  res.send('Test Sandbox disparado. Revisa tus logs.');
+});
+
 app.get('/api/health', (req, res) => res.json({ 
   status: '🟢 SODIE OPERATIONAL', 
   mode: process.env.NODE_ENV || 'production',
