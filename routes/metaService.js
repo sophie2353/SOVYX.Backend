@@ -42,7 +42,7 @@ function getMetaCredentials({ token, clientId = 'ADMIN', pixelId = null, adAccou
     : (pixelId || null);
 
   const rawAccountId = isAdmin 
-    ? (adAccountId || process.env.META_AD_ACCOUNT_ID) 
+    ? (adAccountId || process.env.AD_ACCOUNT_ID) 
     : adAccountId;
     
   const finalAdAccountId = rawAccountId ? String(rawAccountId).replace(/^act_/, '').trim() : null;
