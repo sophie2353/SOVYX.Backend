@@ -18,7 +18,7 @@ router.get('/v1/metrics/sse', (req, res) => {
   // Enviar un ping inicial o estado actual al conectar
   const initialPayload = JSON.stringify({
     type: 'CONNECTED',
-    disponibles: 3, // O consulta actual a la BD
+    disponibles: 10, // O consulta actual a la BD
     timestamp: Date.now()
   });
   res.write(`data: ${initialPayload}\n\n`);
