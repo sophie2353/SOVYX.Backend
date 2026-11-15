@@ -5,19 +5,19 @@
 const express = require('express');
 const router = express.Router();
 const Client = require('../models/clients');
-const Audiencia = require('../models/Audiencia');
-const campaignStorage = require('./campaignStorageService');
+// const Audiencia = require('../models/Audiencia');
+// const campaignStorage = require('./campaignStorageService');
 
-let metaService = null;
-try {
-  metaService = require('./metaService');
-} catch (e) {
-  try {
-    metaService = require('./metaService');
-  } catch (err) {
-    console.warn('⚠️ [FB ROUTES] metaService no encontrado.');
-  }
-}
+// let metaService = null;
+// try {
+  // metaService = require('./metaService');
+// } catch (e) {
+ // try {
+  //  metaService = require('./metaService');
+ // } catch (err) {
+   // console.warn('⚠️ [FB ROUTES] metaService no encontrado.');
+ // }
+//}
 
 const FB_CONFIG = {
   ADMIN_TOKEN: process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN || '',
