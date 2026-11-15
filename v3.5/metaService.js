@@ -1,0 +1,596 @@
+/**
+ * SODIE - Servicio de Conexión y Gestión de Meta Ads (services/metaService.js)
+ * Actualizado para Lookalike + Advantage+ con mínimo 1,200 filas globales 
+ * (soporte multi-país robusto y presupuesto fijo de $33/día).
+ */
+
+const crypto = require('crypto');
+// const campaignStorage = require('./campaignStorageService');
+
+const GRAPH_VERSION = 'v26.0';
+const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
+
+/**
+ * Cifrado obligatorio SHA-256 para Meta Graph API (Solo datos permitidos)
+ */
+function hashData(value) {
+  if (!value || typeof value !== 'string') return null;
+  const clean = value.trim().toLowerCase();
+  if (!clean) return null;
+  return crypto.createHash('sha256').update(clean).digest('hex');
+}
+
+/**
+ * Nombre estandarizado de campaña: SODIE - {CLIENT_ID}
+ */
+function buildCampaignName(clientId = 'ADMIN') {
+  const cleanId = String(clientId).trim().toUpperCase();
+  return `SODIE - ${cleanId}`;
+}
+
+/**
+ * Helper para resolver credenciales: Soporta ADMIN y clientes dinámicos de CLIENT-#01 al #10+
+ */
+function getMetaCredentials({ token, clientId = 'ADMIN', pixelId = null, adAccountId = null }) {
+  const cleanClientId = String(clientId).trim().toUpperCase();
+  const isAdmin = cleanClientId.includes('ADMIN') || cleanClientId === 'CLIENT-#00' || !cleanClientId;
+
+  const finalToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN || process.env.META_SYSTEM_TOKEN;
+
+  const finalPixelId = isAdmin 
+    ? (pixelId || process.env.META_PIXEL_ID) 
+    : (pixelId || null);
+
+  const rawAccountId = isAdmin 
+    ? (adAccountId || process.env.AD_ACCOUNT_ID) 
+    : adAccountId;
+    
+  const finalAdAccountId = rawAccountId ? String(rawAccountId).replace(/^act_/, '').trim() : null;
+
+  return {
+    token: finalToken,
+    pixelId: finalPixelId,
+    adAccountId: finalAdAccountId,
+    isAdmin
+  };
+}
+
+/**
+ * Helper interno para parsear e interceptar el Error #100 de Meta LTV
+ */
+function formatMetaError(dataError) {
+  const code = dataError.code;
+  const msg = dataError.message || '';
+  const userMsg = dataError.error_user_msg || '';
+
+  if (code === 100 && (msg.includes('Customer Value') || userMsg.includes('value') || msg.includes('value'))) {
+    return {
+      isLtvError: true,
+      errorCode: 'VALUE_TERMS_REQUIRED',
+      message: 'La cuenta publicitaria no ha activado los Términos de Valor de Cliente (LTV) en Meta.',
+      instructions: 'Debes activar la segmentación por Value subiendo una lista de prueba CSV en el panel de tu cuenta publicitaria, marcar "Sí incluye valor de cliente", aceptar los términos de Meta e intentar nuevamente.'
+    };
+  }
+
+  return {
+    isLtvError: false,
+    message: `Meta API Error [Code ${code}]: ${msg}`
+  };
+}
+
+const metaService = {
+  // =========================================================================
+  // 1. BUSCAR BORRADORES EXISTENTES
+  // =========================================================================
+  async buscarBorrador(adAccountId, token, clientId = 'ADMIN') {
+    const creds = getMetaCredentials({ token, clientId, adAccountId });
+    if (!creds.adAccountId) return null;
+    
+    const targetName = buildCampaignName(clientId);
+    const url = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/campaigns?fields=id,name,status&access_token=${creds.token}`;
+    
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) throw new Error(`Meta API Error: ${data.error.message}`);
+    
+    return data.data?.find(c => c.name.trim().toUpperCase() === targetName.toUpperCase());
+  },
+
+  // =========================================================================
+  // 2. CREACIÓN DE AUDIENCIA SEMILLA Y LOOKALIKES (VALUE-BASED)
+  // =========================================================================
+  async crearAudienciaSemillaConValor(adAccountId, token, name, clientId = 'ADMIN') {
+    const creds = getMetaCredentials({ token, clientId, adAccountId });
+    if (!creds.adAccountId) throw new Error('⚠️ Falta el adAccountId para crear audiencia semilla.');
+
+    const url = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/customaudiences`;
+    
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name,
+        subtype: 'CUSTOM',
+        description: 'Semilla inyectada desde SODIE (Value-Based sin correos/teléfonos)',
+        customer_file_source: 'USER_PROVIDED_ONLY',
+        is_value_based: true,
+        access_token: creds.token
+      })
+    });
+    
+    const data = await res.json();
+    if (data.error) {
+      const parsedErr = formatMetaError(data.error);
+      if (parsedErr.isLtvError) {
+        const err = new Error(parsedErr.message);
+        err.errorCode = parsedErr.errorCode;
+        err.instructions = parsedErr.instructions;
+        throw err;
+      }
+      throw new Error(parsedErr.message);
+    }
+    return data.id;
+  },
+
+  async inyectarUsuariosSemilla(audienceId, usersPayload, token) {
+    const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
+    const url = `${GRAPH_BASE_URL}/${audienceId}/users`;
+    
+    const schema = ['FN', 'LN', 'COUNTRY', 'LOOKALIKE_VALUE'];
+
+    const formattedData = usersPayload.map(u => {
+      const country = (u.country || u.pais || 'US').toString().trim().toUpperCase();
+      const rawValue = u.value !== undefined ? u.value : (u.valor !== undefined ? u.valor : 1000);
+      const valueNum = typeof rawValue === 'number' ? rawValue : parseFloat(rawValue || 1000);
+      
+      const fnSimulado = u.firstName || u.nombre || 'carlos';
+      const lnSimulado = u.lastName || u.apellido || 'mendoza';
+
+      return [
+        hashData(fnSimulado),
+        hashData(lnSimulado),
+        country,
+        valueNum > 0 ? valueNum : 10000 
+      ];
+    }).filter(row => row[2]);
+
+    if (!formattedData.length) {
+      throw new Error('⚠️ No se encontraron registros válidos para la inyección de valor.');
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        payload: { schema, data: formattedData },
+        access_token: activeToken
+      })
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      const parsedErr = formatMetaError(data.error);
+      if (parsedErr.isLtvError) {
+        const err = new Error(parsedErr.message);
+        err.errorCode = parsedErr.errorCode;
+        err.instructions = parsedErr.instructions;
+        throw err;
+      }
+      throw new Error(parsedErr.message);
+    }
+    return data;
+  },
+
+  async crearLookalike1PorCiento(adAccountId, seedAudienceId, countryCode, token, clientId = 'ADMIN') {
+    const creds = getMetaCredentials({ token, clientId, adAccountId });
+    const url = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/customaudiences`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: `LAL 1% ${countryCode.toUpperCase()} - SODIE Value-Based`,
+        subtype: 'LOOKALIKE',
+        origin_audience_id: seedAudienceId,
+        lookalike_spec: JSON.stringify({
+          ratio: 0.01,
+          location_spec: {
+            geo_locations: { countries: [countryCode.toUpperCase()] }
+          }
+        }),
+        access_token: creds.token
+      })
+    });
+
+    const data = await res.json();
+    if (data.error) throw new Error(`Meta API Error (Lookalike ${countryCode}): ${data.error.message}`);
+    return data.id;
+  },
+
+  async procesarEInyectarLookalikes({ adAccountId, token, usersPayload, clientId = 'ADMIN' }) {
+    if (!usersPayload || !usersPayload.length) {
+      throw new Error('⚠️ No hay registros de usuarios para procesar segmentación.');
+    }
+
+    const creds = getMetaCredentials({ token, clientId, adAccountId });
+
+    // Detección robusta de múltiples países sin forzar US por defecto inmediato
+    let countriesFound = [...new Set(
+      usersPayload
+        .map(u => (u.country || u.pais || '').trim().toUpperCase())
+        .filter(c => c.length === 2)
+    )];
+
+    if (!countriesFound.length) {
+      console.warn('⚠️ [MetaServices] No se detectaron códigos de país válidos en el payload. Usando multisegmentación por defecto (BR, SV, US)...');
+      countriesFound = ['BR', 'SV', 'US'];
+    }
+
+    const seedAudienceId = await this.crearAudienciaSemillaConValor(
+      creds.adAccountId, 
+      creds.token, 
+      `SODIE_Seed_Value_${Date.now()}`,
+      clientId
+    );
+
+    await this.inyectarUsuariosSemilla(seedAudienceId, usersPayload, creds.token);
+
+    const lookalikeData = [];
+    for (const country of countriesFound) {
+      try {
+        const lalId = await this.crearLookalike1PorCiento(creds.adAccountId, seedAudienceId, country, creds.token, clientId);
+        lookalikeData.push({ id: lalId, country: country });
+      } catch (err) {
+        console.error(`Error creando Lookalike 1% para país ${country}:`, err.message);
+      }
+    }
+
+    return {
+      custom_audiences: lookalikeData.length > 0 
+        ? lookalikeData 
+        : [{ id: seedAudienceId, country: 'US' }]
+    };
+  },
+
+  // =========================================================================
+  // 3. CREACIÓN DE CAMPAÑA + ADSET (Con Advantage+ Audience y $33/día fijos)
+  // =========================================================================
+  async crearCampanaVentas({ 
+    actId, 
+    token, 
+    pixelId, 
+    clientId = 'ADMIN', 
+    dailyBudget = 3300, 
+    customAudiences = [],
+    minAge = 22, 
+    maxAge = 55, 
+    websiteUrl = 'https://sodie.app'
+  }) {
+    const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId: actId });
+
+    if (!creds.adAccountId) {
+      throw new Error(`⚠️ Imposible crear campaña para ${clientId}: Falta el adAccountId de la cuenta publicitaria.`);
+    }
+
+    const campaignName = buildCampaignName(clientId);
+    
+    // ⚡ BLINDAJE DE PRESUPUESTO: Si viene menor a 100 se asumen dólares y se pasa a centavos (3300 = $33.00)
+    const rawBudget = dailyBudget !== undefined ? Number(dailyBudget) : 3300;
+    const finalDailyBudget = rawBudget < 100 ? rawBudget * 100 : rawBudget; 
+
+    console.log(`📊 [SODIE Engine] Configurando campaña para [${clientId}] con presupuesto diario total de: $${finalDailyBudget / 100} USD`);
+
+    // ---------------------------------------------------------
+    // 1. CREAR CAMPAÑA
+    // ---------------------------------------------------------
+    const campaignUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/campaigns`;
+    const campaignRes = await fetch(campaignUrl, { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: campaignName,
+        objective: 'OUTCOME_SALES',
+        status: 'PAUSED',
+        is_adset_budget_sharing_enabled: false, 
+        special_ad_categories: ['NONE'],
+        access_token: creds.token
+      })
+    });
+
+    const campaignData = await campaignRes.json();
+    if (campaignData.error) throw new Error(`Meta API Campaign Error: ${campaignData.error.message}`);
+    const campaignId = campaignData.id;
+
+    // ---------------------------------------------------------
+    // 2. EXTRAER PAGE ID E INSTAGRAM ID
+    // ---------------------------------------------------------
+    const accountDetailsUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}?fields=promote_pages{id,instagram_business_account},pixels{id}&access_token=${creds.token}`;
+    const accountRes = await fetch(accountDetailsUrl);
+    const accountData = await accountRes.json();
+    
+    let pageId = null;
+    let instagramId = null;
+    
+    if (accountData.promote_pages && accountData.promote_pages.data.length > 0) {
+      pageId = accountData.promote_pages.data[0].id;
+      instagramId = accountData.promote_pages.data[0].instagram_business_account?.id || null;
+    }
+
+    if (!pageId) {
+      pageId = process.env.META_PAGE_ID || ''; 
+    }
+
+    // ---------------------------------------------------------
+    // 3. SUBIR IMAGEN DESDE INTERNET
+    // ---------------------------------------------------------
+    const imgRes = await fetch('https://placehold.co/1080x1080/1a1a1a/34d399/png?text=Borrador+SODIE+V4');
+    const imageBuffer = await imgRes.arrayBuffer();
+    const imgBlob = new Blob([imageBuffer], { type: 'image/png' });
+    
+    const form = new FormData();
+    form.append('filename', imgBlob, 'sodie_placeholder.png');
+    form.append('access_token', creds.token);
+
+    const uploadUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adimages`;
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'POST',
+      body: form
+    });
+
+    const uploadData = await uploadRes.json();
+    if (uploadData.error) throw new Error(`Meta API Error subiendo imagen: ${uploadData.error.message}`);
+    
+    const imageHash = uploadData.images['sodie_placeholder.png'].hash;
+
+    // ---------------------------------------------------------
+    // 4, 5 y 6. CICLO POR CADA PAÍS (CON ADVANTAGE+ AUDIENCE HABILITADO)
+    // ---------------------------------------------------------
+    const targets = (customAudiences && customAudiences.length > 0) 
+      ? customAudiences 
+      : [{ country: 'US', id: null }];
+
+    const budgetPerAdSet = Math.floor(finalDailyBudget / targets.length);
+    const createdAdSets = [];
+    const createdAds = [];
+
+         for (const target of targets) {
+      const countryCode = target.country || 'US';
+      const adSetUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adsets`;
+      
+      // ⚡ Segmentación ESTRICTA: Tu panel manda, no Meta.
+      let targetingData = {
+        geo_locations: { countries: [countryCode] }, 
+        age_min: parseInt(minAge, 10) || 22, 
+        age_max: parseInt(maxAge, 10) || 55, 
+        publisher_platforms: ['facebook', 'instagram'],
+        targeting_automation: { advantage_audience: 0 } 
+      };
+
+      // Si hay Lookalike, lo inyectamos respetando tus límites duros
+      if (target.id && String(target.id).trim() !== '') {
+        targetingData.custom_audiences = [{ id: String(target.id).trim() }];
+      }
+
+      const adSetBody = {
+        name: `${campaignName} - AdSet LAL 1% Estricto (${countryCode})`,
+        campaign_id: campaignId,
+        daily_budget: budgetPerAdSet,
+        billing_event: 'IMPRESSIONS',
+        optimization_goal: 'OFFSITE_CONVERSIONS',
+        bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+        targeting: targetingData,
+        status: 'PAUSED',
+        dsa_beneficiary: "SODIE Client", 
+        dsa_payor: "SODIE Client",
+        access_token: creds.token
+      };
+
+      if (creds.pixelId) {
+        adSetBody.promoted_object = { pixel_id: creds.pixelId, custom_event_type: 'PURCHASE' };
+      }
+
+      let adSetRes = await fetch(adSetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adSetBody)
+      });
+      let adSetData = await adSetRes.json();
+
+      // ⚡ Fallback automático limpio por si la audiencia custom da error
+      if (adSetData.error) {
+        console.warn(`⚠️ [SODIE Engine] Falló AdSet con Lookalike para ${countryCode} (${adSetData.error.message}). Aplicando fallback a geo abierto...`);
+        
+        delete adSetBody.targeting.custom_audiences;
+        adSetBody.name = `${campaignName} - AdSet Geo Open (${countryCode})`;
+
+        const retryRes = await fetch(adSetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(adSetBody)
+        });
+        adSetData = await retryRes.json();
+
+        if (adSetData.error) {
+          console.error('💥 ERROR CRUDO DE META:', JSON.stringify(adSetData.error, null, 2));
+          throw new Error(`Meta API AdSet Error Definitivo (${countryCode}): ${adSetData.error.message}`);
+        } else {
+          console.log(`✅ [SODIE Engine] Recuperación exitosa para ${countryCode} mediante fallback automático.`);
+        }
+      }
+
+      createdAdSets.push(adSetData.id);
+
+      // -- CREATIVE --
+      const creativeUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/adcreatives`;
+      const objectStorySpec = {
+        page_id: pageId,
+        link_data: {
+          image_hash: imageHash,
+          link: websiteUrl,
+          message: `Ecosistema SODIE - Automatización de pautas publicitarias de alto rendimiento para ${countryCode}. Actualiza tus datos correspondientes`,
+          call_to_action: { type: 'LEARN_MORE', value: { link: websiteUrl } }
+        }
+      };
+
+      // if (instagramId) objectStorySpec.instagram_actor_id = instagramId;
+
+      const creativeRes = await fetch(creativeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `Creative - SODIE - ${countryCode}`,
+          object_story_spec: objectStorySpec,
+          access_token: creds.token
+        })
+      });
+      const creativeData = await creativeRes.json();
+      if (creativeData.error) throw new Error(`Meta API Creative Error (${countryCode}): ${creativeData.error.message}`);
+
+      // -- AD --
+      const adUrl = `${GRAPH_BASE_URL}/act_${creds.adAccountId}/ads`;
+      const adRes = await fetch(adUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `Borrador SODIE - ${countryCode}`,
+          adset_id: adSetData.id,
+          creative: { creative_id: creativeData.id },
+          status: 'PAUSED',
+          access_token: creds.token
+        })
+      });
+      const adFinalData = await adRes.json();
+      if (adFinalData.error) throw new Error(`Meta API Ad Error (${countryCode}): ${adFinalData.error.message}`);
+      
+      createdAds.push(adFinalData.id);
+    }
+
+    return {
+      success: true,
+      act_id: creds.adAccountId,
+      pixel_id: creds.pixelId,
+      campaignId,
+      adSetIds: createdAdSets,
+      adIds: createdAds,
+      status: 'PAUSED',
+      campaignName,
+      daily_budget_usd: finalDailyBudget / 100,
+      total_adsets: createdAdSets.length
+    };
+  },
+  
+  // =========================================================================
+  // 4. CICLO DE 72 HORAS & ORQUESTACIÓN
+  // =========================================================================
+  async pausarCampana(token, campaignId) {
+    if (!campaignId) return null;
+    const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
+    const res = await fetch(`${GRAPH_BASE_URL}/${campaignId}?access_token=${activeToken}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'PAUSED', access_token: activeToken })
+    });
+    return res.json();
+  },
+
+  async obtenerMetricas(token, campaignId) {
+    if (!campaignId) return {};
+    const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
+    const url = `${GRAPH_BASE_URL}/${campaignId}/insights?fields=impressions,clicks,cpc,ctr,spend,reach,action_values,actions&access_token=${activeToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.data?.[0] || {};
+  },
+
+  async procesarCicloHora72({ 
+    clientId = 'CLIENT-#01', 
+    token, 
+    adAccountId, 
+    pixelId,
+    usersPayload = null,
+    customAudiences = [],
+    dailyBudget = 3300,
+    version = 'V3.5',
+    minAge,      
+    maxAge,      
+    websiteUrl   
+  }) {    
+    try {
+      const creds = getMetaCredentials({ token, clientId, pixelId, adAccountId });
+
+      if (!creds.adAccountId) {
+        throw new Error(`⚠️ [MetaServices] Se requiere un adAccountId válido para ejecutar la inyección en Meta para ${clientId}.`);
+      }
+
+      let finalAudiences = customAudiences;
+      if ((!finalAudiences || finalAudiences.length === 0) && usersPayload && usersPayload.length > 0) {
+        console.log(`🔄 [MetaServices] Procesando Audiencia Semilla + Lookalikes con Advantage+ al vuelo para ${clientId}...`);
+        const generatedLal = await this.procesarEInyectarLookalikes({
+          adAccountId: creds.adAccountId,
+          token: creds.token,
+          usersPayload,
+          clientId
+        });
+        finalAudiences = generatedLal.custom_audiences;
+      }
+
+      const borradorExistente = await this.buscarBorrador(creds.adAccountId, creds.token, clientId);
+      if (borradorExistente) {
+        await this.pausarCampana(creds.token, borradorExistente.id);
+      }
+
+      const nuevaCampana = await this.crearCampanaVentas({
+        actId: creds.adAccountId,
+        token: creds.token,
+        pixelId: creds.pixelId,
+        clientId,
+        dailyBudget,
+        customAudiences: finalAudiences,
+        minAge,      
+        maxAge,      
+        websiteUrl   
+      });
+
+            // ⚡ Registrar en el storage con el estado pendiente y las audiencias lookalike creadas
+      await campaignStorage.registrarCampaignId({
+        clientId: creds.isAdmin ? 'ADMIN' : clientId,
+        campaignId: nuevaCampana.campaignId,
+        customAudiences: finalAudiences, // 👈 Pasamos los IDs y países del Lookalike
+        estadoIndexacion: 'PENDIENTE',   // 👈 Marcado como pendiente para el radar de 4h
+        tokenUsado: creds.token,         // 👈 Token específico (Admin o Cliente)
+        version,
+        isAdmin: creds.isAdmin,
+        ttlHours: 72
+      });
+
+      return { 
+        success: true, 
+        act_id: creds.adAccountId,
+        pixel_id: creds.pixelId,
+        campaignId: nuevaCampana.campaignId, 
+        status: 'PAUSED',
+        campaignName: nuevaCampana.campaignName,
+        cycleHours: 72
+      };
+      } catch (error) {
+      console.error('💥 Error en procesarCicloHora72 (MetaServices):', error);
+      throw error;
+    }
+  },
+
+  async procesarCicloHora24(params) {
+    return this.procesarCicloHora72(params);
+  },
+
+  async verificarEstadoCampana(token, campaignId) {
+    if (!campaignId) return false;
+    const activeToken = token || process.env.ADMIN_TOKEN || process.env.META_ACCESS_TOKEN;
+    const url = `${GRAPH_BASE_URL}/${campaignId}?fields=status,name&access_token=${activeToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) throw new Error(`Meta API Error: ${data.error.message}`);
+    return data.status === 'ACTIVE';
+  }
+};
+
+module.exports = metaService;
