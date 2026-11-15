@@ -160,12 +160,12 @@ try {
 
 // --- 2. FACEBOOK & META ROUTES (/api/facebook, /api/v1/facebook) ---
 // Incluye: /api/facebook/activar-campana, /configurar, /crear-borrador, etc.
-try {
-  const facebookRoutes = require('../routes/facebookRoutes');
-  safeUse(['/api/facebook', '/api/v1/facebook', '/facebook'], facebookRoutes);
-} catch (e) {
-  console.warn('⚠️ [FB ROUTES] No se pudo cargar facebookRoutes.js:', e.message);
-}
+// try {
+ // const facebookRoutes = require('../routes/facebookRoutes');
+  // safeUse(['/api/facebook', '/api/v1/facebook', '/facebook'], facebookRoutes);
+// } catch (e) {
+//  console.warn('⚠️ [FB ROUTES] No se pudo cargar facebookRoutes.js:', e.message);
+ //}
 
 // --- 3. WAITLIST / V4 ROUTES (/api/waitlist, /api/v1/waitlist, /api/v1/registro) ---
 // Incluye: /api/waitlist/confirm-waitlist, /api/v1/registro
