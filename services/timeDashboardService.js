@@ -1,49 +1,70 @@
 /**
  * SODIE - Servicio de Temporizadores en la Nube (services/timeDashboardService.js)
  */
-const client = require('../models/clientTimer');
+const ClientTimer = require('../models/clientTimer');
 
 const timeDashboardService = {
   async obtenerOTier(clientId) {
     const cleanId = String(clientId || 'ADMIN').trim().toUpperCase();
-    let clientDoc = await client.findOne({ clientId: cleanId });
+    let clientDoc = await ClientTimer.findOne({ clientId: cleanId });
 
     const now = Date.now();
+    const defaultDuration = cleanId === 'ADMIN' ? (24 * 3600) : (96 * 3600);
 
-    if (!clientDoc || !clientDoc.timers?.startTimeStamp) {
-      await client.findOneAndUpdate(
+    // Lee de la raíz del esquema (o de .timers por retrocompatibilidad)
+    const savedStart = clientDoc?.startTimeStamp || clientDoc?.timers?.startTimeStamp;
+    const savedDuration = clientDoc?.durationSeconds || clientDoc?.timers?.durationSeconds || defaultDuration;
+
+    if (!clientDoc || !savedStart) {
+      const updated = await ClientTimer.findOneAndUpdate(
         { clientId: cleanId },
         { 
           $set: { 
             clientId: cleanId,
-            'timers.startTimeStamp': now,
-            'timers.durationSeconds': 96 * 3600 // 96 horas de maduración técnica
+            startTimeStamp: now,
+            durationSeconds: defaultDuration,
+            updatedAt: new Date()
           } 
         },
         { upsert: true, new: true }
       );
       
-      return { startTimeStamp: now, durationSeconds: 96 * 3600 };
+      return {
+        clientId: cleanId,
+        startTimeStamp: updated.startTimeStamp || now,
+        durationSeconds: updated.durationSeconds || defaultDuration
+      };
     }
 
     return {
-      startTimeStamp: clientDoc.timers.startTimeStamp,
-      durationSeconds: clientDoc.timers.durationSeconds || (96 * 3600)
+      clientId: cleanId,
+      startTimeStamp: savedStart,
+      durationSeconds: savedDuration
     };
   },
 
   async reiniciarTimer(clientId) {
     const cleanId = String(clientId || 'ADMIN').trim().toUpperCase();
     const now = Date.now();
+    const defaultDuration = cleanId === 'ADMIN' ? (24 * 3600) : (96 * 3600);
     
-    await client.findOneAndUpdate(
+    await ClientTimer.findOneAndUpdate(
       { clientId: cleanId },
-      { $set: { 'timers.startTimeStamp': now } },
-      { upsert: true }
+      { 
+        $set: { 
+          startTimeStamp: now,
+          durationSeconds: defaultDuration,
+          updatedAt: new Date()
+        } 
+      },
+      { upsert: true, new: true }
     );
 
-    return { success: true, startTimeStamp: now };
+    return { success: true, clientId: cleanId, startTimeStamp: now, durationSeconds: defaultDuration };
   }
 };
+
+// Alias por seguridad si en algún punto se invoca como obtenerOTimer
+timeDashboardService.obtenerOTimer = timeDashboardService.obtenerOTier;
 
 module.exports = timeDashboardService;
